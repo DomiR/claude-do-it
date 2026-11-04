@@ -59,6 +59,9 @@ export const subscriptions = Subscription.make<Model, Message, DoItClient>()(ent
     },
   ),
   keyboard: Subscription.persistentEntry(streamFromKeyBindings({
-    bindings: [{ keys: 'Shift+?', mapEvent: () => Message.PressedHelpKey() }],
+    bindings: [
+      { keys: '?', mapEvent: () => Message.PressedHelpKey() },
+      { keys: 'Shift+?', mapEvent: () => Message.PressedHelpKey() },
+    ],
   })),
 }))

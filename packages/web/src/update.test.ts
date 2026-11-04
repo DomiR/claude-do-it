@@ -342,6 +342,10 @@ describe('palette update', () => {
         expect(next.palette).toEqual({ _tag: 'Open', kind: 'Shortcuts', query: '', active: 0 })
         expect(paletteItems(next, original).some(item => item.title === 'Continue task')).toBe(true)
       }),
+      message(Message.PressedHelpKey()),
+      Command.expectExact(FocusEditor({ session })),
+      Command.resolve(FocusEditor, Message.CompletedFocusEditor()),
+      model(next => expect(next.palette._tag).toBe('Closed')),
     )
   })
 
