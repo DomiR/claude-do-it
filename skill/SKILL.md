@@ -20,8 +20,8 @@ $D read TODO.md --section tasks           # one section; IDs are heading slugs
 $D sections TODO.md
 $D todo list TODO.md                      # "3. [x] Ship" per task
 $D todo add TODO.md --version 7 --section tasks "Write tests"
-$D todo start TODO.md --version 8 --section tasks 3  # add the PlainTasks start time
-$D todo check TODO.md --version 9 3       # by number or by text; also uncheck, cancel, uncancel
+$D todo start TODO.md --version 8 --section tasks -- "Write tests"  # add the PlainTasks start time
+$D todo check TODO.md --version 9 -- "Write tests"       # by text; also uncheck, cancel, uncancel
 $D append TODO.md --version 10 --section notes -- "- found: flaky CI"
 $D edit TODO.md --version 10 --old "ship friday" --new "ship monday"
 $D diff TODO.md --since 9 --wait 100      # waits for the next change, exit 4 when none came (keep it under the Bash tool's 120 s default)
@@ -98,7 +98,7 @@ do-it edit "$TODO" --version $V --section tasks \
 Immediately after writing the status line, start the task with the version returned by that edit:
 
 ```bash
-$D todo start "$TODO" --version $V --section tasks <task number>
+$D todo start "$TODO" --version $V --section tasks -- "<exact task text>"
 ```
 
 Never rewrite the person's own task text. Your lines are indented sub bullets starting with `**tN**`; there is exactly one status line per task, which you replace as the task moves, plus any `**tN question:**` lines. Record every task in `$STATE/state.json` (id, text, size, repo, branch, worktree, agent id or name, status) after every transition; it is how you resume.
@@ -139,6 +139,7 @@ TASK tN (size S|M|L): <the person's task line, verbatim, plus their sub notes>
 REPO: <repo root>. You run in your own git worktree on your own branch; commit there.
 PLAN: <the plan from $STATE/plans/tN.md>
 NAME: export DO_IT_AGENT=tN before any do-it command.
+TASK TARGET: keep the person's task text verbatim. For todo start and todo check, target that exact text after --, never a remembered task number. If the text is unavailable, run do-it todo list immediately before choosing a target.
 COMPUTE RULE: never run builds, tests, linters, type checkers, dev servers, or browsers yourself.
   Formatters are fine. To test, queue one request and wait for the answer:
     do-it todo add <STATE>/tests.md --version <v> --section queue "tNrK tN: <command> in <your worktree>"
@@ -222,7 +223,7 @@ Keep your lines short: the todo is a dashboard, not a log. Full detail lives in 
 After writing the delivered status line, mark the task done with the version returned by that status edit:
 
 ```bash
-$D todo check "$TODO" --version $V --section tasks <task number>
+$D todo check "$TODO" --version $V --section tasks -- "<exact task text>"
 ```
 
 ## Ending
