@@ -223,7 +223,7 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
   const parsed = lines(text)
   const taskIndexes = parsed.flatMap((line, index) => line.state === undefined ? [] : [index])
   const archived = archivedLines(parsed, text)
-  const stats: Stats = { done: 0, cancelled: 0, open: 0, total: 0 }
+  const stats = { done: 0, cancelled: 0, open: 0, total: 0 }
   const projects: Project[] = []
 
   const classified = parsed.map((line, index): ClassifiedLine => {
@@ -234,7 +234,12 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
     else if (line.kind === 'item' && owner !== undefined) kind = 'status'
     else if (line.kind === 'paragraph' && owner !== undefined) kind = 'note'
     else if (line.kind === 'paragraph') kind = 'prose'
-    else kind = line.kind
+    else if (line.kind === 'item') kind = 'prose'
+    else if (line.kind === 'blank') kind = 'blank'
+    else if (line.kind === 'code') kind = 'code'
+    else if (line.kind === 'fence') kind = 'fence'
+    else if (line.kind === 'quote') kind = 'quote'
+    else kind = 'rule'
 
     const result = {
       index,
