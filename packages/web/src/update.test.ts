@@ -368,7 +368,7 @@ describe('palette update', () => {
     story(update, given(readyModel(text)), message(Message.PressedEditorCommand({ command: 'gotoProject' })),
       message(Message.UpdatedPaletteQuery({ query: 'scd' })),
       message(Message.ClickedPaletteItem({ index: 0 })),
-      Command.expectExact(RevealEditorPosition({ session, offset: text.indexOf('## Second') })),
+      Command.expectExact(RevealEditorPosition({ session, offset: text.indexOf('Second') })),
       Command.resolve(RevealEditorPosition, Message.CompletedRevealEditorPosition()),
       message(Message.PressedEditorCommand({ command: 'showShortcuts' })),
       model(next => expect(paletteItems(next, text).some(item => item.title === 'Continue task')).toBe(true)),
