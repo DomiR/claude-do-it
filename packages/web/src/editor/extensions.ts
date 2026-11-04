@@ -43,20 +43,24 @@ export const runEditorAction = (
     view.state.facet(editorFacts)(Message.ShowedEditorNotice({ text: result.reason }))
     return true
   }
-  const changes = ChangeSet.of(result.edits, view.state.doc.length, '\n')
-  const nextSelection = keepSelection
-    ? view.state.selection.map(changes)
-    : EditorSelection.create(
-        result.selection.ranges.map(({ anchor, head }) => EditorSelection.range(anchor, head)),
-        result.selection.main,
-      )
-  view.dispatch({
-    changes,
-    selection: nextSelection,
-    userEvent: 'input.action',
-    annotations: isolateHistory.of('full'),
-    scrollIntoView: !keepSelection,
-  })
+  try {
+    const changes = ChangeSet.of(result.edits, view.state.doc.length, '\n')
+    const nextSelection = keepSelection
+      ? view.state.selection.map(changes)
+      : EditorSelection.create(
+          result.selection.ranges.map(({ anchor, head }) => EditorSelection.range(anchor, head)),
+          result.selection.main,
+        )
+    view.dispatch({
+      changes,
+      selection: nextSelection,
+      userEvent: 'input.action',
+      annotations: isolateHistory.of('full'),
+      scrollIntoView: !keepSelection,
+    })
+  } catch {
+    view.state.facet(editorFacts)(Message.ShowedEditorNotice({ text: 'Could not apply that action' }))
+  }
   return true
 }
 
