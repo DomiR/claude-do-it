@@ -62,7 +62,7 @@ ln -s "$PWD/skill" ~/.claude/skills/do-it
 /do-it PLAN.md
 ```
 
-The browser opens on the todo (inside Herdr, in a Herdr browser tab). Add
+The browser opens on the todo (inside Herdr, in a Sheprd browser tab). Add
 one task per line. The session sizes each task, plans it, starts a worker in
 its own worktree, and writes one status line under it, plus any question it
 needs you to answer (answer by writing under the question). Delivered tasks

@@ -51,8 +51,8 @@ mkdir -p "$STATE/plans" "$STATE/logs"
 Open it for the person. It starts or reuses the daemon, creates the file from a template when missing, opens the browser, and returns at once:
 
 ```bash
-if [ "${HERDR_ENV:-}" = 1 ] && [ -x /Applications/Herdr.app/Contents/MacOS/Herdr ]; then
-  DO_IT_BROWSER="/Applications/Herdr.app/Contents/MacOS/Herdr browser open" do-it open "$TODO"
+if [ "${HERDR_ENV:-}" = 1 ] && [ -x /Applications/Sheprd.app/Contents/MacOS/sheprd ]; then
+  DO_IT_BROWSER="/Applications/Sheprd.app/Contents/MacOS/sheprd browser open" do-it open "$TODO"
 else
   do-it open "$TODO"
 fi
