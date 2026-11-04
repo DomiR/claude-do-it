@@ -233,6 +233,27 @@ describe('PlainTasks line classification', () => {
     }
   })
 
+  test('classifies PlainTasks tags, lowercases names, and excludes protected text', () => {
+    const text = '@today @HIGH @low @critical @started(26-11-04 21:32) @done (26-11-04 21:32) @project(Tasks) @waiting (custom) **@bold**\n'
+      + 'email a@b.c `@code` [link](@target)\n```\n@fenced\n```'
+    const document = classifyDocument(text)
+    const first = document.lines[0]!
+    const tags = first.inline.filter(span => span.kind === 'tag')
+    expect(tags.map(span => text.slice(span.from, span.to))).toEqual([
+      '@today', '@HIGH', '@low', '@critical', '@started(26-11-04 21:32)', '@done (26-11-04 21:32)',
+      '@project(Tasks)', '@waiting (custom)',
+    ])
+    expect(tags.map(span => span.name)).toEqual([
+      'today', 'high', 'low', 'critical', 'started', 'done', 'project', 'waiting',
+    ])
+    expect(first.inline.some(span => text.slice(span.from, span.to) === '@bold')).toBe(false)
+    expect(document.lines[1]!.inline.some(span => span.kind === 'tag')).toBe(false)
+    expect(document.lines[2]!.inline).toEqual([])
+    expect(document.lines[3]!.kind).toBe('code')
+    expect(document.lines[3]!.inline).toEqual([])
+    expect(first.inline.every((span, index) => index === 0 || span.from >= first.inline[index - 1]!.to)).toBe(true)
+  })
+
   test('keeps link targets available over hidden syntax but not code', () => {
     const text = '[guide](#tasks) <mailto:team@example.com> `https://code.example`\n```\nhttps://fenced.example\n```'
     for (let offset = 0; offset < '[guide](#tasks)'.length; offset += 1) expect(linkAt(text, offset)).toBe('#tasks')

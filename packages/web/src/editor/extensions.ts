@@ -31,15 +31,20 @@ const selectionOf = (view: EditorView): TextSelection => ({
   main: view.state.selection.mainIndex,
 })
 
+const runActionWithDate = (text: string, selection: TextSelection, action: ActionId) =>
+  (runAction as unknown as (text: string, selection: TextSelection, action: ActionId, now: Date) => ReturnType<typeof runAction>)
+    (text, selection, action, new Date())
+
 export const runEditorAction = (
   view: EditorView,
   action: ActionId,
   selection: TextSelection = selectionOf(view),
   keepSelection = false,
+  fallThroughUnavailable = false,
 ): boolean => {
-  const result = runAction(view.state.doc.toString(), selection, action)
+  const result = runActionWithDate(view.state.doc.toString(), selection, action)
   if (result._tag === 'Unavailable') {
-    if (action === 'continueTask') return false
+    if (action === 'continueTask' || String(action) === 'tab' || fallThroughUnavailable) return false
     view.state.facet(editorFacts)(Message.ShowedEditorNotice({ text: result.reason }))
     return true
   }
@@ -64,7 +69,7 @@ export const runEditorAction = (
   return true
 }
 
-export const runEditorCommand = (view: EditorView, command: EditorCommand): boolean => {
+export const runEditorCommand = (view: EditorView, command: EditorCommand, fallThroughUnavailable = false): boolean => {
   switch (command) {
     case 'find': return openSearchPanel(view)
     case 'commandPalette':
@@ -77,14 +82,17 @@ export const runEditorCommand = (view: EditorView, command: EditorCommand): bool
         command, link: linkAt(view.state.doc.toString(), view.state.selection.main.head),
       }))
       return true
-    default: return runEditorAction(view, command)
+    default: return runEditorAction(view, command, selectionOf(view), false, fallThroughUnavailable)
   }
 }
 
 const inlineClasses: Record<InlineKind, string> = {
   strong: 'pt-strong', strongMark: 'pt-strong-mark', code: 'pt-code', codeMark: 'pt-code-mark', link: 'pt-link',
   em: 'pt-em', emMark: 'pt-em-mark', strike: 'pt-strike', strikeMark: 'pt-strike-mark', linkMark: 'pt-link-mark',
+  tag: 'pt-tag',
 }
+
+const sanitizeTagName = (name: string): string => name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
 
 class BulletDot extends WidgetType {
   eq(): boolean { return true }
@@ -157,7 +165,12 @@ const lineDecorations = (classified: ClassifiedDocument, editing: readonly numbe
     if (line.kind === 'project') mark(line.label, 'pt-heading-title')
     else if (line.kind === 'task') mark(line.label, 'pt-label')
     for (const span of line.inline) {
-      if (editing || !span.kind.endsWith('Mark')) mark(span, inlineClasses[span.kind])
+      if (editing || !span.kind.endsWith('Mark')) {
+        const className = span.kind === 'tag'
+          ? `${inlineClasses.tag} pt-tag-${sanitizeTagName(span.name ?? '')}`
+          : inlineClasses[span.kind]
+        mark(span, className)
+      }
     }
   }
   return { decorations: Decoration.set(ranges, true), atomicRanges: RangeSet.of(replaced, true) }
@@ -360,7 +373,7 @@ export const editorExtensions = (platform: Platform): Extension => [
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,
     run: (view: EditorView) => view.composing || view.plugin(inputGuard)?.ignoreKey
-      ? false : runEditorCommand(view, binding.command),
+      ? false : runEditorCommand(view, binding.command, key === 'Shift-Tab' && String(binding.command) === 'outdent'),
     stopPropagation: true,
   }))))),
   keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),

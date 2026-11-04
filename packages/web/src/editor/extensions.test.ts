@@ -6,8 +6,9 @@ import {
 } from '@codemirror/commands'
 
 import { rebaseRemote } from './changes'
+import type { EditorCommand } from './types'
 import {
-  clearRemoteHighlight, deleteEmptyTaskPrefix, documentDecorations, editorExtensions, moveToTaskLabel,
+  clearRemoteHighlight, deleteEmptyTaskPrefix, documentDecorations, editorExtensions, moveToTaskLabel, runEditorCommand,
   remoteHighlights, remoteTransaction,
 } from './extensions'
 
@@ -85,6 +86,24 @@ describe('editor extensions', () => {
       .map(({ decoration }) => decoration.spec.attributes.style)).toEqual([
       '--pt-hang: 4', '--pt-hang: 2', '--pt-hang: 2', '--pt-hang: 4',
     ])
+  })
+
+  test('decorates tags with their shared and sanitized name classes', () => {
+    const text = '@today @HIGH @waiting\n`@code`\n```\n@fenced\n```'
+    const state = stateFor(text, text.length)
+    expect(classes(state)).toEqual(expect.arrayContaining([
+      'pt-tag', 'pt-tag-today', 'pt-tag-high', 'pt-tag-waiting',
+    ]))
+    expect(classes(state)).not.toContain('pt-tag-code')
+    expect(classes(state)).not.toContain('pt-tag-fenced')
+    expect(hiddenText(state)).not.toContain('@today')
+    expect(hiddenText(state)).not.toContain('@HIGH')
+  })
+
+  test('returns false for unavailable Tab and Shift-Tab actions so the browser can handle them', () => {
+    const view = { state: stateFor('```\ncode\n```') } as unknown as EditorView
+    expect(runEditorCommand(view, 'tab' as EditorCommand)).toBe(false)
+    expect(runEditorCommand(view, 'outdent', true)).toBe(false)
   })
 
   test('editing lines reveal delimiters, including selections touching multiple lines, while task and status bullets stay hidden', () => {

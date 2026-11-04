@@ -19,10 +19,11 @@ export interface Span {
 
 export type InlineKind =
   | 'strong' | 'strongMark' | 'em' | 'emMark' | 'strike' | 'strikeMark'
-  | 'code' | 'codeMark' | 'link' | 'linkMark'
+  | 'code' | 'codeMark' | 'link' | 'linkMark' | 'tag'
 
 export interface InlineSpan extends Span {
   readonly kind: InlineKind
+  readonly name?: string
 }
 
 export interface ClassifiedLine {
@@ -142,6 +143,23 @@ const linkCandidates = (text: string, from: number, to: number): LinkCandidate[]
   return result
 }
 
+const tagCandidates = (source: string, from: number): InlineCandidate[] => {
+  const result: InlineCandidate[] = []
+  const pattern = /@([\p{L}\p{N}_-]+)(?:[ \t]?\([^()\r\n]*\))?/gu
+  for (const match of source.matchAll(pattern)) {
+    const index = match.index!
+    const previous = source[index - 1]
+    if (index > 0 && previous !== undefined && !/[\s(]/u.test(previous)) continue
+    const start = from + index
+    result.push({
+      from: start,
+      to: start + match[0].length,
+      spans: [{ from: start, to: start + match[0].length, kind: 'tag', name: match[1]!.toLowerCase() }],
+    })
+  }
+  return result
+}
+
 const inlineCandidates = (text: string, from: number, to: number): InlineCandidate[] => {
   const source = text.slice(from, to)
   const result: InlineCandidate[] = []
@@ -177,6 +195,7 @@ const inlineCandidates = (text: string, from: number, to: number): InlineCandida
       delimited(start, start + match[0].length, width, kind, mark)
     }
   }
+  result.push(...tagCandidates(source, from))
 
   let opener: number | undefined
   for (let index = 0; index < source.length; index += 1) {
