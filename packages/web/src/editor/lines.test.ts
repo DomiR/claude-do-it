@@ -247,7 +247,8 @@ describe('PlainTasks line classification', () => {
     expect(tags.map(span => span.name)).toEqual([
       'today', 'high', 'low', 'critical', 'started', 'done', 'project', 'waiting',
     ])
-    expect(first.inline.some(span => text.slice(span.from, span.to) === '@bold')).toBe(false)
+    expect(first.inline.some(span => span.kind === 'tag' && text.slice(span.from, span.to) === '@bold')).toBe(false)
+    expect(first.inline.some(span => span.kind === 'strong' && text.slice(span.from, span.to) === '@bold')).toBe(true)
     expect(document.lines[1]!.inline.some(span => span.kind === 'tag')).toBe(false)
     expect(document.lines[2]!.inline).toEqual([])
     expect(document.lines[3]!.kind).toBe('code')
