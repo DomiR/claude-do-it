@@ -4,6 +4,7 @@
   "exports": {".": "./src/index.ts"},
   "scripts": {"build": "vite build"},
   "dependencies": {
+    "@do-it/doc": "workspace:*",
     "@do-it/protocol": "workspace:*",
     "@effect/platform-browser": "4.1.2",
     "effect": "4.1.2",

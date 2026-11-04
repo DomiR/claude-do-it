@@ -1,22 +1,20 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { Runtime } from 'foldkit'
-import { type Document, type HtmlBuilder } from 'foldkit/html'
-import { defineMessageUnion } from 'foldkit/message'
 
-export const Model = Schema.Struct({})
-export type Model = typeof Model.Type
+import { Message } from './message'
+import { makeInitialModel, Model } from './model'
+import { update } from './update'
+import { view } from './view'
 
-export const Message = defineMessageUnion({})
-export type Message = typeof Message.Type
+export const Flags = Schema.Struct({ path: Schema.String })
+export type Flags = typeof Flags.Type
 
-export const init: Runtime.ApplicationInit<Model, Message> = () => ({model: {}})
+export const flags: Effect.Effect<Flags> = Effect.sync(() => ({
+  path: new URL(window.location.href).searchParams.get('path') ?? '',
+}))
 
-export const update = (model: Model, _message: Message) => ({model})
-
-export const view = (_model: Model, h: HtmlBuilder<Message>): Document => ({
-  title: 'do it',
-  body: h.main(
-    [h.Class('min-h-screen bg-stone-950 p-12 text-stone-100')],
-    [h.h1([h.Class('text-5xl font-semibold tracking-tight')], ['do it'])],
-  ),
+export const init: Runtime.ApplicationInit<Model, Message, Flags> = input => ({
+  model: makeInitialModel(input.path),
 })
+
+export { Message, Model, update, view }
