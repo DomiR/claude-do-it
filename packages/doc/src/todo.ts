@@ -3,6 +3,7 @@ import { applyEdits, type Edit } from "./edit"
 import { DocError } from "./errors"
 import { blockEnd, lines } from "./markdown"
 import { findSection, sections } from "./section"
+import { withoutStamps } from "./stamp"
 
 export type TaskState = "open" | "done" | "cancelled"
 export interface Todo {
@@ -33,13 +34,13 @@ export function findTodo(text: string, query: number | string, section?: string)
   const allLines = scope ? lines(text) : null
   const candidates = todos(text).filter(todo => !scope
     || (allLines![todo.line]!.from >= scope.from && allLines![todo.line]!.from < scope.to))
-  const needle = String(query).trim().toLowerCase()
+  const needle = withoutStamps(String(query).trim()).toLowerCase()
   let matches: Todo[]
   if (typeof query === "number" || /^\+?\d+$/.test(needle)) {
     matches = candidates.filter(todo => todo.number === Number(needle))
   } else {
-    matches = candidates.filter(todo => todo.text.toLowerCase() === needle)
-    if (!matches.length && needle) matches = candidates.filter(todo => todo.text.toLowerCase().includes(needle))
+    matches = candidates.filter(todo => withoutStamps(todo.text).toLowerCase() === needle)
+    if (!matches.length && needle) matches = candidates.filter(todo => withoutStamps(todo.text).toLowerCase().includes(needle))
   }
   if (!matches.length) throw new DocError({ code: "not-found", message: `No todo matches ${JSON.stringify(query)}` })
   if (matches.length > 1) throw new DocError({ code: "ambiguous", message: `${matches.length} todos match ${JSON.stringify(query)}, name one by its number` })

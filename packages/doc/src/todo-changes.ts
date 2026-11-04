@@ -1,4 +1,5 @@
 import { diffArrays, diffChars } from "diff"
+import { withoutStamps } from "./stamp"
 import { todos, type TaskState, type Todo } from "./todo"
 
 export type TodoChangeKind = "added" | "removed" | "checked" | "unchecked" | "cancelled" | "uncancelled" | "edited"
@@ -11,7 +12,7 @@ export interface TodoChange {
 }
 
 function change(kind: TodoChangeKind, now: Todo, before = now): TodoChange {
-  return { kind, number: now.number, text: now.text, line: now.line, oldLine: before.line }
+  return { kind, number: now.number, text: withoutStamps(now.text), line: now.line, oldLine: before.line }
 }
 
 function stateChange(before: TaskState, now: TaskState): TodoChangeKind | null {
@@ -32,7 +33,7 @@ function similarity(a: string, b: string): number {
 export function todoChanges(old: string, next: string): TodoChange[] {
   const before = todos(old)
   const after = todos(next)
-  const parts = diffArrays(before.map(todo => todo.text), after.map(todo => todo.text))
+  const parts = diffArrays(before.map(todo => withoutStamps(todo.text)), after.map(todo => withoutStamps(todo.text)))
   const result: TodoChange[] = []
   let oldAt = 0
   let newAt = 0

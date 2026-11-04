@@ -98,6 +98,26 @@ describe("do-it CLI end to end", () => {
     await stopFixture(fixture)
   })
 
+  it("stamps todo check, uncheck, cancel, uncancel, and start", async () => {
+    const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n- [ ] Ship\n")
+    await openFixture(fixture)
+    const stamp = /\(\d{2}-\d{2}-\d{2} \d{2}:\d{2}\)/
+    const runTodo = async (name: string, version: number) => {
+      const result = await runCli(["todo", name, fixture.file, "--version", String(version), "1"], fixture.env)
+      expect(result.code).toBe(0)
+      return jsonLine<{ text: string }>(await runCli(["read", fixture.file, "--json"], fixture.env)).text
+    }
+    expect(await runTodo("check", 1)).toMatch(/- \[x\] Ship @done \(\d{2}-\d{2}-\d{2} \d{2}:\d{2}\)\n/)
+    expect(await runTodo("uncheck", 2)).toMatch(/- \[ \] Ship\n/)
+    expect(await runTodo("cancel", 3)).toMatch(new RegExp(`- \\[-\\] Ship @cancelled ${stamp.source}\\n`))
+    expect(await runTodo("uncancel", 4)).toMatch(/- \[ \] Ship\n/)
+    expect(await runTodo("start", 5)).toMatch(new RegExp(`- \\[ \\] Ship @started${stamp.source}\\n`))
+    const final = jsonLine<{ text: string }>(await runCli(["read", fixture.file, "--json"], fixture.env)).text
+    expect(final).not.toContain("@done")
+    expect(final).not.toContain("@cancelled")
+    await stopFixture(fixture)
+  }, 30_000)
+
   it("watches todo changes, skips its own changes, and settles a burst", async () => {
     const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n\n- [ ] first\n")
     await openFixture(fixture)

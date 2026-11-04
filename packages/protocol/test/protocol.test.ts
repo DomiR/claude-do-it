@@ -30,6 +30,7 @@ import {
   Todo,
   TodoAdd,
   TodoChange,
+  TodoStart,
   TodoSet,
   TodosPayload,
   TodosSuccess,
@@ -97,6 +98,7 @@ describe('protocol schemas', () => {
       [TodosPayload, { path: '/TODO.md', section: 'tasks' }],
       [TodosSuccess, { version: 1, todos: [todo] }],
       [EditPayload, { path: '/TODO.md', author, version: 1, op: { _tag: 'Replace', old: 'old', new: 'new' } }],
+      [EditPayload, { path: '/TODO.md', author, version: 1, op: { _tag: 'TodoStart', target: 3 } }],
       [EditSuccess, { version: 2, changed: true, section: 'tasks', others: { since: 1, diff: null } }],
       [SyncPayload, { path: '/TODO.md', base: 1, text: '# TODO\n' }],
       [SyncSuccess, { version: 2, text: '# TODO\n' }],
@@ -179,7 +181,7 @@ describe('protocol formatting', () => {
 
 void [
   Agent, ChangeSchema, DeletedSchema, ResyncSchema, WatchingSchema, File, OpenSuccess, ReadSuccess,
-  Replace, Append, TodoAdd, TodoSet, Section, SectionsSuccess, SyncPayload, TodosSuccess,
+  Replace, Append, TodoAdd, TodoSet, TodoStart, Section, SectionsSuccess, SyncPayload, TodosSuccess,
 ]
 
 expect(PROTOCOL_VERSION).toBe(1)

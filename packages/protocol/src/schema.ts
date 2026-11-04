@@ -101,7 +101,12 @@ export const TodoSet = Schema.TaggedStruct('TodoSet', {
 })
 export type TodoSet = typeof TodoSet.Type
 
-export const EditOp = Schema.Union([Replace, Append, TodoAdd, TodoSet])
+export const TodoStart = Schema.TaggedStruct('TodoStart', {
+  target: Schema.Union([Schema.Number, Text]),
+})
+export type TodoStart = typeof TodoStart.Type
+
+export const EditOp = Schema.Union([Replace, Append, TodoAdd, TodoSet, TodoStart])
 export type EditOp = typeof EditOp.Type
 
 const SectionId = Schema.optional(Text)

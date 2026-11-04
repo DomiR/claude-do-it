@@ -104,7 +104,7 @@ function withCommon<Config, Name extends string, Input, ContextInput extends { r
 
 export function makeCli(run: CommandRunner) {
   const root = Command.make("do-it").pipe(
-    Command.withDescription("Commands: open, read, sections, edit, append, todo add, todo check, todo uncheck, todo cancel, todo uncancel, todo list, diff, watch, status, stop"),
+    Command.withDescription("Commands: open, read, sections, edit, append, todo add, todo start, todo check, todo uncheck, todo cancel, todo uncancel, todo list, diff, watch, status, stop"),
     Command.withSharedFlags(commonFlags),
   )
 
@@ -137,12 +137,17 @@ export function makeCli(run: CommandRunner) {
     path: Argument.String("path"), version, section, target: Argument.String("target"),
   }, input => withCommon(root, input, run, (config, common) => ({ kind: "todo-set", options: common, ...pathValue(config.path), version: config.version, section: optionValue(config.section), target: config.target, state })))
 
+  const todoStart = Command.make("start", {
+    path: Argument.String("path"), version, section, target: Argument.String("target"),
+  }, input => withCommon(root, input, run, (config, common) => ({ kind: "todo-start", options: common, ...pathValue(config.path), version: config.version, section: optionValue(config.section), target: config.target })))
+
   const todoList = Command.make("list", {
     path: Argument.String("path"), section,
   }, input => withCommon(root, input, run, (config, common) => ({ kind: "todo-list", options: common, ...pathValue(config.path), section: optionValue(config.section) })))
 
   const todo = Command.make("todo").pipe(Command.withSubcommands([
     todoAdd,
+    todoStart,
     todoSet("check", "done"),
     todoSet("uncheck", "open"),
     todoSet("cancel", "cancelled"),

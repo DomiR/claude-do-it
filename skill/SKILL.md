@@ -20,9 +20,10 @@ $D read TODO.md --section tasks           # one section; IDs are heading slugs
 $D sections TODO.md
 $D todo list TODO.md                      # "3. [x] Ship" per task
 $D todo add TODO.md --version 7 --section tasks "Write tests"
-$D todo check TODO.md --version 8 3       # by number or by text; also uncheck, cancel, uncancel
-$D append TODO.md --version 9 --section notes -- "- found: flaky CI"
-$D edit TODO.md --version 9 --old "ship friday" --new "ship monday"
+$D todo start TODO.md --version 8 --section tasks 3  # add the PlainTasks start time
+$D todo check TODO.md --version 9 3       # by number or by text; also uncheck, cancel, uncancel
+$D append TODO.md --version 10 --section notes -- "- found: flaky CI"
+$D edit TODO.md --version 10 --old "ship friday" --new "ship monday"
 $D diff TODO.md --since 9 --wait 100      # waits for the next change, exit 4 when none came (keep it under the Bash tool's 120 s default)
 $D watch TODO.md --todos                  # every change, as task lines
 ```
@@ -92,6 +93,12 @@ do-it edit "$TODO" --version $V --section tasks \
   --old "<the exact task line>" \
   --new "<the exact task line>
   - **t3** M, planning with Fable"
+```
+
+Immediately after writing the status line, start the task with the version returned by that edit:
+
+```bash
+$D todo start "$TODO" --version $V --section tasks <task number>
 ```
 
 Never rewrite the person's own task text. Your lines are indented sub bullets starting with `**tN**`; there is exactly one status line per task, which you replace as the task moves, plus any `**tN question:**` lines. Record every task in `$STATE/state.json` (id, text, size, repo, branch, worktree, agent id or name, status) after every transition; it is how you resume.
@@ -194,7 +201,7 @@ The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc`
 | Inbox `progress` | update the status line only, in a few words |
 | Inbox `question` | add `  - **tN question:** <question>` under the task; status `waiting for you` |
 | Inbox `blocked` or `failed`, or a worker ended without DONE | read what it said; fix the brief and resume it, or escalate a twice failed S or M task to Astra; tell the person only what they must decide |
-| Worker DONE | verify (below), Fable review, then status `delivered` and check the task off |
+| Worker DONE | verify (below), Fable review, write status `delivered`, then run `todo check` for the task |
 | Tester BLOCKED or a long queue | one line under the affected task; never start a second tester |
 
 **Verify before `delivered`.** A done message is not proof:
@@ -211,6 +218,12 @@ and the final request in `tests.md` says PASS for that commit. The delivered lin
 ```
 
 Keep your lines short: the todo is a dashboard, not a log. Full detail lives in `plans/`, `logs/`, and the worktrees.
+
+After writing the delivered status line, mark the task done with the version returned by that status edit:
+
+```bash
+$D todo check "$TODO" --version $V --section tasks <task number>
+```
 
 ## Ending
 

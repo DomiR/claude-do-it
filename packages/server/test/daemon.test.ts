@@ -143,7 +143,9 @@ test("read, sections, todos and all edit operations use document versions", asyn
   expect((await edit(path, 4, { _tag: "TodoSet", target: "ship", state: "done" })).version).toBe(5)
   expect(await edit(path, 5, { _tag: "TodoSet", target: 3, state: "done" })).toMatchObject({ version: 5, changed: false })
   const list = await call(client => client.todos({ path }))
-  expect(list.todos.map(todo => [todo.number, todo.text, todo.state])).toEqual([[1, "first", "open"], [2, "beta", "open"], [3, "ship", "done"]])
+  expect(list.todos.map(todo => [todo.number, todo.text, todo.state])).toEqual([
+    [1, "first", "open"], [2, "beta", "open"], [3, expect.stringMatching(/^ship @done \(\d{2}-\d{2}-\d{2} \d{2}:\d{2}\)$/), "done"],
+  ])
   const changes = await call(client => client.diff({ path, since: 1, wait: 0 }))
   expect(changes).toMatchObject({ from: 1, to: 5, by: [{ _tag: "Agent", name: "tester" }] })
   expect(changes.diff).toContain("--- 1\n+++ 5")
@@ -202,7 +204,7 @@ test("watch emits Watching, Change with authors and todos, file Change, and Dele
     await eventually(() => call(client => client.status({})), status => status.documents.some(doc => doc.path === path && doc.watchers === 1))
     await edit(path, 1, { _tag: "TodoSet", target: 1, state: "done" })
     const changed = await next(iterator)
-    expect(changed).toMatchObject({ _tag: "Change", from: 1, to: 2, by: [{ _tag: "Agent", name: "tester" }], text: "# Todo\n- [x] ship\n" })
+    expect(changed).toMatchObject({ _tag: "Change", from: 1, to: 2, by: [{ _tag: "Agent", name: "tester" }], text: expect.stringMatching(/^# Todo\n- \[x\] ship @done \(\d{2}-\d{2}-\d{2} \d{2}:\d{2}\)\n$/) })
     if (changed._tag === "Change") expect(changed.todos).toContainEqual({ kind: "checked", number: 1, text: "ship", line: 1, oldLine: 1 })
     await eventually(() => readFileSync(path, "utf8"), text => text.includes("[x]"))
     const replacement = `${path}.tmp`
@@ -221,7 +223,7 @@ test("atomic writes keep disk format and mode and their echoes take no version",
   chmodSync(path, 0o640)
   await call(client => client.read({ path }))
   await edit(path, 1, { _tag: "TodoSet", target: 1, state: "done" })
-  await eventually(() => readFileSync(path, "utf8"), text => text === "\ufeff# Todo\r\n- [x] ship\r\n")
+  await eventually(() => readFileSync(path, "utf8"), text => /^\ufeff# Todo\r\n- \[x\] ship @done \(\d{2}-\d{2}-\d{2} \d{2}:\d{2}\)\r\n$/.test(text))
   expect(statSync(path).mode & 0o777).toBe(0o640)
   await Bun.sleep(125)
   expect((await call(client => client.read({ path }))).version).toBe(2)

@@ -73,9 +73,10 @@ do-it open TODO.md                    # start or reuse the daemon, open the brow
 do-it read TODO.md                    # "Version: 7" then the text
 do-it todo list TODO.md
 do-it todo add TODO.md --version 7 --section tasks "Write tests"
-do-it todo check TODO.md --version 8 3
-do-it edit TODO.md --version 9 --old "ship friday" --new "ship monday"
-do-it append TODO.md --version 10 --section notes -- "- found: flaky CI"
+do-it todo start TODO.md --version 8 --section tasks 3
+do-it todo check TODO.md --version 9 3
+do-it edit TODO.md --version 10 --old "ship friday" --new "ship monday"
+do-it append TODO.md --version 11 --section notes -- "- found: flaky CI"
 do-it diff TODO.md --since 9 --wait 300
 do-it watch TODO.md --todos           # or --settle 25 for one line per pause
 do-it status

@@ -47,15 +47,19 @@ function sectionsCommand(command: Extract<ParsedCommand, { kind: "sections" }>) 
   })
 }
 
-function operation(command: Extract<ParsedCommand, { kind: "edit" | "append" | "todo-add" | "todo-set" }>, text?: string): EditOp {
+function operation(command: Extract<ParsedCommand, { kind: "edit" | "append" | "todo-add" | "todo-set" | "todo-start" }>, text?: string): EditOp {
   if (command.kind === "edit") return { _tag: "Replace", old: command.old, new: command.next }
   if (command.kind === "append") return { _tag: "Append", text: text ?? command.text }
   if (command.kind === "todo-add") return { _tag: "TodoAdd", text: text ?? command.text }
+  if (command.kind === "todo-start") {
+    const target = /^[+]?\d+$/.test(command.target.trim()) ? Number(command.target.trim()) : command.target
+    return { _tag: "TodoStart", target }
+  }
   const target = /^[+]?\d+$/.test(command.target.trim()) ? Number(command.target.trim()) : command.target
   return { _tag: "TodoSet", target, state: command.state }
 }
 
-function editCommand(command: Extract<ParsedCommand, { kind: "edit" | "append" | "todo-add" | "todo-set" }>) {
+function editCommand(command: Extract<ParsedCommand, { kind: "edit" | "append" | "todo-add" | "todo-set" | "todo-start" }>) {
   return Effect.gen(function* () {
     const info = yield* ensureDaemon()
     const text = command.kind === "append" || command.kind === "todo-add" ? yield* Effect.promise(() => resolveText(command.text)) : undefined
@@ -178,7 +182,7 @@ function commandEffect(command: ParsedCommand) {
     case "open": return openCommand(command)
     case "read": return readCommand(command)
     case "sections": return sectionsCommand(command)
-    case "edit": case "append": case "todo-add": case "todo-set": return editCommand(command)
+    case "edit": case "append": case "todo-add": case "todo-set": case "todo-start": return editCommand(command)
     case "todo-list": return todoListCommand(command)
     case "diff": return diffCommand(command)
     case "watch": return watchCommand(command)
