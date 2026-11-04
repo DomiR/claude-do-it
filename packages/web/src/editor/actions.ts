@@ -1,4 +1,4 @@
-import { blockEnd, lines, type Line } from '@do-it/doc/text'
+import { blockEnd, formatStamp, lines, setTodoStateStamped, todos, type Line } from '@do-it/doc/text'
 
 import type { ActionId, ActionResult, Range, TextSelection } from './types'
 import type { Edit } from '@do-it/doc/text'
@@ -26,6 +26,12 @@ interface ArchiveMovedBlock {
   readonly destination: number
 }
 
+interface ArchiveBlock {
+  readonly index: number
+  readonly raw: string
+  readonly sourceRaw: string
+}
+
 interface MovePiece {
   readonly from: number
   readonly to: number
@@ -47,17 +53,18 @@ interface TaskPrefix {
 
 const NO_TASK = 'No task on this line'
 
-export const runAction: (text: string, selection: TextSelection, action: ActionId) => ActionResult = (text, selection, action) => {
+export const runAction: (text: string, selection: TextSelection, action: ActionId, now?: Date) => ActionResult = (text, selection, action, now) => {
   try {
     const view = documentView(text)
     const normalized = normalizeSelection(text, selection)
+    const effectiveNow = now ?? new Date()
     switch (action) {
       case 'newTask':
         return newTask(view, normalized)
       case 'toggleDone':
-        return toggle(view, normalized, 'done')
+        return toggle(view, normalized, 'done', effectiveNow)
       case 'toggleCancelled':
-        return toggle(view, normalized, 'cancelled')
+        return toggle(view, normalized, 'cancelled', effectiveNow)
       case 'archive':
         return archive(view, normalized)
       case 'moveUp':
@@ -70,6 +77,8 @@ export const runAction: (text: string, selection: TextSelection, action: ActionI
         return indent(view, normalized, false)
       case 'outdent':
         return indent(view, normalized, true)
+      case 'tab':
+        return tab(view, normalized, effectiveNow)
       default:
         return unavailable('Unknown action')
     }
@@ -254,6 +263,22 @@ function mapSelection(selection: TextSelection, edits: ReadonlyArray<Edit>): Tex
   }
 }
 
+function mapSelectionPreservingReplacements(selection: TextSelection, edits: ReadonlyArray<Edit>): TextSelection {
+  const mapEndpoint = (offset: number): number => {
+    let shift = 0
+    for (const edit of edits) {
+      if (offset < edit.from) break
+      if (offset < edit.to) return edit.from + shift + Math.min(offset - edit.from, edit.insert.length)
+      shift += edit.insert.length - (edit.to - edit.from)
+    }
+    return offset + shift
+  }
+  return {
+    ranges: selection.ranges.map(range => ({ anchor: mapEndpoint(range.anchor), head: mapEndpoint(range.head) })),
+    main: selection.main,
+  }
+}
+
 function insertionDestination(at: number, edits: ReadonlyArray<Edit>): number {
   let shift = 0
   for (const edit of edits) {
@@ -370,7 +395,7 @@ function newTask(view: DocumentView, selection: TextSelection): ActionResult {
   }
 }
 
-function toggle(view: DocumentView, selection: TextSelection, kind: 'done' | 'cancelled'): ActionResult {
+function toggle(view: DocumentView, selection: TextSelection, kind: 'done' | 'cancelled', now: Date): ActionResult {
   const targets = taskTargets(view, selection, true, false)
   if (targets.length === 0) return unavailable(NO_TASK)
   if (kind === 'cancelled' && targets.every(index => view.lines[index]?.state === 'done')) {
@@ -378,19 +403,22 @@ function toggle(view: DocumentView, selection: TextSelection, kind: 'done' | 'ca
   }
 
   const edits: Edit[] = []
+  const allTodos = todos(view.text)
   for (const index of targets) {
     const line = view.lines[index]
     if (line?.checkbox === undefined || line.state === undefined) continue
-    const next = kind === 'done'
-      ? line.state === 'done' ? '[ ]' : '[x]'
-      : line.state === 'cancelled' ? '[ ]' : line.state === 'done' ? view.text.slice(line.checkbox, line.checkbox + 3) : '[-]'
-    edits.push({ from: line.checkbox, to: line.checkbox + 3, insert: next })
+    const todo = allTodos.find(candidate => candidate.line === index)
+    if (todo === undefined) continue
+    const state = kind === 'done'
+      ? line.state === 'done' ? 'open' : 'done'
+      : line.state === 'cancelled' ? 'open' : line.state === 'done' ? 'done' : 'cancelled'
+    edits.push(...setTodoStateStamped(view.text, todo, state, now))
   }
   const applied = filterEdits(view, edits)
   return applied.length === 0 ? unavailable(NO_TASK) : {
     _tag: 'Applied',
     edits: applied,
-    selection: mapSelection(selection, applied),
+    selection: mapSelectionPreservingReplacements(selection, applied),
   }
 }
 
@@ -399,7 +427,7 @@ function isArchiveHeading(view: DocumentView, index: number): boolean {
   return line?.kind === 'heading'
     && line.level === 2
     && line.depth === 0
-    && view.text.slice(line.content, line.to).trimEnd() === 'Archive'
+    && view.text.slice(line.content, line.to).trim() === 'Archive'
 }
 
 function archiveRegions(view: DocumentView): ArchiveRegion[] {
@@ -409,7 +437,7 @@ function archiveRegions(view: DocumentView): ArchiveRegion[] {
     let end = view.lines.length
     for (let probe = index + 1; probe < view.lines.length; probe++) {
       const line = view.lines[probe]
-      if (line?.kind === 'heading' && (line.level === 1 || line.level === 2)) {
+      if (line?.kind === 'heading' && line.depth === 0 && (line.level === 1 || line.level === 2)) {
         end = probe
         break
       }
@@ -421,6 +449,29 @@ function archiveRegions(view: DocumentView): ArchiveRegion[] {
 
 function inArchive(index: number, regions: ReadonlyArray<ArchiveRegion>): boolean {
   return regions.some(region => index >= region.start && index < region.end)
+}
+
+function nearestHeadingTitle(view: DocumentView, index: number): string | undefined {
+  for (let probe = index - 1; probe >= 0; probe--) {
+    const line = view.lines[probe]
+    if (line?.kind !== 'heading') continue
+    return view.text.slice(line.content, line.to).trim().replace(/#+$/, '').trim()
+  }
+  return undefined
+}
+
+function hasProjectTag(label: string): boolean {
+  return /(?:^|[ \t])@project(?:[ \t]*\([^()\r\n]*\))?(?=$|[ \t])/.test(label)
+}
+
+function archiveTaskLine(view: DocumentView, index: number): string {
+  const line = view.lines[index]!
+  const label = view.text.slice(line.content, line.to)
+  const project = nearestHeadingTitle(view, index)
+  if (!project || hasProjectTag(label)) return view.text.slice(line.from, line.to)
+  const trailing = /[ \t]*$/.exec(label)!
+  const core = label.slice(0, trailing.index)
+  return `${view.text.slice(line.from, line.content)}${core} @project(${project})${trailing[0]}`
 }
 
 function archive(view: DocumentView, selection: TextSelection): ActionResult {
@@ -443,12 +494,14 @@ function archive(view: DocumentView, selection: TextSelection): ActionResult {
   const roots = maximalRoots(view, resolved)
   if (roots.length === 0) return unavailable('No completed or cancelled tasks to archive')
 
-  const blocks = roots.map(index => {
+  const blocks: ArchiveBlock[] = roots.map(index => {
     const last = taskBlockLast(view, index)
-    const raw = view.text.slice(view.lines[index]!.from, view.lines[last]!.to)
-    return { index, raw: dedent(raw, view.lines[index]!.depth), sourceRaw: raw }
+    const sourceRaw = view.text.slice(view.lines[index]!.from, view.lines[last]!.to)
+    const raw = `${archiveTaskLine(view, index)}${view.text.slice(view.lines[index]!.to, view.lines[last]!.to)}`
+    return { index, raw, sourceRaw }
   })
-  const movedText = blocks.map(block => block.raw).join(view.newline)
+  const archivedBlocks = [...blocks].reverse()
+  const movedText = archivedBlocks.map(block => dedent(block.raw, view.lines[block.index]!.depth)).join(view.newline)
   const deletionRanges = mergeRanges(roots.map(index => archiveDeletionRange(view, index)))
   const deletionEdits = deletionRanges.map(range => ({ from: range.from, to: range.to, insert: '' }))
   const base = applyRaw(view.text, deletionEdits)
@@ -467,11 +520,7 @@ function archive(view: DocumentView, selection: TextSelection): ActionResult {
     insert = `${prefix}${movedText}${finalBreak}`
     movedPrefixLength = prefix.length
   } else {
-    let lastNonblank = firstArchive.start
-    for (let index = firstArchive.start + 1; index < firstArchive.end; index++) {
-      if (view.lines[index]?.kind !== 'blank') lastNonblank = index
-    }
-    insertAt = view.lines[lastNonblank]?.to ?? view.text.length
+    insertAt = view.lines[firstArchive.start]?.to ?? view.text.length
     insert = `${view.newline}${movedText}`
     movedPrefixLength = view.newline.length
   }
@@ -483,15 +532,20 @@ function archive(view: DocumentView, selection: TextSelection): ActionResult {
   const insertionDestinationOffset = insertionDestination(insertAt, deletionEdits)
   const moved: ArchiveMovedBlock[] = []
   let destination = insertionDestinationOffset + movedPrefixLength
-  for (const block of blocks) {
-    const mapped = dedentWithMap(block.sourceRaw, view.lines[block.index]!.depth)
+  for (const block of archivedBlocks) {
+    const movedTextBlock = dedent(block.raw, view.lines[block.index]!.depth)
     moved.push({
       from: view.lines[block.index]!.from,
       to: view.lines[taskBlockLast(view, block.index)]!.to,
-      offsetMap: mapped.offsetMap,
+      offsetMap: archiveOffsetMap(
+        block.sourceRaw,
+        block.raw,
+        view.lines[block.index]!.depth,
+        view.lines[block.index]!.to - view.lines[block.index]!.from,
+      ),
       destination,
     })
-    destination += mapped.text.length + view.newline.length
+    destination += movedTextBlock.length + view.newline.length
   }
 
   return {
@@ -533,6 +587,15 @@ function mergeRanges(ranges: ReadonlyArray<{ readonly from: number; readonly to:
 
 function dedent(text: string, depth: number): string {
   return dedentWithMap(text, depth).text
+}
+
+function archiveOffsetMap(source: string, moved: string, depth: number, rootLength: number): ReadonlyArray<number> {
+  const movedMap = dedentWithMap(moved, depth).offsetMap
+  const added = moved.length - source.length
+  return Array.from({ length: source.length + 1 }, (_, index) => {
+    const movedOffset = index <= rootLength ? index : index + added
+    return movedMap[movedOffset] ?? movedMap[movedMap.length - 1] ?? 0
+  })
 }
 
 function dedentWithMap(text: string, depth: number): { readonly text: string; readonly offsetMap: ReadonlyArray<number> } {
@@ -759,6 +822,65 @@ function continueTask(view: DocumentView, selection: TextSelection): ActionResul
     edits: applied,
     selection: { ranges: [{ anchor: newLabel, head: newLabel }], main: 0 },
   }
+}
+
+function tabSnippet(token: string, now: Date): { readonly insert: string; readonly caret: number } | undefined {
+  const stamp = formatStamp(now)
+  switch (token) {
+    case 's':
+      return { insert: '@started', caret: 8 }
+    case 't':
+      return { insert: '@today', caret: 6 }
+    case 'c':
+      return { insert: '@critical', caret: 9 }
+    case 'h':
+      return { insert: '@high', caret: 5 }
+    case 'l':
+      return { insert: '@low', caret: 4 }
+    case 'cr':
+      return { insert: '@created', caret: 8 }
+    case 'd':
+      return { insert: '@due( )', caret: 6 }
+    case '@s':
+      return { insert: `@started(${stamp})`, caret: `@started(${stamp})`.length }
+    case '@started':
+    case '@created': {
+      const insert = `(${stamp})`
+      return { insert, caret: insert.length }
+    }
+    default:
+      return undefined
+  }
+}
+
+function tab(view: DocumentView, selection: TextSelection, now: Date): ActionResult {
+  if (selection.ranges.length === 1) {
+    const range = selection.ranges[0]
+    if (range !== undefined && range.anchor === range.head) {
+      const index = lineAt(view, range.head)
+      const line = view.lines[index]
+      if (line !== undefined && line.kind !== 'code' && line.kind !== 'fence' && range.head <= line.to) {
+        const before = view.text.slice(line.from, range.head)
+        const match = /(?:^|[ \t])(@?[A-Za-z]+)$/.exec(before)
+        const token = match?.[1]
+        if (token !== undefined) {
+          const snippet = tabSnippet(token, now)
+          const followedByParenthesis = view.text[range.head] === '('
+          const isDateCompletion = token === '@started' || token === '@created'
+          if (snippet !== undefined && (!isDateCompletion || !followedByParenthesis)) {
+            const from = range.head - token.length
+            const edit: Edit = { from, to: range.head, insert: snippet.insert }
+            const applied = filterEdits(view, [edit])
+            if (applied.length > 0) {
+              const caret = from + snippet.caret
+              return { _tag: 'Applied', edits: applied, selection: { ranges: [{ anchor: caret, head: caret }], main: 0 } }
+            }
+          }
+        }
+      }
+    }
+  }
+  return indent(view, selection, false)
 }
 
 function indent(view: DocumentView, selection: TextSelection, outdent: boolean): ActionResult {

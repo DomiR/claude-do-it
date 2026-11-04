@@ -23,6 +23,7 @@ export type ActionId =
   | 'continueTask'
   | 'indent'
   | 'outdent'
+  | 'tab'
 
 /** Everything the keymap and the command palette can invoke. */
 export type EditorCommand =
