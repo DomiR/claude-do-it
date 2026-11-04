@@ -53,17 +53,21 @@ describe("sections", () => {
 
 describe("todo operations", () => {
   const text = "# Work\n- [ ] write\n  * [X] outline\n- [-] read\n\n## Later\n+ [ ] ship\n"
-  test("lists states, indentation, global numbers and heading titles", () => {
+  test("lists states, indentation, global numbers and section IDs", () => {
     expect(todos(text)).toEqual([
-      { number: 1, line: 1, state: "open", text: "write", indent: 0, section: "Work" },
-      { number: 2, line: 2, state: "done", text: "outline", indent: 2, section: "Work" },
-      { number: 3, line: 3, state: "cancelled", text: "read", indent: 0, section: "Work" },
-      { number: 4, line: 6, state: "open", text: "ship", indent: 0, section: "Later" },
+      { number: 1, line: 1, state: "open", text: "write", indent: 0, section: "work" },
+      { number: 2, line: 2, state: "done", text: "outline", indent: 2, section: "work" },
+      { number: 3, line: 3, state: "cancelled", text: "read", indent: 0, section: "work" },
+      { number: 4, line: 6, state: "open", text: "ship", indent: 0, section: "later" },
     ])
     expect(todos("\t- [ ] task\n")[0]!.indent).toBe(4)
     expect(todos("- [ ] standalone\n")[0]!.section).toBeNull()
     expect(todos("````\n- [ ] hidden\n````\n- [x]done\n- [?] no\n- [ ]\n").map(todo => todo.text)).toEqual([""])
     expect(todos("1. [ ] ordered\n2) [-] also\n").map(todo => todo.state)).toEqual(["open", "cancelled"])
+  })
+  test("keeps deep headings in the current section and uses repeated section IDs", () => {
+    const repeated = "# Tasks\n- [ ] one\n#### Deep\n- [ ] two\n# Tasks\n- [ ] three\n"
+    expect(todos(repeated).map(todo => todo.section)).toEqual(["tasks", "tasks", "tasks-1"])
   })
   test("finds by number, numeric string, exact text, or unique substring ignoring case", () => {
     expect(findTodo(text, 4).text).toBe("ship")

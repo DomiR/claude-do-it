@@ -2,7 +2,7 @@ import { MAX_ITEM } from "./constants"
 import { applyEdits, type Edit } from "./edit"
 import { DocError } from "./errors"
 import { blockEnd, lines } from "./markdown"
-import { findSection } from "./section"
+import { findSection, sections } from "./section"
 
 export type TaskState = "open" | "done" | "cancelled"
 export interface Todo {
@@ -17,9 +17,10 @@ export interface Todo {
 export function todos(text: string): Todo[] {
   const result: Todo[] = []
   let section: string | null = null
+  const sectionByLine = new Map(sections(text).map(value => [value.line, value.id]))
   for (const [index, line] of lines(text).entries()) {
-    // Like Herdr, this is the nearest heading's text, including deep headings.
-    if (line.kind === "heading") section = text.slice(line.content, line.to).trim()
+    const id = sectionByLine.get(index)
+    if (id !== undefined) section = id
     if (line.state === undefined) continue
     result.push({ number: result.length + 1, line: index, state: line.state,
       text: text.slice(line.content, line.to).trim(), indent: line.depth, section })
