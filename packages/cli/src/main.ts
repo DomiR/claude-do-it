@@ -5,7 +5,7 @@ import { Cause, Effect, Exit, Stream } from "effect"
 import { CliConfig, CliOutput, Command } from "effect/cli"
 import { openBrowser } from "./browser"
 import { changeJson, changeReply, diffText, editReply, errorFields, errorMessage, errorTag, mismatchReply, rpcErrorCode, rpcExitCode, todosText, writeJson, writeLine } from "./output"
-import { cliConfigFor, cliFormatter, cliPresenter, makeCli } from "./parser"
+import { cliConfigFor, cliFormatter, cliPresenter, makeCli, normalizeArgv } from "./parser"
 import { resolveText } from "./stdin"
 import type { GlobalOptions, ParsedCommand } from "./types"
 
@@ -214,7 +214,7 @@ function program() {
     commandExit = Exit.isSuccess(result) ? result.value : errorResult(command, Cause.squash(result.cause))
   }))
   return Effect.gen(function* () {
-    const input = process.argv.slice(2)
+    const input = normalizeArgv(process.argv.slice(2))
     const result = yield* Effect.exit(Command.runWith(cli, { version: APP_VERSION, renderErrors: true })(input).pipe(
       Effect.provide(BunServices.layer),
       Effect.provide(CliConfig.layer(cliConfigFor(input))),

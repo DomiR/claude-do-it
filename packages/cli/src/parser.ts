@@ -22,6 +22,29 @@ export const cliPresenter = CliOutput.layerPresenter({
 })
 
 const subcommands = new Set(["open", "read", "sections", "edit", "append", "todo", "diff", "watch", "status", "stop"])
+const valueFlags = new Set(["--old", "--new", "--section", "--version", "--since", "--wait", "--settle", "--as"])
+
+/** Effect CLI treats a following dash-prefixed token as short flags. Make the
+ * values of our string/number flags explicit while preserving `--` text. */
+export function normalizeArgv(input: ReadonlyArray<string>): ReadonlyArray<string> {
+  const result: string[] = []
+  let options = true
+  for (let index = 0; index < input.length; index += 1) {
+    const value = input[index]!
+    if (options && value === "--") {
+      options = false
+      result.push(value)
+      continue
+    }
+    if (options && valueFlags.has(value) && index + 1 < input.length && input[index + 1] !== "--") {
+      result.push(`${value}=${input[index + 1]!}`)
+      index += 1
+      continue
+    }
+    result.push(value)
+  }
+  return result
+}
 
 function hasNonGlobalArgument(input: ReadonlyArray<string>, end: number): boolean {
   let skipAsValue = false
@@ -145,9 +168,10 @@ export function makeCli(run: CommandRunner) {
 export function parseArgs(input: ReadonlyArray<string>): Effect.Effect<ParsedCommand, CliError.CliError, BunServices.BunServices> {
   let parsed: ParsedCommand | undefined
   const command = makeCli(value => Effect.sync(() => { parsed = value }))
+  const normalized = normalizeArgv(input)
   return Effect.gen(function* () {
-    yield* Command.runWith(command, { version: APP_VERSION, renderErrors: false })(input).pipe(
-      Effect.provide(CliConfig.layer(cliConfigFor(input))),
+    yield* Command.runWith(command, { version: APP_VERSION, renderErrors: false })(normalized).pipe(
+      Effect.provide(CliConfig.layer(cliConfigFor(normalized))),
       Effect.provide(CliOutput.layer(cliFormatter)),
     )
     if (!parsed) return yield* Effect.fail(new CliError.UserError({ cause: "No command was selected" }))

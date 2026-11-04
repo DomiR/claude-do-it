@@ -83,6 +83,21 @@ describe("do-it CLI end to end", () => {
     await stopFixture(fixture)
   })
 
+  it("accepts dash-prefixed edit values and terminated todo targets", async () => {
+    const fixture = makeFixture()
+    const old = "- [ ] Add a --verbose flag -h to the README example"
+    const next = `${old}\n  - **t1** S, planning`
+    writeDocument(fixture.file, `# Tasks\n${old}\n- [ ] - [ ] text\n`)
+    await openFixture(fixture)
+    const edit = await runCli(["edit", fixture.file, "--version", "1", "--section", "tasks", "--old", old, "--new", next], fixture.env)
+    expect(edit.code).toBe(0)
+    const checked = await runCli(["todo", "check", fixture.file, "--version", "2", "--", "- [ ] text"], fixture.env)
+    expect(checked.code).toBe(0)
+    await wait(100)
+    expect(diskText(fixture.file)).toContain("- [x] - [ ] text")
+    await stopFixture(fixture)
+  })
+
   it("watches todo changes, skips its own changes, and settles a burst", async () => {
     const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n\n- [ ] first\n")
     await openFixture(fixture)

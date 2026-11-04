@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
 import { editReply, mismatchReply } from "../src/output"
-import { cliPresenter, parseArgs } from "../src/parser"
+import { cliPresenter, normalizeArgv, parseArgs } from "../src/parser"
 
 const parse = (args: ReadonlyArray<string>) => Effect.runPromise(parseArgs(args).pipe(Effect.provide(BunServices.layer), Effect.provide(cliPresenter)))
 
@@ -10,6 +10,14 @@ describe("cli argument parsing", () => {
   it("parses global flags, sections, and text after --", async () => {
     const command = await parse(["--json", "--as", "worker", "append", "todo.md", "--version", "4", "--section", "tasks", "--", "- [ ] ship"])
     expect(command).toMatchObject({ kind: "append", options: { json: true, as: "worker" }, section: "tasks", text: "- [ ] ship" })
+  })
+
+  it("joins dash-prefixed flag values and preserves terminated text", async () => {
+    const old = "- [ ] Add a --verbose flag -h to the README example"
+    const next = `${old}\n  - **t1** S, planning`
+    expect(normalizeArgv(["--old", old, "--new", next, "--", "- [ ] text"])).toEqual(["--old=" + old, "--new=" + next, "--", "- [ ] text"])
+    expect(await parse(["edit", "TODO.md", "--version", "4", "--old", old, "--new", next])).toMatchObject({ kind: "edit", old, next })
+    expect(await parse(["todo", "check", "TODO.md", "--version", "4", "--", "- [ ] text"])).toMatchObject({ kind: "todo-set", target: "- [ ] text", state: "done" })
   })
 
   it("distinguishes numeric todo targets", async () => {
