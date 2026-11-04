@@ -87,6 +87,7 @@ describe('PlainTasks shell', () => {
       Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
       Mount.resolve(FocusPaletteInput, Message.CompletedFocusPaletteInput()),
       expect(text('Browser shortcuts kept: reload, hard reload, tab search')).toExist(),
+      expect(text('Type ? outside the editor, or Cmd / inside it')).toExist(),
       expect(text('Continue task')).toExist(),
     )
     scene({ update, view }, given(makeInitialModel('')), expect(text('Open a todo')).toExist())
