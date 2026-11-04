@@ -4,7 +4,9 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, wri
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { ensureDaemon, paths, readDaemonInfo, stopDaemon, withClient } from "../src"
+import { isolateDaemonEnvironment } from "./environment"
 
+const defaultHome = isolateDaemonEnvironment()
 const homes: string[] = []
 const pids = new Set<number>()
 function home() { const dir = mkdtempSync(join(tmpdir(), "do-it-client-")); homes.push(dir); return dir }
@@ -23,6 +25,16 @@ afterAll(async () => {
   for (const pid of pids) { try { process.kill(pid, "SIGTERM") } catch {} }
   for (const dir of homes) rmSync(dir, { recursive: true, force: true })
 })
+
+test("omitting home uses the isolated DO_IT_HOME for every lifecycle operation", async () => {
+  expect(paths().home).toBe(defaultHome)
+  const info = await Effect.runPromise(ensureDaemon())
+  pids.add(info.pid)
+  expect(info.home).toBe(defaultHome)
+  expect(readDaemonInfo()).toEqual(info)
+  expect(await Effect.runPromise(stopDaemon())).toBe(true)
+  await eventually(() => readDaemonInfo() === null)
+}, 10000)
 
 test("spawns, reuses, reports status, and stops a daemon in a private home", async () => {
   const dir = home()

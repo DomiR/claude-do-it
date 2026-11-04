@@ -9,7 +9,9 @@ import { DocumentRegistry } from "../src/documents"
 import { watchDocument } from "../src/handlers"
 import { Log } from "../src/log"
 import { Versions } from "../src/versions"
+import { isolateDaemonEnvironment } from "../../client/test/environment"
 
+isolateDaemonEnvironment()
 const fixtures: Array<{ home: string; registry: DocumentRegistry }> = []
 function fixture() {
   const home = mkdtempSync(join(tmpdir(), "do-it-documents-"))

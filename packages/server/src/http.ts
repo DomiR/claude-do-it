@@ -1,7 +1,7 @@
 import { DoItRpcs } from "@do-it/protocol"
-import { BunHttpServer } from "@effect/platform-bun"
+import { BunHttpServer, BunHttpServerRequest } from "@effect/platform-bun"
 import { Deferred, Effect, Layer } from "effect"
-import { HttpRouter, HttpServerRequest as Request, HttpServerResponse as Response } from "effect/http"
+import { HttpEffect, HttpRouter, HttpServerRequest as Request, HttpServerResponse as Response } from "effect/http"
 import { RpcSerialization, RpcServer } from "effect/rpc"
 import { chmodSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -20,6 +20,7 @@ export const makeServer = Effect.fn("makeServer")(function* (options: ServerConf
   const auth = yield* Effect.sync(() => new Auth(options.home))
   const versions = new Versions(options.home, log)
   const stop = yield* Deferred.make<void>()
+  const shutdown = new AbortController()
   let stopTimer: ReturnType<typeof setTimeout> | undefined
   const runtime: RuntimeInfo = { port: options.port, startedAt: Date.now(), stop: () => {
     if (!stopTimer) stopTimer = setTimeout(() => { Deferred.doneUnsafe(stop, Effect.void) }, 50)
@@ -83,7 +84,19 @@ export const makeServer = Effect.fn("makeServer")(function* (options: ServerConf
     if (request.method !== "GET" && request.method !== "HEAD") return Response.text("Not found", { status: 404 })
     return staticResponse(options.webDist, url.pathname)
   })
-  yield* server.serve(http)
+  yield* server.serve(http.pipe(Effect.flatMap(response => Effect.gen(function* () {
+    if (response.body._tag !== "Stream") return response
+    const request = yield* Request.HttpServerRequest
+    if (Response.omitsBody(response, request.method === "HEAD")) return response
+    // Bun's default bridge errors its ReadableStream when the server scope
+    // interrupts it. An explicit abort closes it normally instead. Transfer
+    // the request scope so RPC resources still live until EOF or cancellation.
+    const context = yield* Effect.context<never>()
+    return Response.raw(Response.toWeb(HttpEffect.scopeTransferToStream(response), {
+      context,
+      signal: AbortSignal.any([BunHttpServerRequest.toBunServerRequest(request).signal, shutdown.signal]),
+    }))
+  }))))
   const record = { pid: process.pid, port: runtime.port, appVersion: APP_VERSION, startedAt: runtime.startedAt }
   const recordPath = join(options.home, "daemon.json")
   yield* Effect.sync(() => {
@@ -107,6 +120,7 @@ export const makeServer = Effect.fn("makeServer")(function* (options: ServerConf
   yield* Effect.addFinalizer(() => Effect.sync(() => {
     clearInterval(idle)
     if (stopTimer) clearTimeout(stopTimer)
+    shutdown.abort()
     registry.close()
     try {
       const current = readJson(recordPath, 4096) as typeof record

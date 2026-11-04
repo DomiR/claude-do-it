@@ -6,7 +6,9 @@ import { join } from "node:path"
 import type { EditOp, WatchEvent } from "@do-it/protocol"
 import { ensureDaemon, paths, RpcClient, RpcClientLive, stopDaemon, withClient, type DaemonInfo, type DoItClient } from "../../client/src"
 import { TEMPLATE } from "../src/config"
+import { isolateDaemonEnvironment } from "../../client/test/environment"
 
+isolateDaemonEnvironment()
 const home = mkdtempSync(join(tmpdir(), "do-it-server-"))
 const web = join(home, "web")
 const pids = new Set<number>()
