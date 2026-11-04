@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorSelection, EditorState, Transaction } from '@codemirror/state'
 import { EditorView, type Decoration } from '@codemirror/view'
-import { redo, undo, undoDepth } from '@codemirror/commands'
+import {
+  cursorCharBackwardLogical, cursorCharForwardLogical, redo, selectCharBackwardLogical, undo, undoDepth,
+} from '@codemirror/commands'
 
 import { rebaseRemote } from './changes'
 import {
-  clearRemoteHighlight, deleteEmptyTaskPrefix, documentDecorations, editorExtensions, remoteHighlights, remoteTransaction,
+  clearRemoteHighlight, deleteEmptyTaskPrefix, documentDecorations, editorExtensions, moveToTaskLabel,
+  remoteHighlights, remoteTransaction,
 } from './extensions'
 
 const stateFor = (text: string, anchor = 0) => EditorState.create({
@@ -171,6 +174,62 @@ describe('editor extensions', () => {
     expect(multi.mainIndex).toBe(1)
     const remote = state.update({ selection: { anchor: 3 }, userEvent: 'select', annotations: remoteTransaction.of(1) }).state
     expect(remote.selection.main.head).toBe(3)
+  })
+
+  test('ArrowLeft leaves a task label for the previous line end, including empty and indented tasks', () => {
+    for (const task of ['- [ ] Task', '  - [ ] Task', '- [ ] ', '  - [ ]']) {
+      const text = `Previous\n${task}`
+      let state = stateFor(text)
+      const line = state.field(documentDecorations).classified.lines[1]!
+      state = state.update({ selection: { anchor: line.label!.from } }).state
+      expect(cursorCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+      expect(state.selection.main.head).toBe('Previous'.length)
+    }
+    let state = stateFor('- [ ] First', 6)
+    expect(cursorCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+    expect(state.selection.main.head).toBe(0)
+    expect(cursorCharForwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+    expect(state.selection.main.head).toBe(6)
+  })
+
+  test('ArrowRight enters a task at its label and vertical entry also skips the prefix', () => {
+    const text = 'Previous\n- [ ] Task\nNext'
+    let state = stateFor(text, 'Previous'.length)
+    const label = text.indexOf('Task')
+    expect(cursorCharForwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+    expect(state.selection.main.head).toBe(label)
+    for (const start of [0, text.indexOf('Next')]) {
+      const fromAnotherLine = stateFor(text, start)
+      expect(fromAnotherLine.update({ selection: { anchor: label - 2 }, userEvent: 'select' }).state.selection.main.head).toBe(label)
+    }
+  })
+
+  test('Home targets the task label from the label, body or marker without leaving the line', () => {
+    for (const prefix of ['', 'Previous\n', 'Previous\n  ']) {
+      const text = `${prefix}- [ ] Task`
+      const label = text.indexOf('Task')
+      for (const start of [label - 2, label, text.length]) {
+        let state = stateFor(text, start)
+        expect(moveToTaskLabel({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+        expect(state.selection.main.head).toBe(label)
+      }
+    }
+    expect(moveToTaskLabel({ state: stateFor('Prose', 3), dispatch: () => { throw new Error('Unexpected Home interception') } })).toBe(false)
+  })
+
+  test('Shift+ArrowLeft keeps a nonempty source selection and multiple carets use their own previous heads', () => {
+    const text = 'Previous\n- [ ] First\nBetween\n- [ ] Second'
+    const first = text.indexOf('First')
+    const second = text.indexOf('Second')
+    let state = stateFor(text, first)
+    expect(selectCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+    expect([state.selection.main.anchor, state.selection.main.head]).toEqual([first, first - 1])
+    state = state.update({
+      selection: EditorSelection.create([EditorSelection.cursor(first), EditorSelection.cursor(second)], 1),
+    }).state
+    expect(cursorCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+    expect(state.selection.ranges.map(range => range.head)).toEqual(['Previous'.length, text.indexOf('\n- [ ] Second')])
+    expect(state.selection.mainIndex).toBe(1)
   })
 
   test('Backspace removes an empty task prefix in one undoable edit while keeping indentation', () => {

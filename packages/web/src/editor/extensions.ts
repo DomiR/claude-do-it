@@ -1,6 +1,6 @@
 import {
   Annotation, ChangeSet, EditorSelection, EditorState, Facet, Prec, RangeSet, StateEffect, StateField,
-  type Extension, type Range, type StateCommand,
+  type Extension, type Range, type SelectionRange, type StateCommand,
 } from '@codemirror/state'
 import {
   Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap,
@@ -253,17 +253,38 @@ const taskCaretFilter = EditorState.transactionFilter.of(transaction => {
     ? classifyDocument(transaction.newDoc.toString())
     : transaction.startState.field(documentDecorations).classified
   let moved = false
-  const ranges = transaction.newSelection.ranges.map(range => {
+  const ranges = transaction.newSelection.ranges.map((range, index) => {
     if (!range.empty) return range
     const line = classified.lines[transaction.newDoc.lineAt(range.head).number - 1]
     if (line?.kind !== 'task' || !line.bullet || !line.label || range.head < line.bullet.from || range.head >= line.label.from) return range
     moved = true
+    const previous = transaction.startState.selection.ranges[index]
+    const previousHead = previous === undefined ? undefined : transaction.changes.mapPos(previous.head)
+    if (previousHead !== undefined && previousHead >= line.label.from &&
+      transaction.newDoc.lineAt(previousHead).from === line.from) {
+      return EditorSelection.cursor(line.index === 0 ? line.from : transaction.newDoc.line(line.index).to)
+    }
     return EditorSelection.cursor(line.label.from)
   })
   return moved ? [transaction, {
     selection: EditorSelection.create(ranges, transaction.newSelection.mainIndex), sequential: true,
   }] : transaction
 })
+
+// Home targets the label directly so it cannot be mistaken for a leftward step into the marker slot.
+export const moveToTaskLabel: StateCommand = ({ state, dispatch }) => {
+  const classified = state.field(documentDecorations).classified
+  const ranges: SelectionRange[] = []
+  for (const range of state.selection.ranges) {
+    const line = classified.lines[state.doc.lineAt(range.head).number - 1]
+    if (line?.kind !== 'task' || !line.label) return false
+    ranges.push(EditorSelection.cursor(line.label.from))
+  }
+  dispatch(state.update({
+    selection: EditorSelection.create(ranges, state.selection.mainIndex), userEvent: 'select', scrollIntoView: true,
+  }))
+  return true
+}
 
 export const deleteEmptyTaskPrefix: StateCommand = ({ state, dispatch }) => {
   const classified = state.field(documentDecorations).classified
@@ -332,6 +353,9 @@ export const editorExtensions = (platform: Platform): Extension => [
   Prec.highest(keymap.of([{
     key: 'Backspace',
     run: view => view.composing || view.plugin(inputGuard)?.ignoreKey ? false : deleteEmptyTaskPrefix(view),
+  }, {
+    key: 'Home',
+    run: view => view.composing || view.plugin(inputGuard)?.ignoreKey ? false : moveToTaskLabel(view),
   }])),
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,
