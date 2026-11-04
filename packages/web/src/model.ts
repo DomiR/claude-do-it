@@ -6,7 +6,7 @@ import { Author, TodoChange, Version } from '@do-it/protocol'
 export const Platform = Schema.Literals(['mac', 'other'])
 export const EditorAction = Schema.Literals([
   'newTask', 'toggleDone', 'toggleCancelled', 'archive', 'moveUp', 'moveDown',
-  'continueTask', 'indent', 'outdent',
+  'continueTask', 'indent', 'outdent', 'tab',
 ])
 export const EditorCommandName = Schema.Union([
   EditorAction,
