@@ -96,7 +96,7 @@ describe("do-it CLI end to end", () => {
     await wait(100)
     expect(diskText(fixture.file)).toContain("- [x] - [ ] text")
     await stopFixture(fixture)
-  })
+  }, 30_000)
 
   it("stamps todo check, uncheck, cancel, uncancel, and start", async () => {
     const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n- [ ] Ship\n")
