@@ -74,6 +74,11 @@ export const paletteView = (model: Model, draft: string, h: HtmlBuilder<Message>
             h.p([h.Class('pt-palette-detail')], [model.platform === 'mac'
               ? 'Type ? outside the editor, or Cmd / inside it'
               : 'Type ? outside the editor, or Ctrl / inside it']),
+            h.p([h.Class('pt-palette-detail')], ['Esc then Tab leaves the editor']),
+            h.p([h.Class('pt-palette-detail')], ['Tab indents or adds a tag, Shift-Tab outdents']),
+            h.p([h.Class('pt-palette-detail')], [model.platform === 'mac'
+              ? 'Toggle Tab focus mode: Alt Shift M'
+              : 'Toggle Tab focus mode: Ctrl M']),
             h.p([h.Class('pt-palette-detail')], ['Browser shortcuts kept: reload, hard reload, tab search']),
           ] : []),
     ]),

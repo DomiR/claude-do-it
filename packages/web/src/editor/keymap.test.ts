@@ -13,6 +13,7 @@ const allCommands: ReadonlyArray<EditorCommand> = [
   'continueTask',
   'indent',
   'outdent',
+  'tab',
   'openLink',
   'gotoProject',
   'commandPalette',
@@ -34,7 +35,8 @@ describe('editor keymap', () => {
       { command: 'commandPalette', mac: ['Cmd-Shift-p', 'F1'], other: ['Ctrl-Shift-p', 'F1'] },
       { command: 'find', mac: ['Cmd-f'], other: ['Ctrl-f'] },
       { command: 'indent', mac: ['Cmd-]'], other: ['Ctrl-]'] },
-      { command: 'outdent', mac: ['Cmd-['], other: ['Ctrl-['] },
+      { command: 'outdent', mac: ['Cmd-[', 'Shift-Tab'], other: ['Ctrl-[', 'Shift-Tab'] },
+      { command: 'tab', mac: ['Tab'], other: ['Tab'] },
       { command: 'continueTask', mac: ['Enter'], other: ['Enter'] },
       { command: 'showShortcuts', mac: ['Cmd-/'], other: ['Ctrl-/'] },
     ])
@@ -59,8 +61,6 @@ describe('editor keymap', () => {
       'Ctrl-Shift-r',
       'Cmd-Shift-o',
       'Ctrl-Shift-o',
-      'Tab',
-      'Shift-Tab',
     ]
     for (const key of neverAnywhere) {
       expect(macKeys).not.toContain(key)
@@ -83,12 +83,14 @@ describe('editor keymap', () => {
       'Find',
       'Indent',
       'Outdent',
+      'Tag or indent',
       'Continue task',
       'Keyboard shortcuts',
     ])
     expect(new Set(commands.map((command) => command.command))).toEqual(new Set(allCommands))
     expect(commands.find((command) => command.command === 'commandPalette')?.inPalette).toBe(false)
     expect(commands.find((command) => command.command === 'continueTask')?.inPalette).toBe(false)
+    expect(commands.find((command) => command.command === 'tab')?.inPalette).toBe(false)
     for (const command of commands) expect(command.description).not.toContain(' - ')
   })
 

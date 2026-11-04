@@ -20,7 +20,8 @@ export const bindings: ReadonlyArray<Binding> = [
   { command: 'commandPalette', mac: ['Cmd-Shift-p', 'F1'], other: ['Ctrl-Shift-p', 'F1'] },
   { command: 'find', mac: ['Cmd-f'], other: ['Ctrl-f'] },
   { command: 'indent', mac: ['Cmd-]'], other: ['Ctrl-]'] },
-  { command: 'outdent', mac: ['Cmd-['], other: ['Ctrl-['] },
+  { command: 'outdent', mac: ['Cmd-[', 'Shift-Tab'], other: ['Ctrl-[', 'Shift-Tab'] },
+  { command: 'tab', mac: ['Tab'], other: ['Tab'] },
   { command: 'continueTask', mac: ['Enter'], other: ['Enter'] },
   { command: 'showShortcuts', mac: ['Cmd-/'], other: ['Ctrl-/'] },
 ]
@@ -36,7 +37,7 @@ export const commands: ReadonlyArray<CommandInfo> = [
   { command: 'newTask', title: 'New task', description: 'Create a new task', inPalette: true },
   { command: 'toggleDone', title: 'Toggle done', description: 'Mark the task done or open', inPalette: true },
   { command: 'toggleCancelled', title: 'Toggle cancelled', description: 'Cancel or reopen the task', inPalette: true },
-  { command: 'archive', title: 'Archive resolved tasks', description: 'Move resolved tasks to Archive', inPalette: true },
+  { command: 'archive', title: 'Archive resolved tasks', description: 'Archive completed and cancelled tasks', inPalette: true },
   { command: 'moveUp', title: 'Move task up', description: 'Move the task up', inPalette: true },
   { command: 'moveDown', title: 'Move task down', description: 'Move the task down', inPalette: true },
   { command: 'openLink', title: 'Open link', description: 'Open the link under the caret', inPalette: true },
@@ -45,6 +46,7 @@ export const commands: ReadonlyArray<CommandInfo> = [
   { command: 'find', title: 'Find', description: 'Find text in the document', inPalette: true },
   { command: 'indent', title: 'Indent', description: 'Indent the selected task block', inPalette: true },
   { command: 'outdent', title: 'Outdent', description: 'Outdent the selected task block', inPalette: true },
+  { command: 'tab', title: 'Tag or indent', description: 'Add a tag or indent the current task', inPalette: false },
   { command: 'continueTask', title: 'Continue task', description: 'Continue the current task', inPalette: false },
   { command: 'showShortcuts', title: 'Keyboard shortcuts', description: 'Show keyboard shortcuts', inPalette: true },
 ]
