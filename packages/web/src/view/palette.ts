@@ -70,9 +70,12 @@ export const paletteView = (model: Model, draft: string, h: HtmlBuilder<Message>
           ]),
         ])) : [h.li([h.Class('pt-palette-empty')], ['No matches'])]),
       ...(palette.kind === 'Shortcuts'
-        ? [h.p([h.Class('pt-palette-detail')], [model.platform === 'mac'
-          ? 'Type ? outside the editor, or Cmd / inside it. Browser shortcuts kept: reload, hard reload, tab search'
-          : 'Type ? outside the editor, or Ctrl / inside it. Browser shortcuts kept: reload, hard reload, tab search'])] : []),
+        ? [
+            h.p([h.Class('pt-palette-detail')], [model.platform === 'mac'
+              ? 'Type ? outside the editor, or Cmd / inside it'
+              : 'Type ? outside the editor, or Ctrl / inside it']),
+            h.p([h.Class('pt-palette-detail')], ['Browser shortcuts kept: reload, hard reload, tab search']),
+          ] : []),
     ]),
   ])
 }
