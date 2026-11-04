@@ -1,1 +1,7 @@
-export {}
+export { makeServer } from "./http"
+export { config, TEMPLATE, MAX_BODY, APP_VERSION, type ServerConfig } from "./config"
+export { Documents, DocumentsLive, DocumentRegistry, rpcError, type OpenDocument } from "./documents"
+export { HandlersLive, watchDocument } from "./handlers"
+export { Auth } from "./auth"
+export { Versions } from "./versions"
+export { Log } from "./log"
