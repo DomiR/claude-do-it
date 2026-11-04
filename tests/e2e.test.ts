@@ -1,9 +1,12 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, setDefaultTimeout } from "bun:test"
 import { Effect } from "effect"
 import { existsSync, unlinkSync } from "node:fs"
 import { join } from "node:path"
 import { ensureDaemon, withClient } from "@do-it/client"
 import { diskText, jsonLine, makeFixture, readLines, runCli, startCli, wait, writeDocument } from "./helpers"
+
+// Every test spawns the daemon and several CLI processes; give each the same budget under load.
+setDefaultTimeout(30_000)
 
 async function openFixture(fixture: ReturnType<typeof makeFixture>): Promise<void> {
   const result = await runCli(["open", fixture.file, "--no-browser"], fixture.env)
