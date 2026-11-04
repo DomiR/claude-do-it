@@ -191,6 +191,30 @@ describe('moveUp and moveDown', () => {
     const next = '- [ ] B\n  - **t1** planning\n\n- [ ] A'
     applied(text, action(text, caret(text.indexOf('B')), 'moveUp'), next, caret(next.indexOf('B')))
   })
+
+  test('moves two selected sibling blocks down and up past a status-bearing neighbour', () => {
+    const downText = '- [ ] A\n  - **t1** one\n\n- [ ] B\n  - **t2** two\n\n- [ ] C\n  - **t3** three'
+    const downSelection: TextSelection = {
+      ranges: [range(0, downText.indexOf('  - **t2** two') + '  - **t2** two'.length)],
+      main: 0,
+    }
+    const downNext = '- [ ] C\n  - **t3** three\n\n- [ ] A\n  - **t1** one\n\n- [ ] B\n  - **t2** two'
+    applied(downText, action(downText, downSelection, 'moveDown'), downNext, {
+      ranges: [range(downNext.indexOf('- [ ] A'), downNext.indexOf('  - **t2** two') + '  - **t2** two'.length)],
+      main: 0,
+    })
+
+    const upText = '- [ ] C\n  - **t3** three\n\n- [ ] A\n  - **t1** one\n\n- [ ] B\n  - **t2** two'
+    const upSelection: TextSelection = {
+      ranges: [range(upText.indexOf('- [ ] A'), upText.indexOf('  - **t2** two') + '  - **t2** two'.length)],
+      main: 0,
+    }
+    const upNext = '- [ ] A\n  - **t1** one\n\n- [ ] B\n  - **t2** two\n\n- [ ] C\n  - **t3** three'
+    applied(upText, action(upText, upSelection, 'moveUp'), upNext, {
+      ranges: [range(upNext.indexOf('- [ ] A'), upNext.indexOf('  - **t2** two') + '  - **t2** two'.length)],
+      main: 0,
+    })
+  })
 })
 
 describe('continueTask', () => {
