@@ -15,7 +15,7 @@
   --pt-active-row: #f7dc8688;
   --pt-marker-open: #00000066;
   --pt-marker-done: #00723e;
-  --pt-marker-cancelled: #bc644a;
+  --pt-marker-cancelled: #b60101;
 }
 
 * {
@@ -38,6 +38,11 @@ textarea {
   font-family: Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
+body {
+  font-size: 17px;
+  line-height: 1.6;
+}
+
 button,
 input,
 textarea {
@@ -51,26 +56,28 @@ button {
 /* Editor shell */
 .pt-shell {
   display: grid;
-  grid-template-rows: 36px minmax(0, 1fr) 24px;
+  grid-template-rows: 40px minmax(0, 1fr) 28px;
   width: 100%;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background: var(--pt-paper);
   color: var(--pt-ink);
-  font-size: 15px;
-  line-height: 24px;
+  font-size: 17px;
+  line-height: 1.6;
   font-variant-ligatures: none;
   font-feature-settings: 'liga' 0, 'clig' 0;
 }
 
 .pt-header {
   display: flex;
-  align-items: end;
+  align-items: center;
   min-width: 0;
-  padding: 0 12px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--pt-delimiter);
   background: var(--pt-project-bg);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .pt-file-name {
@@ -88,7 +95,7 @@ button {
   color: var(--pt-ink);
   font-size: 13px;
   font-weight: 400;
-  line-height: 35px;
+  line-height: 38px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -96,19 +103,32 @@ button {
 .pt-header-actions {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 18px;
   margin-left: auto;
-  padding-left: 16px;
+  padding-left: 20px;
 }
 
 .pt-header-button {
   min-height: 28px;
-  padding: 0;
+  padding: 3px 0;
   border: 0;
   background: transparent;
   color: var(--pt-prose);
-  font-size: 12px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.pt-header-key {
+  display: inline-block;
+  min-width: 1.5em;
+  margin-left: 7px;
+  padding: 0 4px;
+  border: 1px solid var(--pt-delimiter);
+  color: var(--pt-prose);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  vertical-align: 1px;
 }
 
 .pt-header-button:hover,
@@ -196,16 +216,17 @@ button {
 
 /* Status bar */
 .pt-status-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
+  height: 28px;
   min-width: 0;
-  padding: 0 12px;
+  padding: 0 16px;
   border-top: 1px solid var(--pt-delimiter);
   background: var(--pt-project-bg);
   color: var(--pt-prose);
-  font-size: 12px;
-  line-height: 23px;
+  font-size: 13px;
+  line-height: 28px;
   white-space: nowrap;
 }
 
@@ -216,6 +237,39 @@ button {
   min-width: 0;
   gap: 16px;
   overflow: hidden;
+}
+
+.pt-status-right {
+  justify-content: flex-end;
+}
+
+.pt-status-center {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 0 16px;
+  overflow: hidden;
+}
+
+.pt-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--pt-prose);
+}
+
+.pt-hint-key {
+  padding: 0 4px;
+  border: 1px solid var(--pt-delimiter);
+  color: var(--pt-ink);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.pt-hint-label {
+  font-size: 12px;
 }
 
 .pt-status-item {
@@ -350,6 +404,14 @@ button {
   color: var(--pt-prose);
 }
 
+.pt-palette > .pt-palette-detail {
+  margin: 0;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--pt-delimiter);
+  line-height: 18px;
+  white-space: normal;
+}
+
 /* CodeMirror surface */
 .pt-editor-host .cm-editor,
 .pt-editor-host .cm-scroller,
@@ -363,29 +425,37 @@ button {
   height: 100%;
   background: var(--pt-paper);
   color: var(--pt-ink);
-  font-size: 15px;
-  line-height: 24px;
+  font-size: 17px;
+  line-height: 1.6;
 }
 
 .pt-editor-host .cm-scroller {
   overflow: auto;
-  line-height: 24px;
+  line-height: 1.6;
 }
 
 .pt-editor-host .cm-content {
+  --pt-content-inset: max(24px, calc(50% - 23rem));
   min-height: 100%;
-  padding: 20px 24px;
+  padding-block: 28px 40px;
+  padding-inline: max(24px, calc(50% - 23rem));
   color: var(--pt-ink);
-  line-height: 24px;
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   caret-color: var(--pt-ink);
 }
 
 .pt-editor-host .cm-line {
-  min-height: 24px;
+  min-height: 1.6em;
   padding: 0;
-  line-height: 24px;
+  line-height: 1.6;
+}
+
+.pt-editor-host .pt-hang {
+  margin-left: calc(var(--pt-content-inset) * -1);
+  padding-left: calc(var(--pt-hang) * 1ch + var(--pt-content-inset));
+  text-indent: calc(var(--pt-hang) * -1ch);
 }
 
 .pt-editor-host .cm-cursor,
@@ -466,6 +536,28 @@ button {
   font-weight: 700;
 }
 
+.pt-editor-host .pt-line-project.pt-level-1 {
+  font-size: 1.6em;
+  line-height: 1.45;
+}
+
+.pt-editor-host .pt-line-project.pt-level-2 {
+  font-size: 1.35em;
+  line-height: 1.45;
+}
+
+.pt-editor-host .pt-line-project.pt-level-3 {
+  font-size: 1.18em;
+  line-height: 1.5;
+}
+
+.pt-editor-host .pt-line-project.pt-level-4,
+.pt-editor-host .pt-line-project.pt-level-5,
+.pt-editor-host .pt-line-project.pt-level-6 {
+  font-size: 1.05em;
+  line-height: 1.55;
+}
+
 .pt-editor-host .pt-heading-title {
   background: var(--pt-project-bg);
   box-shadow: 2px 0 0 var(--pt-project-bg), -2px 0 0 var(--pt-project-bg);
@@ -475,8 +567,19 @@ button {
 .pt-editor-host .pt-heading-marks,
 .pt-editor-host .pt-bullet,
 .pt-editor-host .pt-strong-mark,
+.pt-editor-host .pt-em-mark,
+.pt-editor-host .pt-strike-mark,
 .pt-editor-host .pt-code-mark,
+.pt-editor-host .pt-link-mark,
 .pt-editor-host .pt-line-rule {
+  color: var(--pt-delimiter);
+}
+
+.pt-editor-host .pt-line-editing .pt-strong-mark,
+.pt-editor-host .pt-line-editing .pt-em-mark,
+.pt-editor-host .pt-line-editing .pt-strike-mark,
+.pt-editor-host .pt-line-editing .pt-code-mark,
+.pt-editor-host .pt-line-editing .pt-link-mark {
   color: var(--pt-delimiter);
 }
 
@@ -505,9 +608,21 @@ button {
   font-weight: 700;
 }
 
+.pt-editor-host .pt-em {
+  color: inherit;
+  font-style: italic;
+}
+
+.pt-editor-host .pt-strike {
+  color: inherit;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
 .pt-editor-host .pt-code {
   background: var(--pt-project-bg);
   color: inherit;
+  font-size: 0.94em;
 }
 
 .pt-editor-host .pt-link {
@@ -515,6 +630,10 @@ button {
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
+}
+
+.pt-editor-host .pt-bullet-dot {
+  color: var(--pt-prose);
 }
 
 .pt-editor-host .pt-line-code {
@@ -531,6 +650,9 @@ button {
   position: relative;
   color: transparent;
   cursor: pointer;
+  font-family: 'Apple Symbols', 'Segoe UI Symbol', 'DejaVu Sans', Menlo, sans-serif;
+  font-size: 1.15em;
+  line-height: 1;
 }
 
 .pt-editor-host .pt-marker::before,
@@ -545,33 +667,38 @@ button {
 }
 
 .pt-editor-host .pt-marker-open::before {
-  width: 15px;
-  height: 15px;
+  content: '☐';
+  color: var(--pt-marker-open);
   transform: translate(-50%, -50%);
-  border: 1.2px solid var(--pt-marker-open);
+  font-weight: 400;
+}
+
+.pt-editor-host .pt-marker-empty::before {
+  content: '☐';
+  color: var(--pt-marker-open);
+  transform: translate(-50%, -50%);
+  font-weight: 400;
 }
 
 .pt-editor-host .pt-marker-done::before {
-  width: 8px;
-  height: 15px;
-  transform: translate(-55%, -60%) rotate(40deg);
-  border-right: 2.4px solid var(--pt-marker-done);
-  border-bottom: 2.4px solid var(--pt-marker-done);
-}
-
-.pt-editor-host .pt-marker-cancelled::before,
-.pt-editor-host .pt-marker-cancelled::after {
-  width: 18px;
-  height: 2.4px;
-  background: var(--pt-marker-cancelled);
+  content: '✔';
+  color: var(--pt-marker-done);
+  transform: translate(-50%, -50%);
+  font-weight: 700;
 }
 
 .pt-editor-host .pt-marker-cancelled::before {
-  transform: translate(-50%, -50%) rotate(45deg);
+  content: '✘';
+  color: var(--pt-marker-cancelled);
+  transform: translate(-50%, -50%);
+  font-weight: 700;
 }
 
+.pt-editor-host .pt-marker-open::after,
+.pt-editor-host .pt-marker-empty::after,
+.pt-editor-host .pt-marker-done::after,
 .pt-editor-host .pt-marker-cancelled::after {
-  transform: translate(-50%, -50%) rotate(-45deg);
+  display: none;
 }
 
 .pt-editor-host .pt-marker-source {
@@ -680,6 +807,10 @@ button {
 }
 
 @media (min-width: 900px) {
+  .pt-status-center {
+    display: flex;
+  }
+
   .pt-workspace-with-activity {
     grid-template-columns: minmax(0, 1fr) 280px;
     grid-template-rows: minmax(0, 1fr);

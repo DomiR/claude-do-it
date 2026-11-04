@@ -2,6 +2,7 @@ import { Option } from 'effect'
 import type { Html, HtmlBuilder } from 'foldkit/html'
 
 import { formatTodoChange, formatVersionHeader } from '@do-it/protocol'
+import { hints, keyLabel, keysFor } from '../editor/keymap'
 import { classifyDocument, formatStats } from '../editor/lines'
 import { Message } from '../message'
 import { type Model, type ReadyDocument, saveStatus } from '../model'
@@ -42,7 +43,11 @@ export const editorView = (model: Model, document: ReadyDocument, h: HtmlBuilder
         h.button([
           h.Class(`pt-header-button${model.palette._tag === 'Open' ? ' pt-header-button-active' : ''}`),
           h.Type('button'), h.OnClick(Message.ClickedCommands()), h.AriaExpanded(model.palette._tag === 'Open'),
-        ], ['Commands']),
+        ], ['Commands', h.kbd([h.Class('pt-header-key')], [keyLabel(model.platform, keysFor(model.platform, 'commandPalette')[0] ?? '')])]),
+        h.button([
+          h.Class(`pt-header-button${model.palette._tag === 'Open' && model.palette.kind === 'Shortcuts' ? ' pt-header-button-active' : ''}`),
+          h.Type('button'), h.OnClick(Message.PressedHelpKey()), h.AriaExpanded(model.palette._tag === 'Open'),
+        ], ['Help', h.kbd([h.Class('pt-header-key')], ['?'])]),
         h.button([
           h.Class(`pt-header-button${model.activityOpen ? ' pt-header-button-active' : ''}`),
           h.Type('button'), h.OnClick(Message.ClickedActivity()), h.AriaExpanded(model.activityOpen),
@@ -71,6 +76,10 @@ export const editorView = (model: Model, document: ReadyDocument, h: HtmlBuilder
             : [notice],
         })),
       ]),
+      h.div([h.Class('pt-status-center')], hints.map(hint => h.span([h.Class('pt-hint')], [
+        h.kbd([h.Class('pt-hint-key')], [keyLabel(model.platform, keysFor(model.platform, hint.command)[0] ?? '')]),
+        h.span([h.Class('pt-hint-label')], [hint.label]),
+      ]))),
       h.div([h.Class('pt-status-right')], [
         h.span([h.Class('pt-status-item')], [cursorLabel(document.draft, document.selection.head)]),
         h.span([h.Class('pt-status-item')], [`Version ${document.base.version}`]),

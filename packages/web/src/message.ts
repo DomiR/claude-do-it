@@ -18,6 +18,7 @@ export const Message = defineMessageUnion({
   ShowedEditorNotice: { text: Schema.String },
   OpenedEditorLink: { url: Schema.String },
   ClickedCommands: {},
+  PressedHelpKey: {},
   ClickedActivity: {},
   UpdatedPaletteQuery: { query: Schema.String },
   PressedPaletteKey: { key: Schema.Literals(['ArrowUp', 'ArrowDown', 'Enter', 'Escape']) },

@@ -1,5 +1,6 @@
 import { Cause, Effect, Option, Schema, Stream } from 'effect'
 import { Subscription } from 'foldkit'
+import { streamFromKeyBindings } from 'foldkit/dom'
 
 import { Message } from './message'
 import { DocumentState, Model } from './model'
@@ -57,4 +58,8 @@ export const subscriptions = Subscription.make<Model, Message, DoItClient>()(ent
         }),
     },
   ),
+  keyboard: Subscription.persistentEntry(streamFromKeyBindings({
+    target: document,
+    bindings: [{ keys: 'Shift+?', mapEvent: () => Message.PressedHelpKey() }],
+  })),
 }))
