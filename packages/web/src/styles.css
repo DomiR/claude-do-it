@@ -576,6 +576,7 @@ button {
 
 .pt-editor-host .pt-heading-marks,
 .pt-editor-host .pt-bullet,
+.pt-editor-host .pt-bullet-hidden,
 .pt-editor-host .pt-strong-mark,
 .pt-editor-host .pt-em-mark,
 .pt-editor-host .pt-strike-mark,
@@ -583,6 +584,10 @@ button {
 .pt-editor-host .pt-link-mark,
 .pt-editor-host .pt-line-rule {
   color: var(--pt-delimiter);
+}
+
+.pt-editor-host .pt-bullet-hidden {
+  color: transparent;
 }
 
 .pt-editor-host .pt-line-editing .pt-strong-mark,
@@ -888,6 +893,10 @@ button {
 }
 
 @media (forced-colors: active) {
+  .pt-editor-host .pt-bullet-hidden {
+    color: transparent;
+  }
+
   .pt-editor-host .pt-marker {
     color: CanvasText;
   }
