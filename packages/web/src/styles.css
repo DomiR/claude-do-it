@@ -53,7 +53,8 @@ button { cursor: pointer; }
 .task-row:hover { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 .task-row-highlight { animation: task-highlight 3s ease-out; }
 @keyframes task-highlight { 0%, 68% { background: color-mix(in srgb, var(--warm) 28%, transparent); } 100% { background: transparent; } }
-.task-checkbox { flex: 0 0 auto; width: 20px; height: 20px; padding: 0; margin-top: 1px; border: 1px solid var(--muted); border-radius: 6px; color: var(--paper-raised); background: transparent; font-size: 0.74rem; line-height: 18px; }
+.task-checkbox { flex: 0 0 auto; width: 20px; height: 20px; padding: 0; margin-top: 1px; border: 1px solid var(--muted); border-radius: 6px; accent-color: var(--accent); background: transparent; }
+.task-checkbox:disabled { cursor: not-allowed; opacity: 0.55; }
 .task-copy { min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
 .task-muted { color: var(--muted); }
 .task-struck { text-decoration: line-through; text-decoration-thickness: 1px; }
@@ -62,6 +63,8 @@ button { cursor: pointer; }
 .add-task-plus { color: var(--accent); font-size: 1.3rem; line-height: 1; }
 .add-task-row input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 0.9rem; }
 .add-task-row input::placeholder { color: var(--muted); }
+.add-task-button { flex: 0 0 auto; padding: 6px 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--paper-raised); font-size: 0.78rem; }
+.add-task-button:hover { border-color: var(--accent); color: var(--accent); }
 .markdown-editor { display: block; width: 100%; min-height: 570px; resize: vertical; padding: clamp(18px, 4vw, 40px); border: 0; outline: 0; color: var(--ink); background: transparent; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem; line-height: 1.65; }
 .activity-panel { align-self: start; overflow: hidden; border-radius: 18px; }
 .panel-kicker { padding: 18px 18px 13px; color: var(--muted); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
