@@ -5,6 +5,9 @@ import { applyEdits } from '@do-it/doc/text'
 import { runAction } from './actions'
 import type { ActionResult, ActionId, TextSelection } from './types'
 
+const NOW = new Date(2026, 10, 4, 21, 32)
+const STAMP = '26-11-04 21:32'
+
 function caret(at: number): TextSelection {
   return { ranges: [{ anchor: at, head: at }], main: 0 }
 }
@@ -28,8 +31,8 @@ function lastLabel(text: string, marker = '- [ ] '): number {
   return text.lastIndexOf(marker) + marker.length
 }
 
-function action(text: string, selection: TextSelection, id: ActionId): ActionResult {
-  return runAction(text, selection, id)
+function action(text: string, selection: TextSelection, id: ActionId, now = NOW): ActionResult {
+  return runAction(text, selection, id, now)
 }
 
 describe('newTask', () => {
@@ -68,17 +71,15 @@ describe('newTask', () => {
 describe('toggleDone', () => {
   test('toggles open, completed, uppercase completed, and cancelled tasks', () => {
     const text = '- [ ] Open\n- [x] Done\n- [X] Upper\n- [-] Cancelled'
-    const next = '- [x] Open\n- [ ] Done\n- [ ] Upper\n- [x] Cancelled'
-    applied(text, action(text, caret(text.indexOf('Open')), 'toggleDone'), '- [x] Open\n- [x] Done\n- [X] Upper\n- [-] Cancelled', caret(text.indexOf('Open')))
+    applied(text, action(text, caret(text.indexOf('Open')), 'toggleDone'), `- [x] Open @done (${STAMP})\n- [x] Done\n- [X] Upper\n- [-] Cancelled`, caret(text.indexOf('Open')))
     applied(text, action(text, caret(text.indexOf('Done')), 'toggleDone'), '- [ ] Open\n- [ ] Done\n- [X] Upper\n- [-] Cancelled', caret(text.indexOf('Done')))
     applied(text, action(text, caret(text.indexOf('Upper')), 'toggleDone'), '- [ ] Open\n- [x] Done\n- [ ] Upper\n- [-] Cancelled', caret(text.indexOf('Upper')))
-    applied(text, action(text, caret(text.indexOf('Cancelled')), 'toggleDone'), '- [ ] Open\n- [x] Done\n- [X] Upper\n- [x] Cancelled', caret(text.indexOf('Cancelled')))
+    applied(text, action(text, caret(text.indexOf('Cancelled')), 'toggleDone'), `- [ ] Open\n- [x] Done\n- [X] Upper\n- [x] Cancelled @done (${STAMP})`, caret(text.indexOf('Cancelled')))
   })
 
   test('uses the owning task when the caret is on a status line', () => {
     const text = '- [ ] Plan\n  - **t1** M, planning'
-    const next = '- [x] Plan\n  - **t1** M, planning'
-    applied(text, action(text, caret(text.indexOf('planning')), 'toggleDone'), next, caret(text.indexOf('planning')))
+    applied(text, action(text, caret(text.indexOf('planning')), 'toggleDone'), `- [x] Plan @done (${STAMP})\n  - **t1** M, planning`, caret(text.indexOf('planning') + ` @done (${STAMP})`.length))
   })
 
   test('toggles every task intersected by multiple ranges and excludes a range ending at a line start', () => {
@@ -87,8 +88,12 @@ describe('toggleDone', () => {
       ranges: [range(0, text.indexOf('\n')), range(text.indexOf('Two'), text.indexOf('- [ ] Three'))],
       main: 1,
     }
-    const next = '- [x] One\n- [x] Two\n- [ ] Three'
-    applied(text, action(text, selection, 'toggleDone'), next, selection)
+    const next = `- [x] One @done (${STAMP})\n- [x] Two @done (${STAMP})\n- [ ] Three`
+    const shift = ` @done (${STAMP})`.length
+    applied(text, action(text, selection, 'toggleDone'), next, {
+      ranges: [range(0, text.indexOf('\n') + shift), range(text.indexOf('Two') + shift, text.indexOf('- [ ] Three') + shift * 2)],
+      main: 1,
+    })
   })
 
   test('reports no task on prose', () => {
@@ -99,24 +104,42 @@ describe('toggleDone', () => {
 describe('toggleCancelled', () => {
   test('cycles open and cancelled while leaving completed tasks unchanged', () => {
     const text = '- [ ] Open\n- [-] Cancelled\n- [x] Done'
-    applied(text, action(text, caret(text.indexOf('Open')), 'toggleCancelled'), '- [-] Open\n- [-] Cancelled\n- [x] Done', caret(text.indexOf('Open')))
+    applied(text, action(text, caret(text.indexOf('Open')), 'toggleCancelled'), `- [-] Open @cancelled (${STAMP})\n- [-] Cancelled\n- [x] Done`, caret(text.indexOf('Open')))
     applied(text, action(text, caret(text.indexOf('Cancelled')), 'toggleCancelled'), '- [ ] Open\n- [ ] Cancelled\n- [x] Done', caret(text.indexOf('Cancelled')))
     unavailable(action(text, caret(text.indexOf('Done')), 'toggleCancelled'), 'Reopen completed tasks before cancelling')
+  })
+
+  test('swaps a stale done stamp and keeps the started stamp', () => {
+    const text = `- [ ] Work @started(${STAMP}) @done (${STAMP})`
+    const next = `- [-] Work @started(${STAMP}) @cancelled (${STAMP})`
+    applied(text, action(text, caret(text.indexOf('Work')), 'toggleCancelled'), next, caret(text.indexOf('Work')))
   })
 })
 
 describe('archive', () => {
   test('creates an archive without a final newline and moves a resolved task', () => {
-    const text = '# Work\n- [x] Ship'
-    const next = '# Work\n\n## Archive\n\n- [x] Ship'
+    const text = `# Work\n- [x] Ship @done (${STAMP})`
+    const next = `# Work\n\n## Archive\n\n- [x] Ship @done (${STAMP}) @project(Work)`
     applied(text, action(text, caret(text.indexOf('Ship')), 'archive'), next, caret(lastLabel(next, '- [x] ')))
   })
 
-  test('appends to an archive at offset zero before the next project', () => {
+  test('places a newly archived task at the top of an archive', () => {
     const text = '## Archive\n- [x] Old\n# Work\n- [x] Ship'
-    const next = '## Archive\n- [x] Old\n- [x] Ship\n# Work\n'
+    const next = '## Archive\n- [x] Ship @project(Work)\n- [x] Old\n# Work\n'
     const result = action(text, caret(text.indexOf('Ship')), 'archive')
     applied(text, result, next, caret(next.indexOf('Ship')))
+  })
+
+  test('archives multiple tasks newest first and tags each nearest project', () => {
+    const text = '# Alpha\n- [x] One\n## Beta\n- [-] Two'
+    const next = '# Alpha\n## Beta\n\n## Archive\n\n- [-] Two @project(Beta)\n- [x] One @project(Alpha)'
+    applied(text, action(text, caret(text.indexOf('One')), 'archive'), next, caret(next.indexOf('One')))
+  })
+
+  test('does not add a project tag when the task has no heading or already has one', () => {
+    const text = '- [x] Plain\n- [x] Tagged @project(Existing)'
+    const next = '## Archive\n\n- [x] Tagged @project(Existing)\n- [x] Plain'
+    applied(text, action(text, caret(text.indexOf('Plain')), 'archive'), next, caret(next.indexOf('Plain')))
   })
 
   test('keeps a resolved descendant eligible when its parent has an open child', () => {
@@ -265,5 +288,61 @@ describe('indent and outdent', () => {
 
     const code = '```\ncode\n```'
     unavailable(action(code, caret(code.indexOf('code')), 'indent'), 'Nothing to change')
+  })
+})
+
+describe('tab', () => {
+  test('inserts every PlainTasks tag completion', () => {
+    const cases = [
+      ['s', '@started'],
+      ['t', '@today'],
+      ['c', '@critical'],
+      ['h', '@high'],
+      ['l', '@low'],
+      ['cr', '@created'],
+      ['d', '@due( )'],
+      ['@s', `@started(${STAMP})`],
+    ] as const
+    for (const [trigger, replacement] of cases) {
+      const text = `- [ ] ${trigger}`
+      const next = `- [ ] ${replacement}`
+      const expectedCaret = trigger === 'd' ? next.length - 1 : next.length
+      applied(text, action(text, caret(text.length), 'tab'), next, caret(expectedCaret))
+    }
+  })
+
+  test('adds a date after bare started and created tags', () => {
+    for (const tag of ['@started', '@created']) {
+      const text = `- [ ] ${tag}`
+      const next = `- [ ] ${tag}(${STAMP})`
+      applied(text, action(text, caret(text.length), 'tab'), next, caret(next.length))
+    }
+  })
+
+  test('completes tags at label start and after an opening parenthesis', () => {
+    const started = '- [ ] @started'
+    const startedNext = `- [ ] @started(${STAMP})`
+    applied(started, action(started, caret(started.length), 'tab'), startedNext, caret(startedNext.length))
+
+    const parenthesized = '- [ ] (s'
+    const parenthesizedNext = '- [ ] (@started'
+    applied(parenthesized, action(parenthesized, caret(parenthesized.length), 'tab'), parenthesizedNext, caret(parenthesizedNext.length))
+  })
+
+  test('does not treat uppercase S as a tag completion', () => {
+    const text = '- [ ] S'
+    applied(text, action(text, caret(text.length), 'tab'), '  - [ ] S', caret(text.length + 2))
+  })
+
+  test('indents instead of completing an ordinary word or a task block', () => {
+    const bus = '- [ ] bus'
+    applied(bus, action(bus, caret(bus.length), 'tab'), '  - [ ] bus', caret(bus.length + 2))
+
+    const block = '- [ ] Task\n  note'
+    applied(block, action(block, caret(block.indexOf('Task')), 'tab'), '  - [ ] Task\n    note', caret(block.indexOf('Task') + 2))
+  })
+
+  test('is unavailable on a code line when no snippet applies', () => {
+    unavailable(action('```\ncode\n```', caret(4), 'tab'), 'Nothing to change')
   })
 })
