@@ -23,7 +23,7 @@ $D todo add TODO.md --version 7 --section tasks "Write tests"
 $D todo check TODO.md --version 8 3       # by number or by text; also uncheck, cancel, uncancel
 $D append TODO.md --version 9 --section notes -- "- found: flaky CI"
 $D edit TODO.md --version 9 --old "ship friday" --new "ship monday"
-$D diff TODO.md --since 9 --wait 300      # waits for the next change, exit 4 when none came
+$D diff TODO.md --since 9 --wait 100      # waits for the next change, exit 4 when none came (keep it under the Bash tool's 120 s default)
 $D watch TODO.md --todos                  # every change, as task lines
 ```
 
@@ -112,14 +112,14 @@ The single tester is the compute budget. Nobody else runs a compiler, test suite
 ```bash
 do-it todo add "$STATE/tests.md" --version <v> --section queue --as tN \
   "tNrK tN: <command> in <absolute worktree path>"
-do-it diff "$STATE/tests.md" --since <v> --wait 300   # loop on exit 4; read the answer under your request
+do-it diff "$STATE/tests.md" --since <v> --wait 100   # loop on exit 4; read the answer under your request
 ```
 
 ### Outside Herdr: Claude Code subagents
 
 Subagents cannot start subagents and cannot be prompted while they run, so you call every agent yourself, always with `run_in_background: true` so watch events keep arriving.
 
-1. **Plan.** S and M: `Agent(subagent_type: "fable-advisor")` with the task, the repo, and what triage found; ask for a plan in under 300 words. L: `Agent(subagent_type: "astra-implementer")` with a brief that forbids edits and asks only for a plan at effort `xhigh`, then one `fable-advisor` pass over it. Save the plan to `$STATE/plans/tN.md` and set the status line to `**tN** planned by <Fable or Astra>: <summary in a few words>`.
+1. **Plan.** S and M: `Agent(subagent_type: "fable-advisor")` with the task, the repo, and what triage found; ask for a plan in under 300 words. L: `Agent(subagent_type: "astra-implementer")` with a brief that forbids edits and asks only for a plan at effort `xhigh`, then one `fable-advisor` pass over it (when `astra-implementer` is not among your agent types or reports the codex CLI unavailable, plan L tasks with `fable-advisor` and say so in the status line). Save the plan to `$STATE/plans/tN.md` and set the status line to `**tN** planned by <Fable or Astra>: <summary in a few words>`.
 2. **Build.** `Agent(subagent_type: "general-purpose", isolation: "worktree", run_in_background: true)` with the worker brief below. Keep the agent id in `state.json`.
 3. **Test.** When the `tests.md` watch shows an open request and no tester runs, start one: `Agent(subagent_type: "general-purpose", run_in_background: true)` with the tester brief. It drains the queue one request at a time, oldest first, and exits; start it again for the next requests.
 4. **Questions.** A worker that needs the person appends a `question` to the inbox and ends its run with `QUESTION: ...`. Write it under the task (`  - **tN question:** ...`, status `waiting for you`). When the person answers under it, resume that same worker with `SendMessage` to its agent id: `From the TODO: <their answer>`.
@@ -135,7 +135,7 @@ NAME: export DO_IT_AGENT=tN before any do-it command.
 COMPUTE RULE: never run builds, tests, linters, type checkers, dev servers, or browsers yourself.
   Formatters are fine. To test, queue one request and wait for the answer:
     do-it todo add <STATE>/tests.md --version <v> --section queue "tNrK tN: <command> in <your worktree>"
-    do-it diff <STATE>/tests.md --since <v> --wait 300     (repeat on exit 4)
+    do-it diff <STATE>/tests.md --since <v> --wait 100     (repeat on exit 4; the Bash tool stops a call at 120 s by default)
   Batch what you need into one request; the queue is shared by every task.
 PROGRESS: at real milestones only, append to <STATE>/inbox.md section messages:
     do-it append <STATE>/inbox.md --version <v> --section messages -- "- tN progress: <one line>"
@@ -173,7 +173,12 @@ The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc`
   herdr agent prompt do-tester "$TESTER_BRIEF"
   ```
   Use the tester brief above, but instead of ending on an empty queue it keeps watching with `do-it watch <TESTS> --todos --as tester` (Monitor tool). Check `herdr agent list` first: reuse a live `do-tester` only when its cwd is this `$STATE`; on `agent_name_taken` pick `do-<SLUG first 4>-tester`.
-- **Worker per task**: a Herdr worktree and space (see [[herdrworktree]], `--no-focus`), then a Claude architect in its root pane named `do-tN` (`claude-opus-5-5[1m]`, effort high, xhigh for L) that follows [[orchestration]]: it plans with `fable-advisor` (S, M) or a read only Astra tab (L), routes the typing to Codex lanes in herdr tabs, and gets a `fable-advisor` review before reporting done. Its brief is the worker brief above plus: "Talk to the conductor only through the inbox; answers arrive as prompts starting From the TODO. Wait for lanes with `herdr agent wait <lane> --timeout 1800000`, never by grepping a screen."
+- **Worker per task**: a Herdr worktree and space (see [[herdrworktree]], `--no-focus`), then a Claude architect in its root pane named `do-tN` (`claude-opus-5-5[1m]`, effort high, xhigh for L) that follows [[orchestration]]: it plans with `fable-advisor` (S, M) or a read only Astra tab (L), routes the typing to Codex lanes in herdr tabs, and gets a `fable-advisor` review before reporting done. Its brief is the worker brief above with `CWD: <worktree>   BRANCH: <branch>   BASE: <base branch>   REPO RULES: read CLAUDE.md/AGENTS.md` in place of the REPO line, plus: "Talk to the conductor only through the inbox; answers arrive as prompts starting From the TODO. Wait for lanes with `herdr agent wait <lane> --timeout 1800000`, never by grepping a screen." Start and brief it as herdrdocwatch does:
+  ```bash
+  herdr agent start do-tN --kind claude --pane "$ROOT_PANE" -- --model 'claude-opus-5-5[1m]' --effort high --dangerously-skip-permissions
+  herdr agent prompt do-tN "$BRIEF" --wait --until working --timeout 20000
+  herdr workspace focus "$HERDR_WORKSPACE_ID"     # if focus moved
+  ```
 - **Answers** go to the architect as `herdr agent prompt do-tN "From the TODO: <their text>"`; it keeps working while it waits.
 - **Parked architects**: when no inbox message came from a task for 30 minutes, read its screen (`herdr agent read do-tN --source recent-unwrapped --lines 80`) and its lanes'; if a lane finished and the architect still waits, prompt it to continue.
 

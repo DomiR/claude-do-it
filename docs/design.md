@@ -351,6 +351,6 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
   the inbox, and `tests.md --todos` (to start the one tester when requests are
   open). Planner and worker agents run in the background so events keep
   arriving.
-- Blocking waits use `do-it diff PATH --since N --wait 300` in a loop (the Bash
-  tool caps one call at 600 s).
+- Blocking waits use `do-it diff PATH --since N --wait 100` in a loop (the Bash
+  tool stops a call at 120 s by default).
 - Each worker brief sets `DO_IT_AGENT=tN`, so its edits are attributed.
