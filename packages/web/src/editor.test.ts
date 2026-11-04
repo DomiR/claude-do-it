@@ -37,7 +37,7 @@ describe('PlainTasks shell', () => {
   })
 
   test('keeps the same host through Activity, palette, and connection changes', () => {
-    let hostKey: unknown
+    let hostKey: PropertyKey | undefined
     scene({ update, view }, given(ready()),
       Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
       tap(({ html }) => { hostKey = Option.getOrThrow(find(html, '.pt-editor-host')).key }),
