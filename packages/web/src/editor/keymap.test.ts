@@ -43,13 +43,30 @@ describe('editor keymap', () => {
   })
 
   test('has unique chords and no forbidden bindings', () => {
+    const macKeys = bindings.flatMap((binding) => binding.mac)
+    const otherKeys = bindings.flatMap((binding) => binding.other)
     for (const platform of ['mac', 'other'] as const) {
       const keys = bindings.flatMap((binding) => binding[platform])
       expect(new Set(keys).size).toBe(keys.length)
     }
-    const forbidden = ['Mod-r', 'Mod-Shift-r', 'Mod-Shift-o', 'Tab', 'Shift-Tab', 'Ctrl-c', 'Ctrl-Shift-u']
-    const allKeys = bindings.flatMap((binding) => [...binding.mac, ...binding.other])
-    for (const key of forbidden) expect(allKeys).not.toContain(key)
+    const neverAnywhere = [
+      'Mod-r',
+      'Mod-Shift-r',
+      'Mod-Shift-o',
+      'Cmd-r',
+      'Ctrl-r',
+      'Cmd-Shift-r',
+      'Ctrl-Shift-r',
+      'Cmd-Shift-o',
+      'Ctrl-Shift-o',
+      'Tab',
+      'Shift-Tab',
+    ]
+    for (const key of neverAnywhere) {
+      expect(macKeys).not.toContain(key)
+      expect(otherKeys).not.toContain(key)
+    }
+    for (const key of ['Ctrl-c', 'Ctrl-Shift-u']) expect(otherKeys).not.toContain(key)
   })
 
   test('provides palette metadata for every editor command', () => {

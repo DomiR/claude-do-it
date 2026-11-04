@@ -17,10 +17,10 @@ Intro **bold** and \`code\`, https://example.com/docs, http://example.com, [guid
 - [ ] Empty task
 > quoted prose
 ---
-```md
+\`\`\`md
 - [ ] not a task
 **not strong**
-```
+\`\`\`
 ## Archive
 - [x] Archived task
   archived note
