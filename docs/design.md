@@ -234,11 +234,14 @@ text (the web uses it).
 
 - One per user. Listens on `127.0.0.1`, port `$DO_IT_PORT` or 47100, falling
   back to a free port when taken. `daemon.json` (mode 0600) records
-  `{ pid, port, token, appVersion, startedAt }`; the token is 32 random bytes,
-  hex.
+  `{ pid, port, appVersion, startedAt }`. The token lives in `token` (mode
+  0600, 32 random bytes hex), created once and reused across restarts.
 - Auth: `POST /rpc` needs `Authorization: Bearer <token>` or the `do_it`
-  cookie. `GET /auth?token=...&path=...` sets the cookie (HttpOnly,
-  SameSite=Strict, Path=/) and redirects to `/?path=...`. Every request must
+  cookie, whose value is `HMAC-SHA256(token, "web cookie")`, so open tabs stay
+  authorized across daemon restarts. The `open` rpc mints a one time code
+  (single use, 5 minutes, at most 64 outstanding); `GET /auth?code=...&path=...`
+  sets the cookie (HttpOnly, SameSite=Strict, Path=/) and redirects to
+  `/?path=...`, so the token itself never appears in a URL. Every request must
   have `Host` equal to `127.0.0.1:<port>` or `localhost:<port>`; a present
   `Origin` must match it. `GET /health` is open and returns
   `{ ok, pid, appVersion }` only.

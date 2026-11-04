@@ -1,1 +1,10 @@
-export {}
+export { MAX_BYTES, KEPT, MAX_DIFF, MAX_ITEM } from "./constants"
+export { DocError } from "./errors"
+export { describeOrigin, type Version, type Origin, type Conflict } from "./version"
+export { applyEdits, mapOffset, type Edit } from "./edit"
+export { edits, unified } from "./diff"
+export { sections, findSection, sectionText, slug, type Section } from "./section"
+export { todos, findTodo, setTodoState, addTodo, appendBlock, replaceUnique, type TaskState, type Todo } from "./todo"
+export { todoChanges, formatTodoChange, type TodoChangeKind, type TodoChange } from "./todo-changes"
+export { Document, type Applied, type Changes, type WriteTicket } from "./document"
+export { readFile, stamp, writeAtomic, type Stamp, type Format } from "./disk"

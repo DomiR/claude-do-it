@@ -1,7 +1,7 @@
 {
   "name": "@do-it/doc",
   "type": "module",
-  "exports": {".": "./src/index.ts"},
+  "exports": {".": "./src/index.ts", "./text": "./src/text.ts"},
   "dependencies": {
     "diff": "9.0.0",
     "effect": "4.1.2",
