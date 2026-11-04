@@ -861,14 +861,14 @@ function tab(view: DocumentView, selection: TextSelection, now: Date): ActionRes
       const line = view.lines[index]
       if (line !== undefined && line.kind !== 'code' && line.kind !== 'fence' && range.head <= line.to) {
         const before = view.text.slice(line.from, range.head)
-        const match = /(?:^|[ \t])(@?[A-Za-z]+)$/.exec(before)
+        const match = /(?:^|[ \t(])(@?[A-Za-z]+)$/.exec(before)
         const token = match?.[1]
         if (token !== undefined) {
           const snippet = tabSnippet(token, now)
           const followedByParenthesis = view.text[range.head] === '('
           const isDateCompletion = token === '@started' || token === '@created'
           if (snippet !== undefined && (!isDateCompletion || !followedByParenthesis)) {
-            const from = range.head - token.length
+            const from = isDateCompletion ? range.head : range.head - token.length
             const edit: Edit = { from, to: range.head, insert: snippet.insert }
             const applied = filterEdits(view, [edit])
             if (applied.length > 0) {

@@ -319,6 +319,21 @@ describe('tab', () => {
     }
   })
 
+  test('completes tags at label start and after an opening parenthesis', () => {
+    const started = '- [ ] @started'
+    const startedNext = `- [ ] @started(${STAMP})`
+    applied(started, action(started, caret(started.length), 'tab'), startedNext, caret(startedNext.length))
+
+    const parenthesized = '- [ ] (s'
+    const parenthesizedNext = '- [ ] (@started'
+    applied(parenthesized, action(parenthesized, caret(parenthesized.length), 'tab'), parenthesizedNext, caret(parenthesizedNext.length))
+  })
+
+  test('does not treat uppercase S as a tag completion', () => {
+    const text = '- [ ] S'
+    applied(text, action(text, caret(text.length), 'tab'), '  - [ ] S', caret(text.length + 2))
+  })
+
   test('indents instead of completing an ordinary word or a task block', () => {
     const bus = '- [ ] bus'
     applied(bus, action(bus, caret(bus.length), 'tab'), '  - [ ] bus', caret(bus.length + 2))
