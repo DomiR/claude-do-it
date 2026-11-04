@@ -37,7 +37,9 @@ export const subscriptions = Subscription.make<Model, Message, DoItClient>()(ent
           onSome: ({ path, resumeFrom }) =>
             Effect.gen(function* () {
               const client = yield* DoItClient
-              return client.watch({ path, since: Option.getOrUndefined(resumeFrom), text: true }).pipe(
+              // Omit an absent cursor. Effect's JSON codec encodes a present
+              // undefined as null, which older running daemons reject.
+              return client.watch({ path, text: true, ...(Option.isSome(resumeFrom) ? { since: resumeFrom.value } : {}) }).pipe(
                 Stream.map(event => Message.ReceivedWatchEvent({ event })),
                 Stream.concat(Stream.succeed(Message.WatchEnded())),
                 Stream.catchCause(cause =>
