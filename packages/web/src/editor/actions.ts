@@ -643,8 +643,8 @@ function move(view: DocumentView, selection: TextSelection, direction: 'up' | 'd
     const neighbor = direction === 'up' ? previousSibling(view, first) : nextSibling(view, last)
     if (neighbor === undefined || rootSet.has(neighbor)) continue
     const operation = direction === 'up'
-      ? makeMoveOperation(view, neighbor, first, 'up')
-      : makeMoveOperation(view, first, neighbor, 'down')
+      ? makeMoveOperation(view, neighbor, neighbor, first, last, 'up')
+      : makeMoveOperation(view, first, last, neighbor, neighbor, 'down')
     if (operations.every(existing => operation.to <= existing.from || operation.from >= existing.to)) operations.push(operation)
   }
 
@@ -658,11 +658,11 @@ function move(view: DocumentView, selection: TextSelection, direction: 'up' | 'd
   }
 }
 
-function makeMoveOperation(view: DocumentView, first: number, second: number, direction: 'up' | 'down'): MoveOperation {
+function makeMoveOperation(view: DocumentView, first: number, firstLast: number, second: number, secondLast: number, direction: 'up' | 'down'): MoveOperation {
   const firstStart = view.lines[first]!.from
-  const firstEnd = view.lines[taskBlockLast(view, first)]!.to
+  const firstEnd = view.lines[taskBlockLast(view, firstLast)]!.to
   const secondStart = view.lines[second]!.from
-  const secondEnd = view.lines[taskBlockLast(view, second)]!.to
+  const secondEnd = view.lines[taskBlockLast(view, secondLast)]!.to
   if (direction === 'up') {
     const firstRaw = view.text.slice(firstStart, firstEnd)
     const gap = view.text.slice(firstEnd, secondStart)
