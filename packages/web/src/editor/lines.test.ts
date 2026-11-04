@@ -71,7 +71,7 @@ describe('PlainTasks line classification', () => {
 
     expect(status.kind).toBe('status')
     expect(status.owner).toBe(task.index)
-    expect(status.bullet && source.slice(status.bullet.from, status.bullet.to)).toBe('  - ')
+    expect(status.bullet && source.slice(status.bullet.from, status.bullet.to)).toBe('- ')
     expect(status.label && source.slice(status.label.from, status.label.to)).toBe('**t3** M, planning')
     expect(slices(source, status.inline)).toEqual(['**', 't3', '**'])
     expect(status.inline.map((span) => span.kind)).toEqual(['strongMark', 'strong', 'strongMark'])
