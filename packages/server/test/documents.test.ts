@@ -78,6 +78,26 @@ test("watch starts with Watching, resyncs forgotten history, and includes full t
   })))
 })
 
+for (const text of [false, true]) {
+  test(`watch resyncs a future version and delivers the next change (text: ${text})`, async () => {
+    const { registry, file } = fixture()
+    const path = file()
+    const entry = registry.get(path)
+    const version = entry.doc.version
+    await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      const pull = yield* Stream.toPull(watchDocument(registry, { path, since: version + 5, text }))
+      expect(yield* pull).toEqual([{ _tag: "Resync", version, ...(text ? { text: entry.doc.text } : {}) }])
+      entry.doc.userEdit(version, `${entry.doc.text}next\n`)
+      registry.changed(entry, version)
+      const event = (yield* pull)[0]
+      expect(event).toMatchObject({ _tag: "Change", from: version, to: version + 1, by: [{ _tag: "User" }] })
+      if (text) expect(event).toHaveProperty("text", entry.doc.text)
+      else expect(event).not.toHaveProperty("text")
+    })).pipe(Effect.timeout(1000)))
+    expect(entry.watchers).toBe(0)
+  })
+}
+
 test("all three writers survive when disk changes during the write debounce", () => {
   const { registry, file } = fixture()
   const base = "# Todo\n- [ ] alpha\n- [ ] beta\n"

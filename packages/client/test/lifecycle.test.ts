@@ -64,10 +64,26 @@ test("concurrent callers share a daemon and recover a dead startup lock", async 
   expect(await Effect.runPromise(stopDaemon(dir))).toBe(true)
 }, 15000)
 
-test("an old lock is stale even when its creator is alive", async () => {
+test("an old lock stays owned while its creator is alive", async () => {
+  const dir = home()
+  const p = paths(dir)
+  mkdirSync(p.lock)
+  writeFileSync(p.lockPid, String(process.pid))
+  const old = new Date(Date.now() - 11000)
+  utimesSync(p.lock, old, old)
+  const held = statSync(p.lock)
+  const result = await Effect.runPromise(ensureDaemon({ home: dir, port: 0 }).pipe(Effect.timeoutOption(250)))
+  if (result._tag === "Some") pids.add(result.value.pid)
+  expect(result._tag).toBe("None")
+  expect(readDaemonInfo(dir)).toBeNull()
+  expect(statSync(p.lock).ino).toBe(held.ino)
+  expect(statSync(p.lock).mtimeMs).toBe(held.mtimeMs)
+  expect(readFileSync(p.lockPid, "utf8")).toBe(String(process.pid))
+}, 15000)
+
+test("an old lock without a pid file is recovered", async () => {
   const dir = home()
   mkdirSync(paths(dir).lock)
-  writeFileSync(paths(dir).lockPid, String(process.pid))
   const old = new Date(Date.now() - 11000)
   utimesSync(paths(dir).lock, old, old)
   const info = await start(dir)

@@ -62,9 +62,13 @@ export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: Ensure
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
         try {
           const stat = statSync(p.lock)
-          let pid = 0
-          try { pid = Number(readFileSync(p.lockPid, "utf8")) } catch { /* A creator may still be writing its pid. */ }
-          if ((pid > 0 && !alive(pid)) || Date.now() - stat.mtimeMs > 10_000) rmSync(p.lock, { recursive: true, force: true })
+          let pid: number | undefined
+          try { pid = Number(readFileSync(p.lockPid, "utf8")) }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
+          const abandoned = pid === undefined
+            ? Date.now() - stat.mtimeMs > 10_000
+            : Number.isSafeInteger(pid) && pid > 0 && !alive(pid)
+          if (abandoned) rmSync(p.lock, { recursive: true, force: true })
         } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
         return undefined
       }
