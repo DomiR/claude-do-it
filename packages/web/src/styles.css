@@ -16,6 +16,12 @@
   --pt-marker-open: #00000066;
   --pt-marker-done: #00723e;
   --pt-marker-cancelled: #b60101;
+  --pt-tag: #a02e2b99;
+  --pt-tag-resolved: #00000050;
+  --pt-tag-today: #eadd4e;
+  --pt-tag-high: #ff7f00;
+  --pt-tag-low: #222222;
+  --pt-tag-critical: #ff0000;
 }
 
 * {
@@ -217,7 +223,7 @@ button {
 /* Status bar */
 .pt-status-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   height: 28px;
   min-width: 0;
@@ -234,9 +240,10 @@ button {
 .pt-status-right {
   display: flex;
   align-items: center;
-  min-width: 0;
+  flex-shrink: 0;
+  min-width: max-content;
   gap: 16px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .pt-status-right {
@@ -247,6 +254,7 @@ button {
   display: none;
   align-items: center;
   justify-content: center;
+  flex-shrink: 1;
   gap: 14px;
   min-width: 0;
   padding: 0 16px;
@@ -256,6 +264,8 @@ button {
 .pt-hint {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 1;
+  min-width: 0;
   gap: 5px;
   color: var(--pt-prose);
 }
@@ -566,6 +576,7 @@ button {
 
 .pt-editor-host .pt-heading-marks,
 .pt-editor-host .pt-bullet,
+.pt-editor-host .pt-bullet-hidden,
 .pt-editor-host .pt-strong-mark,
 .pt-editor-host .pt-em-mark,
 .pt-editor-host .pt-strike-mark,
@@ -573,6 +584,10 @@ button {
 .pt-editor-host .pt-link-mark,
 .pt-editor-host .pt-line-rule {
   color: var(--pt-delimiter);
+}
+
+.pt-editor-host .pt-bullet-hidden {
+  color: transparent;
 }
 
 .pt-editor-host .pt-line-editing .pt-strong-mark,
@@ -630,6 +645,45 @@ button {
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
+}
+
+.pt-editor-host .pt-tag {
+  color: var(--pt-tag);
+  font-weight: 700;
+}
+
+.pt-editor-host .pt-tag-today,
+.pt-editor-host .pt-tag-high,
+.pt-editor-host .pt-tag-low,
+.pt-editor-host .pt-tag-critical {
+  background: var(--pt-tag-today);
+  color: var(--pt-ink);
+  font-weight: 700;
+}
+
+.pt-editor-host .pt-tag-high {
+  background: var(--pt-tag-high);
+}
+
+.pt-editor-host .pt-tag-low {
+  background: var(--pt-tag-low);
+  color: #ffffff;
+}
+
+.pt-editor-host .pt-tag-critical {
+  background: var(--pt-tag-critical);
+}
+
+.pt-editor-host .pt-tag-done,
+.pt-editor-host .pt-tag-cancelled {
+  color: var(--pt-tag-resolved);
+  font-weight: 400;
+}
+
+.pt-editor-host .pt-tag-project,
+.pt-editor-host .pt-tag-started {
+  color: var(--pt-tag);
+  font-weight: 700;
 }
 
 .pt-editor-host .pt-bullet-dot {
@@ -814,10 +868,6 @@ button {
 }
 
 @media (min-width: 900px) {
-  .pt-status-center {
-    display: flex;
-  }
-
   .pt-workspace-with-activity {
     grid-template-columns: minmax(0, 1fr) 280px;
     grid-template-rows: minmax(0, 1fr);
@@ -829,6 +879,12 @@ button {
   }
 }
 
+@media (min-width: 1100px) {
+  .pt-status-center {
+    display: flex;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pt-editor-host .pt-remote-highlight {
     animation: none;
@@ -837,6 +893,10 @@ button {
 }
 
 @media (forced-colors: active) {
+  .pt-editor-host .pt-bullet-hidden {
+    color: transparent;
+  }
+
   .pt-editor-host .pt-marker {
     color: CanvasText;
   }
