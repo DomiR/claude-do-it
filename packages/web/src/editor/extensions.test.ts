@@ -58,10 +58,10 @@ describe('editor extensions', () => {
     const text = '# Project\n- [ ] **bold** *em* ~~strike~~ `code` [guide](#project)\n  - **agent** planning\n  note\n> quote\n- plain bullet\n- [ ] \n'
     const state = stateFor(text, text.length)
     expect(hiddenText(state)).toEqual([
-      '# ', '- ', '**', '**', '*', '*', '~~', '~~', '`', '`', '[', '](#project)', '- ', '**', '**', '> ', '- ',
+      '# ', '- ', '**', '**', '*', '*', '~~', '~~', '`', '`', '[', '](#project)', '**', '**', '> ', '- ',
     ])
     expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-level-1', 'pt-strong', 'pt-em', 'pt-strike', 'pt-code', 'pt-link', 'pt-marker-open', 'pt-marker-empty',
+      'pt-level-1', 'pt-strong', 'pt-em', 'pt-strike', 'pt-code', 'pt-link', 'pt-bullet-hidden', 'pt-marker-open', 'pt-marker-empty',
     ]))
     for (const className of ['pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark']) {
       expect(classes(state)).not.toContain(className)
@@ -84,7 +84,7 @@ describe('editor extensions', () => {
     }
     expect(decorations(state).filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-hang'))
       .map(({ decoration }) => decoration.spec.attributes.style)).toEqual([
-      '--pt-hang: 4', '--pt-hang: 2', '--pt-hang: 2', '--pt-hang: 4',
+      '--pt-hang: 4', '--pt-hang: 4', '--pt-hang: 2', '--pt-hang: 4',
     ])
   })
 
@@ -117,10 +117,10 @@ describe('editor extensions', () => {
       userEvent: 'select.pointer',
     }).state
     expect(state.field(documentDecorations).editing).toEqual([1, 2, 3, 4, 5])
-    expect(hiddenText(state)).toEqual(['- ', '- '])
+    expect(hiddenText(state)).toEqual(['- '])
     expect(replacements(state).some(({ decoration }) => decoration.spec.widget)).toBe(false)
     expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-line-editing', 'pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark', 'pt-bullet',
+      'pt-line-editing', 'pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark', 'pt-bullet', 'pt-bullet-hidden',
     ]))
   })
 
@@ -149,7 +149,7 @@ describe('editor extensions', () => {
     const state = stateFor(text, text.length)
     for (let level = 1; level <= 6; level += 1) expect(classes(state)).toContain(`pt-level-${level}`)
     expect(decorations(state).filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-hang'))
-      .map(({ decoration }) => decoration.spec.attributes.style)).toEqual(['--pt-hang: 8', '--pt-hang: 6', '--pt-hang: 6'])
+      .map(({ decoration }) => decoration.spec.attributes.style)).toEqual(['--pt-hang: 8', '--pt-hang: 8', '--pt-hang: 6'])
   })
 
   test('reuses preview and atomic ranges for caret moves inside a line, including pointer access to a marker', () => {

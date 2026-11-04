@@ -36,6 +36,7 @@ export interface ClassifiedLine {
   readonly state?: TaskState
   readonly marks?: Span
   readonly bullet?: Span
+  readonly hiddenBullet?: Span
   readonly quoteMark?: Span
   readonly checkbox?: Span
   readonly label?: Span
@@ -300,7 +301,7 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
       to: line.to,
       kind,
       depth: line.depth,
-      hang: indentationColumns(text, line) + (task ? 4 : 0),
+      hang: indentationColumns(text, line) + (task ? 4 : kind === 'status' ? 2 : 0),
       empty: task && text.slice(line.content, line.to).trim().length === 0,
       alwaysHidden: [],
       previewHidden: [],
@@ -334,6 +335,7 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
       }
     } else if (kind === 'status') {
       result.bullet = { from: line.from + line.indent, to: line.content }
+      result.hiddenBullet = result.bullet
       result.label = { from: line.content, to: line.to }
     } else if (kind === 'note') {
       result.label = { from: line.content, to: line.to }
@@ -349,7 +351,7 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
     }
 
     result.inline = inlineSpans(text, result)
-    if ((kind === 'task' || kind === 'status') && result.bullet && result.bullet.from < result.bullet.to) {
+    if (kind === 'task' && result.bullet && result.bullet.from < result.bullet.to) {
       result.alwaysHidden = [result.bullet]
     }
     const previewHidden: Span[] = []

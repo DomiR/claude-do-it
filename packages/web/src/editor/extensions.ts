@@ -6,7 +6,7 @@ import {
   Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap,
   type DecorationSet, type ViewUpdate,
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, isolateHistory, temporarilySetTabFocusMode } from '@codemirror/commands'
 import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 
 import { Message } from '../message'
@@ -31,10 +31,6 @@ const selectionOf = (view: EditorView): TextSelection => ({
   main: view.state.selection.mainIndex,
 })
 
-const runActionWithDate = (text: string, selection: TextSelection, action: ActionId) =>
-  (runAction as unknown as (text: string, selection: TextSelection, action: ActionId, now: Date) => ReturnType<typeof runAction>)
-    (text, selection, action, new Date())
-
 export const runEditorAction = (
   view: EditorView,
   action: ActionId,
@@ -42,9 +38,9 @@ export const runEditorAction = (
   keepSelection = false,
   fallThroughUnavailable = false,
 ): boolean => {
-  const result = runActionWithDate(view.state.doc.toString(), selection, action)
+  const result = runAction(view.state.doc.toString(), selection, action, new Date())
   if (result._tag === 'Unavailable') {
-    if (action === 'continueTask' || String(action) === 'tab' || fallThroughUnavailable) return false
+    if (action === 'continueTask' || action === 'tab' || fallThroughUnavailable) return false
     view.state.facet(editorFacts)(Message.ShowedEditorNotice({ text: result.reason }))
     return true
   }
@@ -156,12 +152,13 @@ const lineDecorations = (classified: ClassifiedDocument, editing: readonly numbe
       attributes: hanging ? { style: `--pt-hang: ${line.hang}` } : undefined,
     }).range(line.from))
     for (const span of line.alwaysHidden) replace(span)
+    if (line.kind === 'status') mark(line.hiddenBullet, 'pt-bullet-hidden')
     if (editing) mark(line.marks, 'pt-heading-marks')
     else {
       for (const span of line.previewHidden) replace(span)
       if (line.dot) replace(line.dot, new BulletDot())
     }
-    if (!line.alwaysHidden.length && (editing || !line.dot)) mark(line.bullet, 'pt-bullet')
+    if (line.kind !== 'status' && !line.alwaysHidden.length && (editing || !line.dot)) mark(line.bullet, 'pt-bullet')
     if (line.kind === 'project') mark(line.label, 'pt-heading-title')
     else if (line.kind === 'task') mark(line.label, 'pt-label')
     for (const span of line.inline) {
@@ -373,10 +370,10 @@ export const editorExtensions = (platform: Platform): Extension => [
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,
     run: (view: EditorView) => view.composing || view.plugin(inputGuard)?.ignoreKey
-      ? false : runEditorCommand(view, binding.command, key === 'Shift-Tab' && String(binding.command) === 'outdent'),
+      ? false : runEditorCommand(view, binding.command, key === 'Shift-Tab' && binding.command === 'outdent'),
     stopPropagation: true,
   }))))),
-  keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+  keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: 'Escape', run: temporarilySetTabFocusMode }]),
   search({ top: true }),
   documentDecorations, markerDecorations, taskCaretFilter, remoteHighlights, highlightTimer,
   EditorView.domEventHandlers({
