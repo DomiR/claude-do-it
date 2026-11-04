@@ -38,6 +38,7 @@ interface MoveOperation {
   readonly to: number
   readonly insert: string
   readonly pieces: ReadonlyArray<MovePiece>
+  readonly moving: MovePiece
 }
 
 interface TaskPrefix {
@@ -429,6 +430,7 @@ function archive(view: DocumentView, selection: TextSelection): ActionResult {
   const resolved = view.lines
     .map((line, index) => ({ line, index }))
     .filter(value => (value.line.state === 'done' || value.line.state === 'cancelled') && !inArchive(value.index, regions))
+    .filter(value => view.text.slice(value.line.content, value.line.to).trim() !== '')
     .filter(value => {
       const end = blockEnd(view.lines as Line[], value.index)
       for (let index = value.index + 1; index < end; index++) {
@@ -580,116 +582,99 @@ function mapArchiveSelection(selection: TextSelection, edits: ReadonlyArray<Edit
   return { ranges, main: selection.main }
 }
 
-function parentTask(view: DocumentView, index: number): number | undefined {
+function moveUnitForLine(view: DocumentView, index: number): { readonly start: number; readonly end: number } {
   const line = view.lines[index]
-  if (line === undefined) return undefined
-  for (let probe = index - 1; probe >= 0; probe--) {
-    const candidate = view.lines[probe]
-    if (candidate?.state !== undefined && candidate.depth < line.depth && blockEnd(view.lines as Line[], probe) > index) return probe
-  }
-  return undefined
+  if (line?.state !== undefined) return { start: index, end: blockEnd(view.lines as Line[], index) }
+  const owner = containingTask(view, index)
+  return owner === undefined
+    ? { start: index, end: index + 1 }
+    : { start: owner, end: blockEnd(view.lines as Line[], owner) }
 }
 
-function sameSiblingContext(view: DocumentView, left: number, right: number): boolean {
-  const leftLine = view.lines[left]
-  const rightLine = view.lines[right]
-  if (leftLine?.state === undefined || rightLine?.state === undefined) return false
-  return leftLine.depth === rightLine.depth && parentTask(view, left) === parentTask(view, right)
+function selectedMoveUnit(view: DocumentView, selection: TextSelection): { readonly start: number; readonly end: number } | undefined {
+  const nonEmpty = selection.ranges.some(range => range.anchor !== range.head)
+  const indexes = nonEmpty
+    ? selectedLines(view, selection)
+    : selection.ranges[selection.main] === undefined
+      ? []
+      : [lineAt(view, selection.ranges[selection.main]!.head)]
+  if (indexes.length === 0) return undefined
+
+  let start = view.lines.length
+  let end = 0
+  for (const index of indexes) {
+    const unit = moveUnitForLine(view, index)
+    start = Math.min(start, unit.start)
+    end = Math.max(end, unit.end)
+  }
+  return start < end ? { start, end } : undefined
 }
 
-function nextSibling(view: DocumentView, index: number): number | undefined {
-  const end = blockEnd(view.lines as Line[], index)
-  for (let probe = end; probe < view.lines.length; probe++) {
-    const line = view.lines[probe]
-    if (line?.kind === 'blank') continue
-    if (line?.state !== undefined && sameSiblingContext(view, index, probe)) return probe
-    return undefined
+function taskBlockEndingAt(view: DocumentView, end: number, minimumDepth: number): { readonly start: number; readonly end: number } | undefined {
+  let result: { readonly start: number; readonly end: number } | undefined
+  for (let index = 0; index < end; index++) {
+    const line = view.lines[index]
+    if (line?.state === undefined || line.depth > minimumDepth) continue
+    if (blockEnd(view.lines as Line[], index) === end) result = { start: index, end }
   }
-  return undefined
+  return result
 }
 
-function previousSibling(view: DocumentView, index: number): number | undefined {
-  for (let probe = index - 1; probe >= 0; probe--) {
-    const line = view.lines[probe]
-    if (line?.state === undefined) continue
-    if (!sameSiblingContext(view, probe, index)) continue
-    const end = blockEnd(view.lines as Line[], probe)
-    let next = end
-    while (view.lines[next]?.kind === 'blank') next++
-    if (next === index) return probe
-    if (view.lines[next]?.kind === 'heading') return undefined
+function moveNeighbor(view: DocumentView, unit: { readonly start: number; readonly end: number }, direction: 'up' | 'down'): { readonly start: number; readonly end: number } | undefined {
+  if (direction === 'down') {
+    const line = view.lines[unit.end]
+    if (line === undefined) return undefined
+    return line.state === undefined
+      ? { start: unit.end, end: unit.end + 1 }
+      : { start: unit.end, end: blockEnd(view.lines as Line[], unit.end) }
   }
-  return undefined
+
+  const firstLine = view.lines[unit.start]
+  const previous = unit.start - 1
+  if (firstLine === undefined || previous < 0) return undefined
+  return taskBlockEndingAt(view, unit.start, firstLine.depth) ?? { start: previous, end: unit.start }
 }
 
 function move(view: DocumentView, selection: TextSelection, direction: 'up' | 'down'): ActionResult {
-  const targets = taskTargets(view, selection, true)
-  if (targets.length === 0) return unavailable(NO_TASK)
-  const roots = maximalRoots(view, targets)
-  const rootSet = new Set(roots)
-  const groups: number[][] = []
-  for (const root of roots) {
-    const previous = groups.at(-1)
-    if (previous !== undefined && nextSibling(view, previous.at(-1)!) === root) previous.push(root)
-    else groups.push([root])
-  }
+  const unit = selectedMoveUnit(view, selection)
+  if (unit === undefined) return unavailable(direction === 'up' ? 'Already at the top' : 'Already at the bottom')
+  const neighbor = moveNeighbor(view, unit, direction)
+  if (neighbor === undefined) return unavailable(direction === 'up' ? 'Already at the top' : 'Already at the bottom')
 
-  const operations: MoveOperation[] = []
-  const orderedGroups = direction === 'up' ? groups : [...groups].reverse()
-  for (const group of orderedGroups) {
-    const first = group[0]
-    const last = group.at(-1)
-    if (first === undefined || last === undefined) continue
-    const neighbor = direction === 'up' ? previousSibling(view, first) : nextSibling(view, last)
-    if (neighbor === undefined || rootSet.has(neighbor)) continue
-    const operation = direction === 'up'
-      ? makeMoveOperation(view, neighbor, neighbor, first, last, 'up')
-      : makeMoveOperation(view, first, last, neighbor, neighbor, 'down')
-    if (operations.every(existing => operation.to <= existing.from || operation.from >= existing.to)) operations.push(operation)
-  }
-
-  if (operations.length === 0) return unavailable(direction === 'up' ? 'Already at the top' : 'Already at the bottom')
-  const edits = filterEdits(view, operations.map(operation => ({ from: operation.from, to: operation.to, insert: operation.insert })))
+  const operation = direction === 'up'
+    ? makeMoveOperation(view, neighbor, unit, 'up')
+    : makeMoveOperation(view, unit, neighbor, 'down')
+  const edits = filterEdits(view, [{ from: operation.from, to: operation.to, insert: operation.insert }])
   if (edits.length === 0) return unavailable(direction === 'up' ? 'Already at the top' : 'Already at the bottom')
   return {
     _tag: 'Applied',
     edits,
-    selection: mapMoveSelection(selection, edits, operations),
+    selection: mapMoveSelection(selection, edits, [operation]),
   }
 }
 
-function makeMoveOperation(view: DocumentView, first: number, firstLast: number, second: number, secondLast: number, direction: 'up' | 'down'): MoveOperation {
-  const firstStart = view.lines[first]!.from
-  const firstEnd = view.lines[taskBlockLast(view, firstLast)]!.to
-  const secondStart = view.lines[second]!.from
-  const secondEnd = view.lines[taskBlockLast(view, secondLast)]!.to
-  if (direction === 'up') {
-    const firstRaw = view.text.slice(firstStart, firstEnd)
-    const gap = view.text.slice(firstEnd, secondStart)
-    const secondRaw = view.text.slice(secondStart, secondEnd)
-    return {
-      from: firstStart,
-      to: secondEnd,
-      insert: `${secondRaw}${gap}${firstRaw}`,
-      pieces: [
-        { from: secondStart, to: secondEnd, destination: 0, block: true },
-        { from: firstEnd, to: secondStart, destination: secondRaw.length, block: false },
-        { from: firstStart, to: firstEnd, destination: secondRaw.length + gap.length, block: true },
-      ],
-    }
-  }
+function makeMoveOperation(
+  view: DocumentView,
+  first: { readonly start: number; readonly end: number },
+  second: { readonly start: number; readonly end: number },
+  direction: 'up' | 'down',
+): MoveOperation {
+  const firstStart = view.lines[first.start]!.from
+  const firstEnd = view.lines[first.end - 1]!.to
+  const secondStart = view.lines[second.start]!.from
+  const secondEnd = view.lines[second.end - 1]!.to
   const firstRaw = view.text.slice(firstStart, firstEnd)
   const gap = view.text.slice(firstEnd, secondStart)
   const secondRaw = view.text.slice(secondStart, secondEnd)
+  const firstPiece = { from: firstStart, to: firstEnd, destination: secondRaw.length + gap.length, block: true }
+  const secondPiece = { from: secondStart, to: secondEnd, destination: 0, block: true }
+  const gapPiece = { from: firstEnd, to: secondStart, destination: secondRaw.length, block: false }
   return {
     from: firstStart,
     to: secondEnd,
     insert: `${secondRaw}${gap}${firstRaw}`,
-    pieces: [
-      { from: secondStart, to: secondEnd, destination: 0, block: true },
-      { from: firstEnd, to: secondStart, destination: secondRaw.length, block: false },
-      { from: firstStart, to: firstEnd, destination: secondRaw.length + gap.length, block: true },
-    ],
+    pieces: [secondPiece, gapPiece, firstPiece],
+    moving: direction === 'up' ? secondPiece : firstPiece,
   }
 }
 
@@ -713,8 +698,32 @@ function mapMoveSelection(selection: TextSelection, edits: ReadonlyArray<Edit>, 
     }
     return mapOffset(offset, edits)
   }
+  const endpointForRange = (offset: number, range: Range, operation: MoveOperation, shift: number): number => {
+    const bounds = rangeBounds(range)
+    const moving = operation.moving
+    if (offset === moving.from) return operation.from + shift + moving.destination
+    if (offset === moving.to) return operation.from + shift + moving.destination + (moving.to - moving.from)
+    const neighbour = operation.pieces.find(piece => !piece.block)
+    if (neighbour !== undefined && offset === neighbour.from && bounds.to <= neighbour.from) {
+      return operation.from + shift + moving.destination + (moving.to - moving.from)
+    }
+    return endpoint(offset)
+  }
+  const shiftFor = (operation: MoveOperation): number => {
+    let shift = 0
+    for (const other of sorted) {
+      if (other.from >= operation.from) break
+      shift += other.insert.length - (other.to - other.from)
+    }
+    return shift
+  }
   return {
-    ranges: selection.ranges.map(range => ({ anchor: endpoint(range.anchor), head: endpoint(range.head) })),
+    ranges: selection.ranges.map(range => {
+      const operation = sorted.find(candidate => rangeBounds(range).from <= candidate.to && rangeBounds(range).to >= candidate.from)
+      return operation === undefined
+        ? { anchor: endpoint(range.anchor), head: endpoint(range.head) }
+        : { anchor: endpointForRange(range.anchor, range, operation, shiftFor(operation)), head: endpointForRange(range.head, range, operation, shiftFor(operation)) }
+    }),
     main: selection.main,
   }
 }

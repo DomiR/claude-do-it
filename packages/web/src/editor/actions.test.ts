@@ -153,67 +153,73 @@ describe('archive', () => {
     const alreadyArchived = '## Archive\r\n\r\n- [x] One\r\n- [x] Two\r\n'
     unavailable(action(alreadyArchived, caret(alreadyArchived.indexOf('One')), 'archive'), 'No completed or cancelled tasks to archive')
   })
+
+  test('skips an empty resolved task', () => {
+    const text = '- [x] \n- [x] Ship'
+    const selection: TextSelection = { ranges: [range(0, text.indexOf('\n'))], main: 0 }
+    unavailable(action(text, selection, 'archive'), 'No completed or cancelled tasks to archive')
+  })
 })
 
 describe('moveUp and moveDown', () => {
-  test('moves sibling blocks with their blank separator and maps the caret', () => {
-    const text = '- [ ] A\n\n- [ ] B\n'
-    const up = '- [ ] B\n\n- [ ] A\n'
-    applied(text, action(text, caret(text.indexOf('B')), 'moveUp'), up, caret(up.indexOf('B')))
+  test('moves a task block down across a blank and a heading, then back up', () => {
+    const text = '- [ ] A\n  - **t1** planning\n\n## Notes\n- [ ] B'
+    const afterBlank = '\n- [ ] A\n  - **t1** planning\n## Notes\n- [ ] B'
+    applied(text, action(text, caret(text.indexOf('A')), 'moveDown'), afterBlank, caret(afterBlank.indexOf('A')))
 
-    const down = '- [ ] B\n\n- [ ] A\n'
-    applied(text, action(text, caret(text.indexOf('A')), 'moveDown'), down, caret(down.indexOf('A')))
+    const afterHeading = '\n## Notes\n- [ ] A\n  - **t1** planning\n- [ ] B'
+    applied(afterBlank, action(afterBlank, caret(afterBlank.indexOf('A')), 'moveDown'), afterHeading, caret(afterHeading.indexOf('A')))
+    applied(afterHeading, action(afterHeading, caret(afterHeading.indexOf('A')), 'moveUp'), afterBlank, caret(afterBlank.indexOf('A')))
+    applied(afterBlank, action(afterBlank, caret(afterBlank.indexOf('A')), 'moveUp'), text, caret(text.indexOf('A')))
   })
 
-  test('reports the edges and never crosses a heading', () => {
-    const text = '- [ ] A\n- [ ] B'
-    unavailable(action(text, caret(text.indexOf('A')), 'moveUp'), 'Already at the top')
-    unavailable(action(text, caret(text.indexOf('B')), 'moveDown'), 'Already at the bottom')
-
-    const separated = '- [ ] A\n# Next\n- [ ] B'
-    unavailable(action(separated, caret(separated.indexOf('B')), 'moveUp'), 'Already at the top')
+  test('moves a prose line down past a complete task block', () => {
+    const text = 'Intro\n- [ ] Task\n  - **t1** planning\nTail'
+    const next = '- [ ] Task\n  - **t1** planning\nIntro\nTail'
+    applied(text, action(text, caret(text.indexOf('Intro')), 'moveDown'), next, caret(next.indexOf('Intro')))
   })
 
-  test('moves nested siblings without moving their parent', () => {
-    const text = '- [ ] Parent\n  - [ ] A\n\n  - [ ] B'
-    const next = '- [ ] Parent\n  - [ ] B\n\n  - [ ] A'
-    applied(text, action(text, caret(text.indexOf('B')), 'moveUp'), next, caret(next.indexOf('B')))
+  test('moves a heading up past a complete task block', () => {
+    const text = '- [ ] Task\n  - **t1** planning\n## Notes'
+    const next = '## Notes\n- [ ] Task\n  - **t1** planning'
+    applied(text, action(text, caret(text.indexOf('Notes')), 'moveUp'), next, caret(next.indexOf('Notes')))
   })
 
-  test('moves down past a neighbour with status lines and keeps the blank separator', () => {
-    const text = '- [ ] A\n\n- [ ] B\n  - **t1** planning'
-    const next = '- [ ] B\n  - **t1** planning\n\n- [ ] A'
-    applied(text, action(text, caret(text.indexOf('A')), 'moveDown'), next, caret(next.indexOf('A')))
+  test('reports the first line up and last line down as unavailable', () => {
+    const text = 'First\nLast'
+    unavailable(action(text, caret(text.indexOf('First')), 'moveUp'), 'Already at the top')
+    unavailable(action(text, caret(text.indexOf('Last')), 'moveDown'), 'Already at the bottom')
   })
 
-  test('moves a task with status lines up as one block and keeps the blank separator', () => {
-    const text = '- [ ] A\n\n- [ ] B\n  - **t1** planning'
-    const next = '- [ ] B\n  - **t1** planning\n\n- [ ] A'
-    applied(text, action(text, caret(text.indexOf('B')), 'moveUp'), next, caret(next.indexOf('B')))
+  test('moves a nested child task up past its parent line', () => {
+    const text = '- [ ] Parent\n  - [ ] Child\nAfter'
+    const next = '  - [ ] Child\n- [ ] Parent\nAfter'
+    applied(text, action(text, caret(text.indexOf('Child')), 'moveUp'), next, caret(next.indexOf('Child')))
   })
 
-  test('moves two selected sibling blocks down and up past a status-bearing neighbour', () => {
-    const downText = '- [ ] A\n  - **t1** one\n\n- [ ] B\n  - **t2** two\n\n- [ ] C\n  - **t3** three'
+  test('moves two selected task blocks down past a status-bearing task block and back up', () => {
+    const downText = '- [ ] A\n  - **t1** one\n- [ ] B\n  - **t2** two\n- [ ] C\n  - **t3** three'
     const downSelection: TextSelection = {
       ranges: [range(0, downText.indexOf('  - **t2** two') + '  - **t2** two'.length)],
       main: 0,
     }
-    const downNext = '- [ ] C\n  - **t3** three\n\n- [ ] A\n  - **t1** one\n\n- [ ] B\n  - **t2** two'
+    const downNext = '- [ ] C\n  - **t3** three\n- [ ] A\n  - **t1** one\n- [ ] B\n  - **t2** two'
     applied(downText, action(downText, downSelection, 'moveDown'), downNext, {
       ranges: [range(downNext.indexOf('- [ ] A'), downNext.indexOf('  - **t2** two') + '  - **t2** two'.length)],
       main: 0,
     })
 
-    const upText = '- [ ] C\n  - **t3** three\n\n- [ ] A\n  - **t1** one\n\n- [ ] B\n  - **t2** two'
     const upSelection: TextSelection = {
-      ranges: [range(upText.indexOf('- [ ] A'), upText.indexOf('  - **t2** two') + '  - **t2** two'.length)],
+      ranges: [range(downNext.indexOf('- [ ] A'), downNext.indexOf('  - **t2** two') + '  - **t2** two'.length)],
       main: 0,
     }
-    const upNext = '- [ ] A\n  - **t1** one\n\n- [ ] B\n  - **t2** two\n\n- [ ] C\n  - **t3** three'
-    applied(upText, action(upText, upSelection, 'moveUp'), upNext, {
-      ranges: [range(upNext.indexOf('- [ ] A'), upNext.indexOf('  - **t2** two') + '  - **t2** two'.length)],
-      main: 0,
-    })
+    applied(downNext, action(downNext, upSelection, 'moveUp'), downText, downSelection)
+  })
+
+  test('moves line units without changing CRLF separators', () => {
+    const text = 'Intro\r\n- [ ] Task\r\n  - **t1** planning\r\nTail'
+    const next = '- [ ] Task\r\n  - **t1** planning\r\nIntro\r\nTail'
+    applied(text, action(text, caret(text.indexOf('Intro')), 'moveDown'), next, caret(next.indexOf('Intro')))
   })
 })
 
