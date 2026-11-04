@@ -289,12 +289,25 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
+  width: 100%;
+  min-width: 0;
   padding: 6px 12px;
+  border: 0;
+  text-align: left;
+  background: transparent;
   color: var(--pt-ink);
+  font: inherit;
 }
 
 .pt-palette-item-active {
   background: var(--pt-active-row);
+}
+
+.pt-palette-item > span:first-child {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 12px;
 }
 
 .pt-palette-title,
@@ -302,6 +315,7 @@ button {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pt-palette-title {
@@ -316,7 +330,8 @@ button {
 .pt-palette-keys {
   display: flex;
   align-items: center;
-  justify-content: end;
+  justify-content: flex-end;
+  align-self: center;
   gap: 4px;
   color: var(--pt-prose);
 }
