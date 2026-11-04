@@ -179,6 +179,18 @@ describe('moveUp and moveDown', () => {
     const next = '- [ ] Parent\n  - [ ] B\n\n  - [ ] A'
     applied(text, action(text, caret(text.indexOf('B')), 'moveUp'), next, caret(next.indexOf('B')))
   })
+
+  test('moves down past a neighbour with status lines and keeps the blank separator', () => {
+    const text = '- [ ] A\n\n- [ ] B\n  - **t1** planning'
+    const next = '- [ ] B\n  - **t1** planning\n\n- [ ] A'
+    applied(text, action(text, caret(text.indexOf('A')), 'moveDown'), next, caret(next.indexOf('A')))
+  })
+
+  test('moves a task with status lines up as one block and keeps the blank separator', () => {
+    const text = '- [ ] A\n\n- [ ] B\n  - **t1** planning'
+    const next = '- [ ] B\n  - **t1** planning\n\n- [ ] A'
+    applied(text, action(text, caret(text.indexOf('B')), 'moveUp'), next, caret(next.indexOf('B')))
+  })
 })
 
 describe('continueTask', () => {
