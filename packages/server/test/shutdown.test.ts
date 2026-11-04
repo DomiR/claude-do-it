@@ -61,7 +61,7 @@ for (const shutdown of ["stop", "SIGTERM", "SIGINT", "idle"] as const) {
       else if (shutdown !== "idle") child.kill(shutdown)
       expect(await child.exited).toBe(0)
       expect(existsSync(join(home, "daemon.json"))).toBe(false)
-      expect(readFileSync(path, "utf8")).toBe("- [x] Ship\n")
+      expect(readFileSync(path, "utf8")).toMatch(/^- \[x\] Ship @done \(\d{2}-\d{2}-\d{2} \d{2}:\d{2}\)\n$/)
       const log = readFileSync(logPath, "utf8")
       expect(log).not.toContain("error:")
       expect(log).not.toContain("All fibers interrupted")

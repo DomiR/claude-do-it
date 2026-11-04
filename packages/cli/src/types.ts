@@ -8,6 +8,7 @@ export type ParsedCommand =
   | { kind: "append"; options: GlobalOptions; path: string; version: number; section?: string; text: string }
   | { kind: "todo-add"; options: GlobalOptions; path: string; version: number; section?: string; text: string }
   | { kind: "todo-set"; options: GlobalOptions; path: string; version: number; section?: string; target: string; state: "done" | "open" | "cancelled" }
+  | { kind: "todo-start"; options: GlobalOptions; path: string; version: number; section?: string; target: string }
   | { kind: "todo-list"; options: GlobalOptions; path: string; section?: string }
   | { kind: "diff"; options: GlobalOptions; path: string; since: number; wait: number }
   | { kind: "watch"; options: GlobalOptions; path: string; displayPath: string; since?: number; section?: string; todos: boolean; settle?: number }

@@ -23,6 +23,7 @@ describe("cli argument parsing", () => {
   it("distinguishes numeric todo targets", async () => {
     expect(await parse(["todo", "check", "TODO.md", "--version", "3", "12"])).toMatchObject({ kind: "todo-set", target: "12", state: "done" })
     expect(await parse(["todo", "cancel", "TODO.md", "--version", "3", "Write tests"])).toMatchObject({ kind: "todo-set", target: "Write tests", state: "cancelled" })
+    expect(await parse(["todo", "start", "TODO.md", "--version", "3", "12"])).toMatchObject({ kind: "todo-start", target: "12" })
   })
 
   it("uses TODO.md for open and accepts a zero second wait", async () => {

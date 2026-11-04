@@ -1,4 +1,4 @@
-import { addTodo, appendBlock, findSection, findTodo, replaceUnique, sections, setTodoState, todos, type Origin } from "@do-it/doc"
+import { addTodo, appendBlock, findSection, findTodo, replaceUnique, sections, setTodoStateStamped, stampTodo, todos, type Origin } from "@do-it/doc"
 import { DoItRpcs, DocumentGone, Forgotten, NothingYet, type Author, type DiffSuccess, type WatchEvent, type WatchPayload } from "@do-it/protocol"
 import { Cause, Deferred, Effect, Stream } from "effect"
 import { Auth } from "./auth"
@@ -100,7 +100,8 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
               case "Replace": return replaceUnique(text, op.old, op.new, request.section)
               case "Append": return appendBlock(text, op.text, request.section)
               case "TodoAdd": return addTodo(text, op.text, request.section)
-              case "TodoSet": return setTodoState(text, findTodo(text, op.target, request.section), op.state)
+              case "TodoSet": return setTodoStateStamped(text, findTodo(text, op.target, request.section), op.state, new Date())
+              case "TodoStart": return stampTodo(text, findTodo(text, op.target, request.section), "started", new Date())
             }
           })
           registry.changed(entry, previous)

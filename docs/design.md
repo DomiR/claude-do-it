@@ -204,6 +204,7 @@ Rpcs (all payloads carry `path` unless noted):
   edit     { path, author, version, section?, op }
            op = Replace { old, new } | Append { text } | TodoAdd { text }
               | TodoSet { target: number | string, state: TaskState }
+              | TodoStart { target: number | string }
                                              → { version, changed, section: string | null, others: Others | null }
   sync     { path, base, text }              → { version, text }      // author is always User
   diff     { path, since, wait: 0..600 }     → { from, to, by: Author[], diff, todos }
@@ -290,7 +291,8 @@ ensures the daemon first (exit 3 when it cannot start).
 | `edit PATH --version N [--section ID] --old T --new T` | see replies |
 | `append PATH --version N [--section ID] TEXT` | see replies |
 | `todo add PATH --version N [--section ID] TEXT` | see replies |
-| `todo check\|uncheck\|cancel\|uncancel PATH --version N [--section ID] NUMBER\|TEXT` | see replies |
+| `todo start PATH --version N [--section ID] NUMBER\|TEXT` | see replies, appends `@started` with the local time |
+| `todo check\|uncheck\|cancel\|uncancel PATH --version N [--section ID] NUMBER\|TEXT` | see replies, updating PlainTasks time stamps |
 | `todo list PATH [--section ID]` | `Version: N` then `3. [x] Ship` per task |
 | `diff PATH --since N [--wait S]` | `Version N by WHO` then the diff; exit 4 when nothing came |
 | `watch PATH [--since N] [--section ID] [--todos] [--settle S]` | `Watching PATH at version N`, then per change `Version N by WHO` (or `Versions A-N by WHO, WHO`) and the diff, or with `--todos` lines like `checked 3. Ship`. Changes made only by `--as NAME` are skipped. `--settle S` prints only `Settled at version N by WHO` after S quiet seconds. Reconnects (and restarts the daemon) with backoff; prints `Daemon restarted, now version N` once. Exit 9 when the document is deleted |
