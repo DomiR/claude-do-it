@@ -36,8 +36,15 @@ describe("PlainTasks stamps", () => {
   })
 
   test("places stamps before project tags, preserves trailing whitespace, and keeps CRLF", () => {
-    const text = "- [ ] Ship @project(work)   \r\n"
-    expect(change(text, stampTodo(text, findTodo(text, "Ship"), "done", date))).toBe("- [ ] Ship @done (26-11-04 21:32) @project(work)   \r\n")
+    const text = "- [ ] Ship @project(Tasks)   \r\n"
+    expect(change(text, stampTodo(text, findTodo(text, "Ship"), "done", date))).toBe("- [ ] Ship @done (26-11-04 21:32) @project(Tasks)   \r\n")
+  })
+
+  test("keeps labels ending in t or a backslash intact", () => {
+    const endingT = "- [ ] Write a test\n"
+    expect(change(endingT, stampTodo(endingT, findTodo(endingT, "Write a test"), "started", date))).toBe("- [ ] Write a test @started(26-11-04 21:32)\n")
+    const endingBackslash = "- [ ] Path\\\\\n"
+    expect(change(endingBackslash, stampTodo(endingBackslash, findTodo(endingBackslash, "Path\\\\"), "started", date))).toBe("- [ ] Path\\\\ @started(26-11-04 21:32)\n")
   })
 
   test("sets every task state while keeping started and replacing state tags", () => {

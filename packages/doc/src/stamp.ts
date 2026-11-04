@@ -26,9 +26,9 @@ function taskLabel(text: string, todo: Todo): { from: number; to: number; body: 
 }
 
 function stampText(label: string, stamp: string): string {
-  const trailing = /[ \\t]*$/.exec(label)!
+  const trailing = /[ \t]*$/.exec(label)!
   const core = label.slice(0, trailing.index)
-  const project = /[ \\t]+@project(?:[ \\t]*\\([^()\\r\\n]*\\))?$/.exec(core)
+  const project = /[ \t]+@project(?:[ \t]*\([^()\r\n]*\))?$/.exec(core)
   const beforeProject = project ? core.slice(0, project.index) : core
   const prefix = beforeProject.trimEnd()
   const withStamp = prefix ? `${prefix} ${stamp}` : stamp
