@@ -123,6 +123,30 @@ describe('archive', () => {
     applied(text, action(text, caret(text.indexOf('Ship')), 'archive'), next, caret(lastLabel(next, '- [x] ')))
   })
 
+  test('keeps a blank separator after a block before the next heading', () => {
+    const text = '# Now\n- [x] Shipped\n\n# Later'
+    const next = '# Now\n\n# Later\n\n## Archive\n\n- [x] Shipped @project(Now)'
+    applied(text, action(text, caret(text.indexOf('Shipped')), 'archive'), next, caret(next.indexOf('Shipped')))
+  })
+
+  test('removes the leading blank when a block already follows one', () => {
+    const text = '# Now\n\n- [x] Shipped\n\n# Later'
+    const next = '# Now\n\n# Later\n\n## Archive\n\n- [x] Shipped @project(Now)'
+    applied(text, action(text, caret(text.indexOf('Shipped')), 'archive'), next, caret(next.indexOf('Shipped')))
+  })
+
+  test('swallows the following blank for a block at the document start', () => {
+    const text = '- [x] Shipped\n\n# Later'
+    const next = '# Later\n\n## Archive\n\n- [x] Shipped'
+    applied(text, action(text, caret(text.indexOf('Shipped')), 'archive'), next, caret(next.indexOf('Shipped')))
+  })
+
+  test('keeps separators when several archived blocks are adjacent', () => {
+    const text = '# Now\n- [x] One\n- [x] Two\n- [x] Three\n\n# Later'
+    const next = '# Now\n\n# Later\n\n## Archive\n\n- [x] Three @project(Now)\n- [x] Two @project(Now)\n- [x] One @project(Now)'
+    applied(text, action(text, caret(text.indexOf('One')), 'archive'), next, caret(next.indexOf('One')))
+  })
+
   test('places a newly archived task at the top of an archive', () => {
     const text = '## Archive\n- [x] Old\n# Work\n- [x] Ship'
     const next = '## Archive\n- [x] Ship @project(Work)\n- [x] Old\n# Work\n'
@@ -278,6 +302,22 @@ describe('indent and outdent', () => {
     const text = '  - [ ] Parent\n    note'
     const next = '- [ ] Parent\n  note'
     applied(text, action(text, caret(text.indexOf('Parent')), 'outdent'), next, caret(next.indexOf('Parent')))
+  })
+
+  test('indents only a status or note line under its task', () => {
+    const status = '- [ ] Parent\n  - **t1** status\n  note'
+    applied(status, action(status, caret(status.indexOf('status')), 'indent'), '- [ ] Parent\n    - **t1** status\n  note', caret(status.indexOf('status') + 2))
+
+    const note = '- [ ] Parent\n  - **t1** status\n  note'
+    applied(note, action(note, caret(note.indexOf('note')), 'indent'), '- [ ] Parent\n  - **t1** status\n    note', caret(note.indexOf('note') + 2))
+  })
+
+  test('outdents only a status or note line under its task', () => {
+    const status = '  - [ ] Parent\n    - **t1** status\n    note'
+    applied(status, action(status, caret(status.indexOf('status')), 'outdent'), '  - [ ] Parent\n  - **t1** status\n    note', caret(status.indexOf('status') - 2))
+
+    const note = '  - [ ] Parent\n    - **t1** status\n    note'
+    applied(note, action(note, caret(note.indexOf('note')), 'outdent'), '  - [ ] Parent\n    - **t1** status\n  note', caret(note.indexOf('note') - 2))
   })
 
   test('indents selected ordinary lines and leaves code unchanged', () => {

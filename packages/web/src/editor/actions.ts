@@ -567,8 +567,7 @@ function archiveDeletionRange(view: DocumentView, index: number): { readonly fro
       const before = view.lines[index - 1]
       const afterNext = view.lines[afterIndex + 1]
       if (before?.kind === 'blank') from = before.from
-      else if (afterNext !== undefined) to = afterNext.from
-      else to = view.text.length
+      else if (before === undefined) to = afterNext?.from ?? view.text.length
     }
   }
   return { from, to }
@@ -884,15 +883,20 @@ function tab(view: DocumentView, selection: TextSelection, now: Date): ActionRes
 }
 
 function indent(view: DocumentView, selection: TextSelection, outdent: boolean): ActionResult {
-  const targets = taskTargets(view, selection, true)
   const lineIndices = new Set<number>()
-  if (targets.length > 0) {
-    for (const root of maximalRoots(view, targets)) {
-      const end = blockEnd(view.lines as Line[], root)
-      for (let index = root; index < end; index++) lineIndices.add(index)
+  for (const range of selection.ranges) {
+    const selected = range.anchor === range.head
+      ? [lineAt(view, range.head)]
+      : selectedLines(view, { ranges: [range], main: 0 })
+    for (const index of selected) {
+      const line = view.lines[index]
+      if (line?.state !== undefined) {
+        const end = blockEnd(view.lines as Line[], index)
+        for (let blockLine = index; blockLine < end; blockLine++) lineIndices.add(blockLine)
+      } else {
+        lineIndices.add(index)
+      }
     }
-  } else {
-    for (const index of selectedLines(view, selection)) lineIndices.add(index)
   }
 
   const edits: Edit[] = []
