@@ -336,6 +336,15 @@ describe('editor synchronization', () => {
 })
 
 describe('palette update', () => {
+  test('opens the Shortcuts palette from the help key fact', () => {
+    story(update, given(readyModel()), message(Message.PressedHelpKey()),
+      model(next => {
+        expect(next.palette).toEqual({ _tag: 'Open', kind: 'Shortcuts', query: '', active: 0 })
+        expect(paletteItems(next, original).some(item => item.title === 'Continue task')).toBe(true)
+      }),
+    )
+  })
+
   test('opens, filters by subsequence, and chooses a command against the live editor', () => {
     story(update, given(readyModel()), message(Message.ClickedCommands()),
       message(Message.UpdatedPaletteQuery({ query: 'tGdn' })),

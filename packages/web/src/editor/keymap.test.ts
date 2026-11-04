@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { EditorCommand } from './types'
-import { bindings, commands, detectPlatform, keyLabel, keysFor } from './keymap'
+import { bindings, commands, detectPlatform, hints, keyLabel, keysFor } from './keymap'
 
 const allCommands: ReadonlyArray<EditorCommand> = [
   'newTask',
@@ -36,10 +36,10 @@ describe('editor keymap', () => {
       { command: 'indent', mac: ['Cmd-]'], other: ['Ctrl-]'] },
       { command: 'outdent', mac: ['Cmd-['], other: ['Ctrl-['] },
       { command: 'continueTask', mac: ['Enter'], other: ['Enter'] },
-      { command: 'showShortcuts', mac: [], other: [] },
+      { command: 'showShortcuts', mac: ['Cmd-/'], other: ['Ctrl-/'] },
     ])
     expect(keysFor('mac', 'newTask')).toEqual(['Cmd-Enter', 'Cmd-i'])
-    expect(keysFor('other', 'showShortcuts')).toEqual([])
+    expect(keysFor('other', 'showShortcuts')).toEqual(['Ctrl-/'])
   })
 
   test('has unique chords and no forbidden bindings', () => {
@@ -90,6 +90,19 @@ describe('editor keymap', () => {
     expect(commands.find((command) => command.command === 'commandPalette')?.inPalette).toBe(false)
     expect(commands.find((command) => command.command === 'continueTask')?.inPalette).toBe(false)
     for (const command of commands) expect(command.description).not.toContain(' - ')
+  })
+
+  test('provides the discoverable status hints in their display order', () => {
+    expect(hints).toEqual([
+      { command: 'newTask', label: 'New task' },
+      { command: 'toggleDone', label: 'Done' },
+      { command: 'toggleCancelled', label: 'Cancel' },
+      { command: 'archive', label: 'Archive' },
+      { command: 'moveUp', label: 'Move' },
+      { command: 'commandPalette', label: 'Commands' },
+      { command: 'showShortcuts', label: 'Help' },
+    ])
+    expect(hints.every(hint => keysFor('mac', hint.command).length > 0)).toBe(true)
   })
 
   test('formats key labels for both platforms and detects Apple platforms', () => {

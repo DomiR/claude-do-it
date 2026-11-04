@@ -257,6 +257,7 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
   }, () => ({ model })),
   ClickedActivity: () => ({ model: modifyFields(model, { activityOpen: value => !value }) }),
   ClickedCommands: () => model.palette._tag === 'Open' ? closePalette(model) : openPalette(model, 'Commands'),
+  PressedHelpKey: () => model.palette._tag === 'Open' ? closePalette(model) : openPalette(model, 'Shortcuts'),
   UpdatedPaletteQuery: ({ query }) => ({ model: modifyFields(model, {
     palette: palette => Palette.match(palette, {
       Closed: () => palette, Open: open => modifyFields(open, { query: () => query, active: () => 0 }),

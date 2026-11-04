@@ -22,7 +22,7 @@ export const bindings: ReadonlyArray<Binding> = [
   { command: 'indent', mac: ['Cmd-]'], other: ['Ctrl-]'] },
   { command: 'outdent', mac: ['Cmd-['], other: ['Ctrl-['] },
   { command: 'continueTask', mac: ['Enter'], other: ['Enter'] },
-  { command: 'showShortcuts', mac: [], other: [] },
+  { command: 'showShortcuts', mac: ['Cmd-/'], other: ['Ctrl-/'] },
 ]
 
 export interface CommandInfo {
@@ -47,6 +47,16 @@ export const commands: ReadonlyArray<CommandInfo> = [
   { command: 'outdent', title: 'Outdent', description: 'Outdent the selected task block', inPalette: true },
   { command: 'continueTask', title: 'Continue task', description: 'Continue the current task', inPalette: false },
   { command: 'showShortcuts', title: 'Keyboard shortcuts', description: 'Show keyboard shortcuts', inPalette: true },
+]
+
+export const hints: ReadonlyArray<{ readonly command: EditorCommand; readonly label: string }> = [
+  { command: 'newTask', label: 'New task' },
+  { command: 'toggleDone', label: 'Done' },
+  { command: 'toggleCancelled', label: 'Cancel' },
+  { command: 'archive', label: 'Archive' },
+  { command: 'moveUp', label: 'Move' },
+  { command: 'commandPalette', label: 'Commands' },
+  { command: 'showShortcuts', label: 'Help' },
 ]
 
 export const keysFor = (platform: Platform, command: EditorCommand): ReadonlyArray<string> => {
