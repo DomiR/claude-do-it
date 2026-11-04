@@ -25,7 +25,7 @@ Phase 4 (the TUI) is not started; `packages/tui` holds a README only.
 | `packages/server` | The background daemon: one per user, 127.0.0.1 only, token and cookie auth, serving the RPCs over HTTP with ndjson streaming, watching files on disk, writing changes back atomically, keeping version numbers across restarts, and serving the built web app. |
 | `packages/client` | Daemon lifecycle for every Bun side client (ensure: reuse, health check, lock, spawn; stop) and the authenticated RPC client layer. Used by the CLI, the tests, and later the TUI. |
 | `packages/cli` | The `do-it` command (`effect/cli`): `open`, `read`, `sections`, `edit`, `append`, `todo add/check/uncheck/cancel/uncancel/list`, `diff --since --wait`, `watch [--todos] [--section] [--settle S]`, `status`, `stop`. Starts the daemon when needed and opens the browser. `--json` everywhere, `--as NAME` everywhere. |
-| `packages/web` | The Foldkit editor: a Tasks view (checkboxes, agent status lines, an add field per section) and a Markdown view, live from `watch`, every edit sent through `sync` with its base version, an activity list of who changed what. |
+| `packages/web` | The Foldkit CodeMirror 6 PlainTasks editor: one source Markdown surface with task actions, command palette, status bar, activity pane, and versioned watch and sync. |
 | `packages/tui` | Phase 4: the same editor in the terminal with OpenTUI (Solid) and `@do-it/client`. |
 | `skill/` | The Claude Code skill (`/do-it [file]`), see below. |
 

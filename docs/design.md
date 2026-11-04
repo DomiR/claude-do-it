@@ -327,18 +327,61 @@ with the cookie. URL `/?path=/abs/TODO.md`. Cookies are host scoped, so every
 URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
 `/rpc` and `/auth` to the daemon for development.
 
-- Connects with `watch { path, text: true }`; reconnects with backoff and
-  shows `Reconnecting` (a `Resync` replaces the text).
-- Two views of one text: **Tasks** (rendered Markdown, task lines as
-  checkboxes, an add task field per section, headings, status sub bullets
-  shown muted) and **Markdown** (a textarea of the raw text).
-- Every edit by the person goes through `sync { base, text }`: checkbox
-  clicks and adds compute the new text locally; the textarea sends its text
-  400 ms after typing stops. A `Change` arriving while the draft is dirty sends
-  the draft first, then adopts the merged reply; selection is kept by mapping
-  offsets through the common prefix and suffix.
-- Activity: the last 20 changes, `Version 12 by t3: checked 3. Ship`; lines
-  changed by someone else are highlighted for a few seconds.
+- The editor is one CodeMirror 6 source editor in a Foldkit `Mount`. It has
+  pinned versions of `@codemirror/state` 6.7.6, `@codemirror/view` 6.43.15,
+  `@codemirror/commands` 6.11.1, and `@codemirror/search` 6.7.2. It presents
+  the plain Markdown file as a Sublime Text style PlainTasks notepad: yellow
+  paper, headings as projects, and agent status lines in muted ink. The file
+  remains plain Markdown. CodeMirror uses `\n` as its line separator, so `\r`
+  remains a source character and the text stays byte exact.
+- Line decorations come from `editor/lines.ts`. Task markers are CSS drawings
+  over the three source characters in `[ ]`, so copy, selection, undo, and
+  source offsets still use Markdown. Clicking a marker toggles done; Alt-click
+  toggles cancelled. While the selection touches a marker slot, its literal
+  source is shown.
+
+| Action | Mac | Other | Semantics |
+| --- | --- | --- | --- |
+| New task | `Cmd-Enter`, `Cmd-i` | `Ctrl-Enter`, `Ctrl-i` | Create a task on the current line, or continue the targeted task block. |
+| Toggle done | `Cmd-d`, `Cmd-Shift-Enter` | `Ctrl-d`, `Ctrl-Shift-Enter` | Toggle the targeted tasks between open and done. |
+| Toggle cancelled | `Ctrl-c`, `Cmd-Alt-Enter` | `Alt-c`, `Ctrl-Alt-Enter` | Toggle cancellation, preserving the task as editable Markdown. |
+| Archive | `Cmd-Shift-a`, `Cmd-Alt-a` | `Ctrl-Shift-a`, `Ctrl-Alt-a` | Move completed or cancelled task blocks under `## Archive`. |
+| Move up or down | `Cmd-Ctrl-ArrowUp`, `Alt-ArrowUp`; `Cmd-Ctrl-ArrowDown`, `Alt-ArrowDown` | `Ctrl-Shift-ArrowUp`, `Alt-ArrowUp`; `Ctrl-Shift-ArrowDown`, `Alt-ArrowDown` | Move a task block among its siblings, keeping attached status and notes. |
+| Continue task | `Enter` | `Enter` | Split the current task and insert an open sibling with the same prefix. |
+| Indent or outdent | `Cmd-]`, `Cmd-[` | `Ctrl-]`, `Ctrl-[` | Indent or outdent the selected task blocks. |
+| Open link | `Cmd-Shift-u`, `Alt-Enter` | `Alt-Enter` | Open the link under the caret, or reveal a project anchor. |
+| Go to project | `Cmd-p` | `Ctrl-p` | Open the project palette and move to the selected heading. |
+| Command palette | `Cmd-Shift-p`, `F1` | `Ctrl-Shift-p`, `F1` | Search and run editor commands. |
+| Find | `Cmd-f` | `Ctrl-f` | Open CodeMirror Find. |
+
+The editor deliberately leaves `Mod-r`, `Mod-Shift-r`, `Mod-Shift-o`, `Tab`,
+`Shift-Tab`, `Ctrl-c` on other platforms, and `Ctrl-Shift-u` on other platforms
+unbound. Browser reload, tab search, focus navigation, cancellation conflicts,
+and Unicode input keep their browser or platform meanings.
+
+- The status bar shows PlainTasks statistics as `done/total done`. Counts
+  exclude the first top level `## Archive` subtree and include nested tasks.
+  It also shows line and grapheme column, the base version, and `Saved`,
+  `Saving`, or `Reconnecting`.
+- Activity is a collapsible pane, initially closed, with the latest 20 remote
+  changes and their version, authors, and todo details. Remote insertions are
+  highlighted for three seconds. The pane does not take editor focus.
+- Typing waits 400 ms after the latest input before syncing. An action syncs
+  immediately. At most one sync is in flight. `ApplyRemoteText` computes
+  `D = edits(from, to)` and maps `D` over the local edits since `from`, then
+  applies the result to the live editor without adding to undo history. Clean
+  watch changes use `from = draft`; sync replies use `from` equal to the sent
+  text; every `Resync` uses `from = base.text`, whether the draft is clean or
+  dirty.
+- Snapshots older than or equal to the current base version are ignored,
+  except that a Resync is handled as the authoritative recovery snapshot.
+  While a remote apply or sync is busy, only the newest snapshot is retained.
+  A sync reply adopts its text when it matches the sent text. When it differs,
+  the reply is rebased into the live editor before the next sync decision.
+  `Forgotten` stops retrying the request, reconnects from the current base
+  version, and waits for Resync. Other non-auth, non-deletion sync failures
+  retry a dirty draft after two seconds, up to five attempts. A failed remote
+  apply retries after 500 ms.
 - No dash separators in copy.
 
 ## Conductor (`skill/SKILL.md`)

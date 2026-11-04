@@ -8,13 +8,27 @@ per file, served by a small local daemon).
 - `do-it`: a CLI with versioned commands agents use to read and change the todo
 - a background daemon on `127.0.0.1` that holds the documents, watches the
   files, and serves the editor
-- a browser editor (Foldkit) that shows the todo live and lets you check,
-  add, and edit tasks
+- a browser editor (Foldkit and CodeMirror 6) that keeps the todo as plain
+  Markdown while providing PlainTasks markers, actions, and a command palette
 - the `do-it` Claude Code skill: `/do-it [file]` opens the todo and turns the
   session into a conductor that plans and delivers every task through worker
   agents and one shared tester
 
 Design: [docs/plan.md](docs/plan.md) and [docs/design.md](docs/design.md).
+
+## Editor keys
+
+- New task: `Cmd-Enter` (`Ctrl-Enter`)
+- Toggle done: `Cmd-D` (`Ctrl-D`)
+- Toggle cancelled: `Ctrl-C` (`Alt-C`)
+- Archive resolved tasks: `Cmd-Shift-A` (`Ctrl-Shift-A`)
+- Move task up or down: `Cmd-Ctrl-Up` or `Alt-Up` (`Ctrl-Shift-Up` or `Alt-Up`)
+- Continue task: `Enter` (`Enter`)
+- Indent or outdent: `Cmd-]` or `Cmd-[` (`Ctrl-]` or `Ctrl-[`)
+- Open link: `Cmd-Shift-U` or `Alt-Enter` (`Alt-Enter`)
+- Go to project: `Cmd-P` (`Ctrl-P`)
+- Command palette: `Cmd-Shift-P` or `F1` (`Ctrl-Shift-P` or `F1`)
+- Find: `Cmd-F` (`Ctrl-F`)
 
 ## Install
 
