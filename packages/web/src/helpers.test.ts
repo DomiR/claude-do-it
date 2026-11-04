@@ -1,25 +1,53 @@
 import { describe, expect, test } from 'bun:test'
+import { Option } from 'effect'
 
-import { addTaskText, toggleTodoText } from './sync'
-import { mapSelection } from './selection'
+import { DocumentGone, Forgotten, Unauthorized, VersionMismatch } from '@do-it/protocol'
+import { syncFailureKind } from './command'
+import { Message } from './message'
+import { ConnectionState, makeInitialModel, saveStatus, type ReadyDocument } from './model'
+import { update } from './update'
+import { cursorLabel } from './view/editor'
+import { matchesSubsequence } from './view/palette'
 
-describe('selection mapping', () => {
-  test('maps offsets through a changed middle', () => {
-    expect(mapSelection('before after', 'before very after', { start: 7, end: 7 })).toEqual({ start: 7, end: 7 })
-    expect(mapSelection('before after', 'before very after', { start: 12, end: 12 })).toEqual({ start: 17, end: 17 })
+const ready = (): ReadyDocument => {
+  const next = update(makeInitialModel('/tmp/TODO.md'), Message.ReceivedWatchEvent({
+    event: { _tag: 'Watching', version: 1, text: '- [ ] Ship\n' },
+  })).model
+  if (next.document._tag !== 'Ready') throw new Error('Expected a ready document')
+  return next.document.document
+}
+
+describe('editor status', () => {
+  test('distinguishes a saved draft, unsent edits, requests, remote application, and reconnecting', () => {
+    const document = ready()
+    expect(saveStatus(document)).toBe('Saved')
+    expect(saveStatus({ ...document, draft: 'local' })).toBe('Saving')
+    expect(saveStatus({ ...document, inFlight: Option.some({ base: 1, text: document.draft }) })).toBe('Saving')
+    expect(saveStatus({ ...document, pendingRemote: Option.some({ token: 1, version: 2, to: 'remote', resync: false }) })).toBe('Saving')
+    expect(saveStatus({ ...document, connection: ConnectionState.Reconnecting({ awaitingResync: false }) })).toBe('Reconnecting')
   })
 
-  test('preserves a selection in the common suffix', () => {
-    expect(mapSelection('alpha beta', 'alpha new beta', { start: 8, end: 10 })).toEqual({ start: 12, end: 14 })
+  test('shows grapheme columns while preserving UTF-16 selection offsets', () => {
+    const prefix = '# Tasks\n👩‍💻e\u0301'
+    expect(cursorLabel(prefix, prefix.length)).toBe('Ln 2, Col 3')
+    expect(cursorLabel('text\n', 5)).toBe('Ln 2, Col 1')
+    expect(cursorLabel('', 100)).toBe('Ln 1, Col 1')
   })
 })
 
-describe('todo text edits', () => {
-  test('toggles an open task to done', () => {
-    expect(toggleTodoText('- [ ] Ship\n', 1)).toBe('- [x] Ship\n')
+describe('command helpers', () => {
+  test('matches case insensitive subsequences in order', () => {
+    expect(matchesSubsequence('Toggle done', 'TgDn')).toBe(true)
+    expect(matchesSubsequence('Toggle done', 'dt')).toBe(false)
+    expect(matchesSubsequence('Toggle done', '')).toBe(true)
   })
 
-  test('adds a task to a section', () => {
-    expect(addTaskText('# Work\n\n- [ ] Ship\n', 'Write tests', 'work')).toBe('# Work\n\n- [ ] Ship\n- [ ] Write tests\n')
+  test('classifies typed RPC failures before the update decides how to recover', () => {
+    expect(syncFailureKind(new Unauthorized({}))).toBe('Unauthorized')
+    expect(syncFailureKind(new Forgotten({ latest: 12 }))).toBe('Forgotten')
+    expect(syncFailureKind(new DocumentGone({ path: '/tmp/TODO.md' }))).toBe('DocumentGone')
+    expect(syncFailureKind(new VersionMismatch({ latest: 12, since: 1, diff: null, forgotten: true }))).toBe('Forgotten')
+    expect(syncFailureKind(new VersionMismatch({ latest: 12, since: 11, diff: null, forgotten: false }))).toBe('Transient')
+    expect(syncFailureKind({ _tag: 'RpcClientError' })).toBe('Transient')
   })
 })

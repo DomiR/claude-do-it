@@ -4,8 +4,10 @@ import { FetchHttpClient } from 'effect/http'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Command, given, message, model as assertModel, story } from 'foldkit/story'
 
 import { makeServer } from '../../server/src/http'
+import { ApplyRemoteText } from './command'
 import { Message } from './message'
 import { makeInitialModel } from './model'
 import { DoItClient, DoItClientLive } from './rpc'
@@ -68,13 +70,33 @@ test('the browser subscription omits an absent since on the wire and stays live 
         if (change._tag === 'ReceivedWatchEvent') {
           expect(change.event).toMatchObject({ _tag: 'Change', from: 1, to: 2, by: [{ _tag: 'Agent', name: 'regression' }] })
         }
-        model = update(model, change).model
+        if (model.document._tag !== 'Ready') throw new Error('The editor did not become ready')
+        const session = model.document.document.session
+        const token = model.document.document.nextToken
+        if (change._tag !== 'ReceivedWatchEvent' || change.event._tag !== 'Change' || change.event.text === undefined) {
+          throw new Error('The live Change did not include text')
+        }
+        const remoteText = change.event.text
+        // The Mount owns the editor. Resolve its Command here and deliver the
+        // same acknowledgement the Mount emits, without starting a browser.
+        story(update, given(model), message(change),
+          Command.resolve(ApplyRemoteText, Message.CompletedApplyRemoteText({ token })),
+          message(Message.UpdatedEditor({ session, text: remoteText, anchor: 0, head: 0, origin: 'Remote', token })),
+          assertModel(next => { model = next }),
+        )
         if (model.document._tag !== 'Ready') throw new Error('The subscription did not stay ready')
         expect(model.document.document.draft).toContain('Added by agent')
-        const checked = update(model, Message.ClickedTodo({ number: 1 })).model
-        if (checked.document._tag !== 'Ready') throw new Error('The checkbox lost the document')
-        const synced = yield* client.sync({ path, base: checked.document.document.base.version, text: checked.document.document.draft })
+        const checkedText = model.document.document.draft.replace('- [ ] Ship the editor', '- [x] Ship the editor')
+        const action = update(model, Message.UpdatedEditor({ session, text: checkedText, anchor: 0, head: 0, origin: 'Action', token: null }))
+        const sync = action.commands?.[0]
+        if (!sync || sync.name !== 'SyncDraft') throw new Error('The action did not request sync')
+        expect(sync.args).toEqual({ path, base: 2, text: checkedText })
+        const synced = yield* sync.effect
+        if (synced._tag !== 'SucceededSync') throw new Error('The action sync failed')
+        model = update(action.model, synced).model
         expect(synced.text).toContain('- [x] Ship the editor')
+        expect(synced.text).toContain('Added by agent')
+        expect(requests.at(-1)?.payload).toEqual({ path, base: 2, text: checkedText })
         expect((yield* client.read({ path })).text).toBe(synced.text)
         expect((yield* pull)[0]).toMatchObject({ _tag: 'ReceivedWatchEvent', event: { _tag: 'Change', from: 2, to: 3, by: [{ _tag: 'User' }] } })
 

@@ -4,6 +4,10 @@
   "exports": {".": "./src/index.ts"},
   "scripts": {"build": "vite build"},
   "dependencies": {
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/search": "6.7.2",
     "@do-it/doc": "workspace:*",
     "@do-it/protocol": "workspace:*",
     "@effect/platform-browser": "4.1.2",
