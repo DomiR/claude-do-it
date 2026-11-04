@@ -91,6 +91,28 @@ test("an old lock without a pid file is recovered", async () => {
   await Effect.runPromise(stopDaemon(dir))
 }, 15000)
 
+for (const [label, contents] of [["empty", ""], ["garbage", "not a pid"]] as const) {
+  test(`lock recovery for ${label} pid files waits until the lock is old`, async () => {
+    const dir = home()
+    const p = paths(dir)
+    mkdirSync(p.lock)
+    writeFileSync(p.lockPid, contents)
+    const held = statSync(p.lock)
+    const result = await Effect.runPromise(ensureDaemon({ home: dir, port: 0 }).pipe(Effect.timeoutOption(250)))
+    if (result._tag === "Some") pids.add(result.value.pid)
+    expect(result._tag).toBe("None")
+    expect(readDaemonInfo(dir)).toBeNull()
+    expect(statSync(p.lock).ino).toBe(held.ino)
+    expect(statSync(p.lock).mtimeMs).toBe(held.mtimeMs)
+    expect(readFileSync(p.lockPid, "utf8")).toBe(contents)
+    const old = new Date(Date.now() - 11000)
+    utimesSync(p.lock, old, old)
+    const info = await start(dir)
+    expect(readDaemonInfo(dir)).toEqual(info)
+    expect(await Effect.runPromise(stopDaemon(dir))).toBe(true)
+  }, 15000)
+}
+
 test("a mismatched app version is stopped and replaced, preserving its token", async () => {
   const dir = home()
   const first = await start(dir)
