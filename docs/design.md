@@ -333,38 +333,61 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
   pinned versions of `@codemirror/state` 6.7.6, `@codemirror/view` 6.43.15,
   `@codemirror/commands` 6.11.1, and `@codemirror/search` 6.7.2. It presents
   the plain Markdown file as a Sublime Text style PlainTasks notepad: yellow
-  paper, headings as projects, and agent status lines in muted ink. The file
-  remains plain Markdown. CodeMirror uses `\n` as its line separator, so `\r`
-  remains a source character and the text stays byte exact.
-- Line decorations come from `editor/lines.ts`. Task markers are CSS drawings
-  over the three source characters in `[ ]`, so copy, selection, undo, and
-  source offsets still use Markdown. Clicking a marker toggles done; Alt-click
-  toggles cancelled. While the selection touches a marker slot, its literal
-  source is shown.
+  paper, 17px monospace text, a centred column, hanging indents, headings as
+  projects, and agent status lines in muted ink. The file remains plain
+  Markdown. CodeMirror uses `\n` as its line separator, so `\r` remains a
+  source character and the text stays byte exact.
+- Line decorations come from `editor/lines.ts`. On decorated lines, task and
+  status bullets, heading and quote markers, Markdown delimiters, and link
+  syntax are hidden while the label remains editable. The active line shows
+  its source markup, except that the task bullet stays hidden. Plain prose
+  bullets become a visible `•`, and task markers are CSS drawings over the
+  three source characters in `[ ]`. Copy, selection, undo, and source offsets
+  still use Markdown. Clicking a marker toggles done; Alt-click toggles
+  cancelled. While the selection touches a marker slot, its literal source is
+  shown. Empty tasks keep their marker but do not count in statistics or
+  archive actions.
+- The editor uses PlainTasks markers `☐`, `✔`, and `✘` for open, done, and
+  cancelled tasks. Tags use PlainTasks colours: generic tags are bold red,
+  `@today` is bold black on yellow, `@high` is bold black on orange, `@low` is
+  bold white on dark grey, `@critical` is bold black on red, and state or
+  project tags use muted ink. Tag arguments remain part of the tag decoration.
 
 | Action | Mac | Other | Semantics |
 | --- | --- | --- | --- |
 | New task | `Cmd-Enter`, `Cmd-i` | `Ctrl-Enter`, `Ctrl-i` | Create a task on the current line, or continue the targeted task block. |
 | Toggle done | `Cmd-d`, `Cmd-Shift-Enter` | `Ctrl-d`, `Ctrl-Shift-Enter` | Toggle the targeted tasks between open and done. |
 | Toggle cancelled | `Ctrl-c`, `Cmd-Alt-Enter` | `Alt-c`, `Ctrl-Alt-Enter` | Toggle cancellation, preserving the task as editable Markdown. |
-| Archive | `Cmd-Shift-a`, `Cmd-Alt-a` | `Ctrl-Shift-a`, `Ctrl-Alt-a` | Move completed or cancelled task blocks under `## Archive`. |
-| Move up or down | `Cmd-Ctrl-ArrowUp`, `Alt-ArrowUp`; `Cmd-Ctrl-ArrowDown`, `Alt-ArrowDown` | `Ctrl-Shift-ArrowUp`, `Alt-ArrowUp`; `Ctrl-Shift-ArrowDown`, `Alt-ArrowDown` | Move a task block among its siblings, keeping attached status and notes. |
+| Archive | `Cmd-Shift-a`, `Cmd-Alt-a` | `Ctrl-Shift-a`, `Ctrl-Alt-a` | Move resolved task blocks under `## Archive`, newest first, adding ` @project(Section)` to each archived task when needed. Open, empty, or blocked resolved tasks do not move. |
+| Move up or down | `Cmd-Ctrl-ArrowUp`, `Alt-ArrowUp`; `Cmd-Ctrl-ArrowDown`, `Alt-ArrowDown` | `Ctrl-Shift-ArrowUp`, `Alt-ArrowUp`; `Ctrl-Shift-ArrowDown`, `Alt-ArrowDown` | Swap any line with its neighbour using Sublime semantics. A task, or a line owned by a task, moves with its whole block and can cross headings and sections. |
 | Continue task | `Enter` | `Enter` | Split the current task and insert an open sibling with the same prefix. |
-| Indent or outdent | `Cmd-]`, `Cmd-[` | `Ctrl-]`, `Ctrl-[` | Indent or outdent the selected task blocks. |
+| Tab, tag completion, or indent | `Tab` | `Tab` | Expand a PlainTasks snippet when the caret follows a completion token, otherwise indent the current line or selected task blocks. `s`, `t`, `c`, `h`, `l`, `cr`, `d`, and `@s` expand to the supported tags; a bare `@started` or `@created` gets a local date. |
+| Outdent | `Shift-Tab`, `Cmd-[` | `Shift-Tab`, `Ctrl-[` | Outdent the current line or selected task blocks. |
 | Open link | `Cmd-Shift-u`, `Alt-Enter` | `Alt-Enter` | Open the link under the caret, or reveal a project anchor. |
 | Go to project | `Cmd-p` | `Ctrl-p` | Open the project palette and move to the selected heading. |
 | Command palette | `Cmd-Shift-p`, `F1` | `Ctrl-Shift-p`, `F1` | Search and run editor commands. |
 | Find | `Cmd-f` | `Ctrl-f` | Open CodeMirror Find. |
+| Keyboard shortcuts | `Cmd-/` | `Ctrl-/` | Open the shortcuts palette. `?` opens it when focus is outside the editor or an input. Escape closes it. |
 
-The editor deliberately leaves `Mod-r`, `Mod-Shift-r`, `Mod-Shift-o`, `Tab`,
-`Shift-Tab`, `Ctrl-c` on other platforms, and `Ctrl-Shift-u` on other platforms
-unbound. Browser reload, tab search, focus navigation, cancellation conflicts,
-and Unicode input keep their browser or platform meanings.
+The editor deliberately leaves `Mod-r`, `Mod-Shift-r`, `Mod-Shift-o`, `Ctrl-c`
+on other platforms, and `Ctrl-Shift-u` on other platforms unbound. Browser
+reload, tab search, focus navigation, cancellation conflicts, and Unicode input
+keep their browser or platform meanings. Escape then Tab leaves the editor so
+browser focus navigation remains available.
 
 - The status bar shows PlainTasks statistics as `done/total done`. Counts
-  exclude the first top level `## Archive` subtree and include nested tasks.
-  It also shows line and grapheme column, the base version, and `Saved`,
-  `Saving`, or `Reconnecting`.
+  exclude empty tasks and the first top level `## Archive` subtree, and include
+  nested tasks. Its centre shows key caps for New task, Done, Cancel, Archive,
+  Commands, and Help, hidden below 900px. It also shows line and grapheme
+  column, the base version, and `Saved`, `Saving`, or `Reconnecting`.
+- Toggle actions write PlainTasks local time stamps in `%y-%m-%d %H:%M` form:
+  ` @done (26-11-04 21:32)` and ` @cancelled (26-11-04 21:32)`. Reopening a
+  task removes the matching resolved stamp and keeps `@started`. The same
+  format is used by `do-it todo check`, `todo cancel`, and `todo start`.
+- Archive follows PlainTasks: the first top level `## Archive` section is the
+  destination, or one is created at the end. Resolved task blocks go directly
+  below its heading, newest first. Each archived task gets its nearest heading
+  as ` @project(Section)` unless that tag is already present.
 - Activity is a collapsible pane, initially closed, with the latest 20 remote
   changes and their version, authors, and todo details. Remote insertions are
   highlighted for three seconds. The pane does not take editor focus.

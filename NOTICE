@@ -1,4 +1,5 @@
-The browser editor's notebook colours and marker shapes are adapted from
+The browser editor's notebook colours, PlainTasks markers, tag completions,
+stamps, and tag colours are adapted from
 PlainTasks (https://github.com/aziz/PlainTasks), an MIT licensed project,
 Copyright (c) 2012 Allen Bargi and contributors, through Herdr UI's document
 theme. See the PlainTasks LICENSE file for the source attribution.
