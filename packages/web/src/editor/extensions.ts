@@ -1,9 +1,9 @@
 import {
-  Annotation, ChangeSet, EditorSelection, EditorState, Facet, Prec, StateEffect, StateField,
-  type Extension, type Range,
+  Annotation, ChangeSet, EditorSelection, EditorState, Facet, Prec, RangeSet, StateEffect, StateField,
+  type Extension, type Range, type StateCommand,
 } from '@codemirror/state'
 import {
-  Decoration, EditorView, ViewPlugin, drawSelection, highlightActiveLine, keymap,
+  Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap,
   type DecorationSet, type ViewUpdate,
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands'
@@ -12,7 +12,7 @@ import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { Message } from '../message'
 import { runAction } from './actions'
 import { bindings, type Platform } from './keymap'
-import { classifyDocument, linkAt, type ClassifiedDocument, type Span } from './lines'
+import { classifyDocument, linkAt, type ClassifiedDocument, type ClassifiedLine, type InlineKind, type Span } from './lines'
 import type { ActionId, EditorCommand, TextSelection } from './types'
 
 export const remoteTransaction = Annotation.define<number>()
@@ -81,19 +81,54 @@ export const runEditorCommand = (view: EditorView, command: EditorCommand): bool
   }
 }
 
-const inlineClasses = {
+const inlineClasses: Record<InlineKind, string> = {
   strong: 'pt-strong', strongMark: 'pt-strong-mark', code: 'pt-code', codeMark: 'pt-code-mark', link: 'pt-link',
+  em: 'pt-em', emMark: 'pt-em-mark', strike: 'pt-strike', strikeMark: 'pt-strike-mark', linkMark: 'pt-link-mark',
 }
 
-const lineDecorations = (state: EditorState, classified: ClassifiedDocument): DecorationSet => {
+class BulletDot extends WidgetType {
+  eq(): boolean { return true }
+  ignoreEvent(): boolean { return false }
+  toDOM(view: EditorView): HTMLElement {
+    const span = view.dom.ownerDocument.createElement('span')
+    span.className = 'pt-bullet-dot'
+    span.textContent = '•'
+    return span
+  }
+}
+
+const editingLines = (state: EditorState): number[] => {
+  const touched: number[] = []
+  for (const range of state.selection.ranges) {
+    const first = state.doc.lineAt(range.from).number
+    const last = state.doc.lineAt(range.to).number
+    for (let number = Math.max(first, (touched[touched.length - 1] ?? 0) + 1); number <= last; number += 1) {
+      touched.push(number)
+    }
+  }
+  return touched
+}
+
+const sameNumbers = (left: readonly number[], right: readonly number[]): boolean =>
+  left.length === right.length && left.every((number, index) => number === right[index])
+
+const lineDecorations = (classified: ClassifiedDocument, editing: readonly number[]) => {
   const ranges: Range<Decoration>[] = []
+  const replaced: Range<Decoration>[] = []
+  const touched = new Set(editing)
   const mark = (span: Span | undefined, className: string) => {
     if (span && span.from < span.to) ranges.push(Decoration.mark({ class: className }).range(span.from, span.to))
   }
+  const replace = (span: Span, widget?: WidgetType) => {
+    const range = Decoration.replace(widget ? { widget } : {}).range(span.from, span.to)
+    replaced.push(range)
+    ranges.push(range)
+  }
   for (const line of classified.lines) {
+    const editing = touched.has(line.index + 1)
     const classes: string[] = []
     switch (line.kind) {
-      case 'project': classes.push('pt-line-project'); break
+      case 'project': classes.push('pt-line-project', `pt-level-${line.level ?? 1}`); break
       case 'task': classes.push('pt-line-task', `pt-line-task-${line.state ?? 'open'}`); break
       case 'status': classes.push('pt-line-status'); break
       case 'note': classes.push('pt-line-note'); break
@@ -105,35 +140,145 @@ const lineDecorations = (state: EditorState, classified: ClassifiedDocument): De
       case 'blank': break
     }
     if (line.archived) classes.push('pt-line-archived')
-    if (classes.length) ranges.push(Decoration.line({ class: classes.join(' ') }).range(line.from))
-    mark(line.marks, 'pt-heading-marks')
-    mark(line.bullet, 'pt-bullet')
+    if (editing) classes.push('pt-line-editing')
+    const hanging = line.kind === 'task' || line.kind === 'status' || line.kind === 'note'
+    if (hanging) classes.push('pt-hang')
+    if (classes.length) ranges.push(Decoration.line({
+      class: classes.join(' '),
+      attributes: hanging ? { style: `--pt-hang: ${line.hang}` } : undefined,
+    }).range(line.from))
+    for (const span of line.alwaysHidden) replace(span)
+    if (editing) mark(line.marks, 'pt-heading-marks')
+    else {
+      for (const span of line.previewHidden) replace(span)
+      if (line.dot) replace(line.dot, new BulletDot())
+    }
+    if (!line.alwaysHidden.length && (editing || !line.dot)) mark(line.bullet, 'pt-bullet')
     if (line.kind === 'project') mark(line.label, 'pt-heading-title')
     else if (line.kind === 'task') mark(line.label, 'pt-label')
-    const slot = line.checkbox
-    if (slot) {
-      const touches = state.selection.ranges.some(range => range.empty
-        ? range.head >= slot.from && range.head < slot.to
-        : range.from < slot.to && range.to > slot.from)
-      mark(slot, `pt-marker pt-marker-${line.state ?? 'open'}${touches ? ' pt-marker-source' : ''}`)
+    for (const span of line.inline) {
+      if (editing || !span.kind.endsWith('Mark')) mark(span, inlineClasses[span.kind])
     }
-    for (const span of line.inline) mark(span, inlineClasses[span.kind])
   }
-  return Decoration.set(ranges, true)
+  return { decorations: Decoration.set(ranges, true), atomicRanges: RangeSet.of(replaced, true) }
 }
 
-const documentDecorations = StateField.define<{ classified: ClassifiedDocument; decorations: DecorationSet }>({
+export const documentDecorations = StateField.define<{
+  classified: ClassifiedDocument
+  editing: readonly number[]
+  decorations: DecorationSet
+  atomicRanges: RangeSet<Decoration>
+}>({
   create: state => {
     const classified = classifyDocument(state.doc.toString())
-    return { classified, decorations: lineDecorations(state, classified) }
+    const editing = editingLines(state)
+    return { classified, editing, ...lineDecorations(classified, editing) }
   },
   update: (value, transaction) => {
     if (!transaction.docChanged && !transaction.selection) return value
+    const editing = editingLines(transaction.state)
+    if (!transaction.docChanged && sameNumbers(value.editing, editing)) return value
     const classified = transaction.docChanged ? classifyDocument(transaction.newDoc.toString()) : value.classified
-    return { classified, decorations: lineDecorations(transaction.state, classified) }
+    return { classified, editing, ...lineDecorations(classified, editing) }
+  },
+  provide: field => [
+    EditorView.decorations.from(field, value => value.decorations),
+    EditorView.atomicRanges.of(view => view.state.field(field).atomicRanges),
+  ],
+})
+
+const sourceMarkers = (state: EditorState, classified: ClassifiedDocument): number[] => {
+  const touched = new Set<number>()
+  for (const range of state.selection.ranges) {
+    const first = state.doc.lineAt(range.from).number - 1
+    const last = state.doc.lineAt(range.to).number - 1
+    for (let index = first; index <= last; index += 1) {
+      const slot = classified.lines[index]?.checkbox
+      if (slot && (range.empty ? range.head >= slot.from && range.head < slot.to : range.from < slot.to && range.to > slot.from)) {
+        touched.add(index)
+      }
+    }
+  }
+  return [...touched]
+}
+
+const markerDecoration = (line: ClassifiedLine, source: boolean): Range<Decoration> => Decoration.mark({
+  class: `pt-marker pt-marker-${line.state ?? 'open'}${source ? ' pt-marker-source' : ''}${line.empty ? ' pt-marker-empty' : ''}`,
+}).range(line.checkbox!.from, line.checkbox!.to)
+
+// Source visibility changes only at slot boundaries, independently of the cached line preview and atomic ranges.
+const markerDecorations = StateField.define<{ sources: readonly number[]; decorations: DecorationSet }>({
+  create: state => {
+    const classified = state.field(documentDecorations).classified
+    const sources = sourceMarkers(state, classified)
+    const touched = new Set(sources)
+    return {
+      sources,
+      decorations: Decoration.set(classified.lines.flatMap(line => line.checkbox ? [markerDecoration(line, touched.has(line.index))] : [])),
+    }
+  },
+  update: (value, transaction) => {
+    if (!transaction.docChanged && !transaction.selection) return value
+    const classified = transaction.state.field(documentDecorations).classified
+    const sources = sourceMarkers(transaction.state, classified)
+    const touched = new Set(sources)
+    if (transaction.docChanged) return {
+      sources,
+      decorations: Decoration.set(classified.lines.flatMap(line => line.checkbox ? [markerDecoration(line, touched.has(line.index))] : [])),
+    }
+    if (sameNumbers(value.sources, sources)) return value
+    const previous = new Set(value.sources)
+    const changed = [...new Set([...value.sources, ...sources])]
+      .filter(index => previous.has(index) !== touched.has(index))
+      .sort((left, right) => left - right)
+    const add = changed.map(index => markerDecoration(classified.lines[index]!, touched.has(index)))
+    const starts = new Set(add.map(range => range.from))
+    return {
+      sources,
+      decorations: value.decorations.update({
+        filter: from => !starts.has(from),
+        filterFrom: add[0]!.from,
+        filterTo: add[add.length - 1]!.to,
+        add, sort: true,
+      }),
+    }
   },
   provide: field => EditorView.decorations.from(field, value => value.decorations),
 })
+
+const taskCaretFilter = EditorState.transactionFilter.of(transaction => {
+  if (!transaction.isUserEvent('select') || transaction.isUserEvent('select.pointer') ||
+    transaction.annotation(remoteTransaction) !== undefined) return transaction
+  const classified = transaction.docChanged
+    ? classifyDocument(transaction.newDoc.toString())
+    : transaction.startState.field(documentDecorations).classified
+  let moved = false
+  const ranges = transaction.newSelection.ranges.map(range => {
+    if (!range.empty) return range
+    const line = classified.lines[transaction.newDoc.lineAt(range.head).number - 1]
+    if (line?.kind !== 'task' || !line.bullet || !line.label || range.head < line.bullet.from || range.head >= line.label.from) return range
+    moved = true
+    return EditorSelection.cursor(line.label.from)
+  })
+  return moved ? [transaction, {
+    selection: EditorSelection.create(ranges, transaction.newSelection.mainIndex), sequential: true,
+  }] : transaction
+})
+
+export const deleteEmptyTaskPrefix: StateCommand = ({ state, dispatch }) => {
+  const classified = state.field(documentDecorations).classified
+  const edits: Array<{ from: number; to: number }> = []
+  for (const range of state.selection.ranges) {
+    const line = classified.lines[state.doc.lineAt(range.head).number - 1]
+    if (!range.empty || !line?.empty || !line.bullet || !line.label || range.head !== line.label.from) return false
+    edits.push({ from: line.bullet.from, to: line.label.from })
+  }
+  const changes = state.changes(edits)
+  dispatch(state.update({
+    changes, selection: state.selection.map(changes), userEvent: 'delete.backward', scrollIntoView: true,
+  }))
+  return true
+}
 
 export const remoteHighlights = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -184,6 +329,10 @@ export const editorExtensions = (platform: Platform): Extension => [
   history(), drawSelection(), highlightActiveLine(), EditorView.lineWrapping,
   EditorView.contentAttributes.of({ 'aria-label': 'Todo document' }),
   Prec.highest(inputGuard),
+  Prec.highest(keymap.of([{
+    key: 'Backspace',
+    run: view => view.composing || view.plugin(inputGuard)?.ignoreKey ? false : deleteEmptyTaskPrefix(view),
+  }])),
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,
     run: (view: EditorView) => view.composing || view.plugin(inputGuard)?.ignoreKey
@@ -192,7 +341,7 @@ export const editorExtensions = (platform: Platform): Extension => [
   }))))),
   keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
   search({ top: true }),
-  documentDecorations, remoteHighlights, highlightTimer,
+  documentDecorations, markerDecorations, taskCaretFilter, remoteHighlights, highlightTimer,
   EditorView.domEventHandlers({
     mousedown(event, view) {
       const target = event.target
@@ -202,7 +351,7 @@ export const editorExtensions = (platform: Platform): Extension => [
       event.preventDefault()
       const position = view.posAtDOM(marker)
       const line = view.state.doc.lineAt(position)
-      const slot = view.state.field(documentDecorations).classified.lines.find(candidate => candidate.from === line.from)?.checkbox
+      const slot = view.state.field(documentDecorations).classified.lines[line.number - 1]?.checkbox
       if (slot) {
         runEditorAction(view, event.altKey ? 'toggleCancelled' : 'toggleDone', {
           ranges: [{ anchor: slot.from, head: slot.from }], main: 0,

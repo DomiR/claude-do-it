@@ -17,7 +17,9 @@ export interface Span {
   readonly to: number
 }
 
-export type InlineKind = 'strong' | 'strongMark' | 'code' | 'codeMark' | 'link'
+export type InlineKind =
+  | 'strong' | 'strongMark' | 'em' | 'emMark' | 'strike' | 'strikeMark'
+  | 'code' | 'codeMark' | 'link' | 'linkMark'
 
 export interface InlineSpan extends Span {
   readonly kind: InlineKind
@@ -33,8 +35,14 @@ export interface ClassifiedLine {
   readonly state?: TaskState
   readonly marks?: Span
   readonly bullet?: Span
+  readonly quoteMark?: Span
   readonly checkbox?: Span
   readonly label?: Span
+  readonly hang: number
+  readonly empty: boolean
+  readonly alwaysHidden: ReadonlyArray<Span>
+  readonly previewHidden: ReadonlyArray<Span>
+  readonly dot?: Span
   readonly inline: ReadonlyArray<InlineSpan>
   readonly archived: boolean
   readonly owner?: number
@@ -70,13 +78,14 @@ interface LinkCandidate {
   readonly from: number
   readonly to: number
   readonly target: string
+  readonly label: Span
 }
 
 type MutableClassifiedLine = {
   -readonly [Key in keyof ClassifiedLine]: ClassifiedLine[Key]
 }
 
-const inlineKinds = new Set<LineKind>(['project', 'task', 'status', 'note', 'prose'])
+const inlineKinds = new Set<LineKind>(['project', 'task', 'status', 'note', 'prose', 'quote'])
 
 const trimRange = (text: string, from: number, to: number): Span => {
   let start = from
@@ -89,11 +98,14 @@ const trimRange = (text: string, from: number, to: number): Span => {
 const trimBareUrlEnd = (value: string): string => {
   let end = value.length
   while (end > 0 && /[.,!?;:]/.test(value[end - 1]!)) end -= 1
-  while (end > 0 && value[end - 1] === ')') {
-    const opening = value.slice(0, end).split('(').length - 1
-    const closing = value.slice(0, end).split(')').length - 1
-    if (closing <= opening) break
+  let balance = 0
+  for (let index = 0; index < end; index += 1) {
+    if (value[index] === '(') balance += 1
+    else if (value[index] === ')') balance -= 1
+  }
+  while (end > 0 && value[end - 1] === ')' && balance < 0) {
     end -= 1
+    balance += 1
   }
   return value.slice(0, end)
 }
@@ -102,12 +114,12 @@ const linkCandidates = (text: string, from: number, to: number): LinkCandidate[]
   const source = text.slice(from, to)
   const result: LinkCandidate[] = []
 
-  const markdown = /\[[^\]\r\n]*\]\(([^()\s]+)\)/g
+  const markdown = /\[([^\[\]\r\n]*)\]\(([^()\s]+)\)/g
   for (const match of source.matchAll(markdown)) {
     const value = match[0]!
-    const target = match[1]!
+    const target = match[2]!
     const start = from + match.index!
-    result.push({ from: start, to: start + value.length, target })
+    result.push({ from: start, to: start + value.length, target, label: { from: start + 1, to: start + 1 + match[1]!.length } })
   }
 
   const autolink = /<((?:https?:\/\/|mailto:)[^<>\s]+)>/gi
@@ -115,7 +127,7 @@ const linkCandidates = (text: string, from: number, to: number): LinkCandidate[]
     const value = match[0]!
     const target = match[1]!
     const start = from + match.index!
-    result.push({ from: start, to: start + value.length, target })
+    result.push({ from: start, to: start + value.length, target, label: { from: start + 1, to: start + value.length - 1 } })
   }
 
   const bare = /(?:https?:\/\/|mailto:)[^\s<>\[\]]+/gi
@@ -124,7 +136,7 @@ const linkCandidates = (text: string, from: number, to: number): LinkCandidate[]
     const value = trimBareUrlEnd(raw)
     if (!value) continue
     const start = from + match.index!
-    result.push({ from: start, to: start + value.length, target: value })
+    result.push({ from: start, to: start + value.length, target: value, label: { from: start, to: start + value.length } })
   }
 
   return result
@@ -135,38 +147,53 @@ const inlineCandidates = (text: string, from: number, to: number): InlineCandida
   const result: InlineCandidate[] = []
 
   for (const link of linkCandidates(text, from, to)) {
-    result.push({ from: link.from, to: link.to, spans: [{ from: link.from, to: link.to, kind: 'link' }] })
+    const spans: InlineSpan[] = []
+    if (link.from < link.label.from) spans.push({ from: link.from, to: link.label.from, kind: 'linkMark' })
+    if (link.label.from < link.label.to) spans.push({ ...link.label, kind: 'link' })
+    if (link.label.to < link.to) spans.push({ from: link.label.to, to: link.to, kind: 'linkMark' })
+    result.push({ from: link.from, to: link.to, spans })
   }
 
-  const strong = /\*\*([^\r\n]*?)\*\*/g
-  for (const match of source.matchAll(strong)) {
-    const value = match[0]!
-    const start = from + match.index!
-    const markLength = 2
+  const delimited = (start: number, end: number, width: number, kind: InlineKind, mark: InlineKind) => {
     result.push({
       from: start,
-      to: start + value.length,
+      to: end,
       spans: [
-        { from: start, to: start + markLength, kind: 'strongMark' },
-        { from: start + markLength, to: start + value.length - markLength, kind: 'strong' },
-        { from: start + value.length - markLength, to: start + value.length, kind: 'strongMark' },
+        { from: start, to: start + width, kind: mark },
+        { from: start + width, to: end - width, kind },
+        { from: end - width, to: end, kind: mark },
       ],
     })
   }
 
-  const code = /`([^`\r\n]*?)`/g
-  for (const match of source.matchAll(code)) {
-    const value = match[0]!
-    const start = from + match.index!
-    result.push({
-      from: start,
-      to: start + value.length,
-      spans: [
-        { from: start, to: start + 1, kind: 'codeMark' },
-        { from: start + 1, to: start + value.length - 1, kind: 'code' },
-        { from: start + value.length - 1, to: start + value.length, kind: 'codeMark' },
-      ],
-    })
+  const patterns: ReadonlyArray<readonly [RegExp, number, InlineKind, InlineKind]> = [
+    [/(\*\*|__)([^\r\n]+?)\1/g, 2, 'strong', 'strongMark'],
+    [/~~([^~\r\n]+)~~/g, 2, 'strike', 'strikeMark'],
+    [/`([^`\r\n]+)`/g, 1, 'code', 'codeMark'],
+  ]
+  for (const [pattern, width, kind, mark] of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      const start = from + match.index!
+      delimited(start, start + match[0].length, width, kind, mark)
+    }
+  }
+
+  let opener: number | undefined
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] !== '*' || source[index - 1] === '*' || source[index + 1] === '*') continue
+    const before = source[index - 1] ?? ''
+    const after = source[index + 1] ?? ''
+    const beforeSpace = !before || /\s/.test(before)
+    const afterSpace = !after || /\s/.test(after)
+    const beforePunctuation = /[\p{P}\p{S}]/u.test(before)
+    const afterPunctuation = /[\p{P}\p{S}]/u.test(after)
+    if (/[\p{L}\p{N}]/u.test(before) && /[\p{L}\p{N}]/u.test(after)) continue
+    const opens = !afterSpace && (!afterPunctuation || beforeSpace || beforePunctuation)
+    const closes = !beforeSpace && (!beforePunctuation || afterSpace || afterPunctuation)
+    if (closes && opener !== undefined) {
+      delimited(from + opener, from + index + 1, 1, 'em', 'emMark')
+      opener = undefined
+    } else if (opens) opener = index
   }
 
   return result
@@ -174,7 +201,7 @@ const inlineCandidates = (text: string, from: number, to: number): InlineCandida
 
 const inlineSpans = (text: string, line: ClassifiedLine): ReadonlyArray<InlineSpan> => {
   if (!inlineKinds.has(line.kind)) return []
-  const candidates = inlineCandidates(text, line.from, line.to)
+  const candidates = inlineCandidates(text, line.label?.from ?? line.quoteMark?.to ?? line.from, line.to)
     .sort((left, right) => left.from - right.from || right.to - right.from - (left.to - left.from))
   const accepted: InlineSpan[] = []
   let end = line.from
@@ -183,21 +210,17 @@ const inlineSpans = (text: string, line: ClassifiedLine): ReadonlyArray<InlineSp
     accepted.push(...candidate.spans)
     end = candidate.to
   }
-  return accepted.sort((left, right) => left.from - right.from || left.to - right.to)
+  return accepted
 }
 
 const headingTitleRange = (text: string, line: Line): Span => trimRange(text, line.content, line.to)
 
-const ownerFor = (all: Line[], index: number, taskIndexes: ReadonlyArray<number>): number | undefined => {
-  const current = all[index]!
-  let owner: number | undefined
-  for (const taskIndex of taskIndexes) {
-    if (taskIndex >= index) break
-    const task = all[taskIndex]!
-    if (current.depth <= task.depth) continue
-    if (index < blockEnd(all, taskIndex)) owner = taskIndex
+const indentationColumns = (text: string, line: Line): number => {
+  let column = 0
+  for (let at = line.from; at < line.from + line.indent; at += 1) {
+    column += text[at] === '\t' ? 4 - column % 4 : 1
   }
-  return owner
+  return column
 }
 
 const archivedLines = (all: Line[], text: string): ReadonlySet<number> => {
@@ -221,16 +244,27 @@ const archivedLines = (all: Line[], text: string): ReadonlySet<number> => {
 
 export const classifyDocument = (text: string): ClassifiedDocument => {
   const parsed = lines(text)
-  const taskIndexes = parsed.flatMap((line, index) => line.state === undefined ? [] : [index])
   const archived = archivedLines(parsed, text)
   const stats = { done: 0, cancelled: 0, open: 0, total: 0 }
   const projects: Project[] = []
+  const owners: number[] = []
+  let rootEnd = 0
 
   const classified = parsed.map((line, index): ClassifiedLine => {
-    const owner = ownerFor(parsed, index, taskIndexes)
+    if (index >= rootEnd || line.kind === 'heading') owners.length = 0
+    if (line.kind !== 'blank') {
+      while (owners.length && parsed[owners[owners.length - 1]!]!.depth >= line.depth) owners.pop()
+    }
+    const owner = owners[owners.length - 1]
+    const task = line.kind === 'item' && line.state !== undefined && line.checkbox !== undefined
+    if (task) {
+      // Root blocks are disjoint. Only scan each root with blockEnd, then track nested owners with the stack.
+      if (!owners.length) rootEnd = blockEnd(parsed, index)
+      owners.push(index)
+    }
     let kind: LineKind
     if (line.kind === 'heading') kind = 'project'
-    else if (line.state !== undefined) kind = 'task'
+    else if (task) kind = 'task'
     else if (line.kind === 'item' && owner !== undefined) kind = 'status'
     else if (line.kind === 'paragraph' && owner !== undefined) kind = 'note'
     else if (line.kind === 'paragraph') kind = 'prose'
@@ -241,15 +275,19 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
     else if (line.kind === 'quote') kind = 'quote'
     else kind = 'rule'
 
-    const result = {
+    const result: MutableClassifiedLine = {
       index,
       from: line.from,
       to: line.to,
       kind,
       depth: line.depth,
+      hang: indentationColumns(text, line) + (task ? 4 : 0),
+      empty: task && text.slice(line.content, line.to).trim().length === 0,
+      alwaysHidden: [],
+      previewHidden: [],
       inline: [],
       archived: archived.has(index),
-    } as MutableClassifiedLine
+    }
     if (line.level !== undefined) result.level = line.level
     if (line.state !== undefined) result.state = line.state
     if (owner !== undefined && (kind === 'status' || kind === 'note')) result.owner = owner
@@ -269,7 +307,7 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
       result.bullet = { from: listStart, to: line.checkbox! }
       result.checkbox = { from: line.checkbox!, to: line.checkbox! + 3 }
       result.label = { from: line.content, to: line.to }
-      if (!archived.has(index)) {
+      if (!result.archived && !result.empty) {
         stats.total += 1
         if (line.state === 'done') stats.done += 1
         else if (line.state === 'cancelled') stats.cancelled += 1
@@ -280,9 +318,28 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
       result.label = { from: line.content, to: line.to }
     } else if (kind === 'note') {
       result.label = { from: line.content, to: line.to }
+    } else if (kind === 'quote') {
+      const start = line.from + line.indent
+      result.quoteMark = { from: start, to: start + (text[start + 1] === ' ' ? 2 : 1) }
+    } else if (kind === 'prose' && line.kind === 'item') {
+      result.bullet = { from: line.from + line.indent, to: line.content }
+      result.label = { from: line.content, to: line.to }
+      if (/[-*+]/.test(text[result.bullet.from]!)) {
+        result.dot = { from: result.bullet.from, to: result.bullet.from + 1 }
+      }
     }
 
     result.inline = inlineSpans(text, result)
+    if ((kind === 'task' || kind === 'status') && result.bullet && result.bullet.from < result.bullet.to) {
+      result.alwaysHidden = [result.bullet]
+    }
+    const previewHidden: Span[] = []
+    const prefix = result.marks ?? result.quoteMark
+    if (prefix && prefix.from < prefix.to) previewHidden.push(prefix)
+    for (const span of result.inline) {
+      if (span.kind.endsWith('Mark')) previewHidden.push({ from: span.from, to: span.to })
+    }
+    result.previewHidden = previewHidden
     return result
   })
 
@@ -292,13 +349,11 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
 export const linkAt = (text: string, offset: number): string | undefined => {
   const document = classifyDocument(text)
   for (const line of document.lines) {
-    if (!inlineKinds.has(line.kind)) continue
-    for (const span of line.inline) {
-      if (span.kind !== 'link' || offset < span.from || offset > span.to) continue
-      const link = linkCandidates(text, line.from, line.to).find((candidate) =>
-        candidate.from === span.from && candidate.to === span.to,
-      )
-      if (link) return link.target
+    if (!inlineKinds.has(line.kind) || offset < line.from || offset > line.to) continue
+    for (const link of linkCandidates(text, line.from, line.to)) {
+      if (offset < link.from || offset > link.to) continue
+      if (line.inline.some(span => (span.kind === 'link' || span.kind === 'linkMark') &&
+        span.from >= link.from && span.to <= link.to)) return link.target
     }
   }
   return undefined
