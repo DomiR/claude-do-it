@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -u
+
+lock_dir="${TMPDIR:-/tmp}/claude-do-it-serial.lock"
+
+while ! mkdir "$lock_dir" 2>/dev/null; do
+  if [ -f "$lock_dir/pid" ]; then
+    read -r lock_pid < "$lock_dir/pid" || lock_pid=""
+    if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+      rm -rf "$lock_dir"
+      continue
+    fi
+  fi
+  sleep 1
+done
+
+printf '%s\n' "$$" > "$lock_dir/pid"
+
+cleanup() {
+  rm -rf "$lock_dir"
+}
+
+trap cleanup EXIT HUP INT TERM
+
+"$@"
+status=$?
+exit "$status"

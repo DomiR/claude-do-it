@@ -1,0 +1,10 @@
+{
+  "name": "@do-it/doc",
+  "type": "module",
+  "exports": {".": "./src/index.ts"},
+  "dependencies": {
+    "diff": "9.0.0",
+    "effect": "4.1.2",
+    "loro-crdt": "1.17.1"
+  }
+}
