@@ -174,7 +174,7 @@ function ownerForLine(view: DocumentView, index: number): number | undefined {
   return containingTask(view, index)
 }
 
-function taskTargets(view: DocumentView, selection: TextSelection, includeOwners: boolean): number[] {
+function taskTargets(view: DocumentView, selection: TextSelection, includeOwners: boolean, includeOwnersForSelection = includeOwners): number[] {
   const result = new Set<number>()
   for (const range of selection.ranges) {
     if (range.anchor === range.head) {
@@ -186,7 +186,7 @@ function taskTargets(view: DocumentView, selection: TextSelection, includeOwners
     for (const index of selectedLines(view, { ranges: [range], main: 0 })) {
       const line = view.lines[index]
       if (line?.state !== undefined) result.add(index)
-      else if (includeOwners) {
+      else if (includeOwnersForSelection) {
         const owner = ownerForLine(view, index)
         if (owner !== undefined) result.add(owner)
       }
@@ -370,7 +370,7 @@ function newTask(view: DocumentView, selection: TextSelection): ActionResult {
 }
 
 function toggle(view: DocumentView, selection: TextSelection, kind: 'done' | 'cancelled'): ActionResult {
-  const targets = taskTargets(view, selection, false)
+  const targets = taskTargets(view, selection, true, false)
   if (targets.length === 0) return unavailable(NO_TASK)
   if (kind === 'cancelled' && targets.every(index => view.lines[index]?.state === 'done')) {
     return unavailable('Reopen completed tasks before cancelling')

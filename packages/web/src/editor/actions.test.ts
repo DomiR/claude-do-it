@@ -72,7 +72,7 @@ describe('toggleDone', () => {
     applied(text, action(text, caret(text.indexOf('Open')), 'toggleDone'), '- [x] Open\n- [x] Done\n- [X] Upper\n- [-] Cancelled', caret(text.indexOf('Open')))
     applied(text, action(text, caret(text.indexOf('Done')), 'toggleDone'), '- [ ] Open\n- [ ] Done\n- [X] Upper\n- [-] Cancelled', caret(text.indexOf('Done')))
     applied(text, action(text, caret(text.indexOf('Upper')), 'toggleDone'), '- [ ] Open\n- [x] Done\n- [ ] Upper\n- [-] Cancelled', caret(text.indexOf('Upper')))
-    applied(text, action(text, caret(text.indexOf('Cancelled')), 'toggleDone'), next, caret(text.indexOf('Cancelled')))
+    applied(text, action(text, caret(text.indexOf('Cancelled')), 'toggleDone'), '- [ ] Open\n- [x] Done\n- [X] Upper\n- [x] Cancelled', caret(text.indexOf('Cancelled')))
   })
 
   test('uses the owning task when the caret is on a status line', () => {
@@ -84,7 +84,7 @@ describe('toggleDone', () => {
   test('toggles every task intersected by multiple ranges and excludes a range ending at a line start', () => {
     const text = '- [ ] One\n- [ ] Two\n- [ ] Three'
     const selection: TextSelection = {
-      ranges: [range(0, text.indexOf('\n')), range(text.indexOf('Two'), text.indexOf('Three'))],
+      ranges: [range(0, text.indexOf('\n')), range(text.indexOf('Two'), text.indexOf('- [ ] Three'))],
       main: 1,
     }
     const next = '- [x] One\n- [x] Two\n- [ ] Three'
@@ -150,7 +150,8 @@ describe('archive', () => {
       ranges: [range(next.lastIndexOf('- [x] One'), next.lastIndexOf('- [x] One') + text.indexOf('\r\n'))],
       main: 0,
     })
-    unavailable(action(next, caret(next.indexOf('One')), 'archive'), 'No completed or cancelled tasks to archive')
+    const alreadyArchived = '## Archive\r\n\r\n- [x] One\r\n- [x] Two\r\n'
+    unavailable(action(alreadyArchived, caret(alreadyArchived.indexOf('One')), 'archive'), 'No completed or cancelled tasks to archive')
   })
 })
 
@@ -218,7 +219,7 @@ describe('indent and outdent', () => {
     const text = 'one\ntwo'
     const selection: TextSelection = { ranges: [range(0, text.length)], main: 0 }
     const next = '  one\n  two'
-    applied(text, action(text, selection, 'indent'), next, { ranges: [range(2, 9)], main: 0 })
+    applied(text, action(text, selection, 'indent'), next, { ranges: [range(2, 11)], main: 0 })
 
     const code = '```\ncode\n```'
     unavailable(action(code, caret(code.indexOf('code')), 'indent'), 'Nothing to change')
