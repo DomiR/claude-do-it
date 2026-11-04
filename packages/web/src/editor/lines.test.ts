@@ -155,9 +155,10 @@ describe('PlainTasks line classification', () => {
     expect(task.hang).toBe(4)
     expect(task.empty).toBe(false)
     expect(task.dot).toBeUndefined()
-    expect(slices(source, status.alwaysHidden)).toEqual(['- '])
+    expect(status.alwaysHidden).toEqual([])
+    expect(slices(source, [status.hiddenBullet!])).toEqual(['- '])
     expect(slices(source, status.previewHidden)).toEqual(['**', '**'])
-    expect(status.hang).toBe(2)
+    expect(status.hang).toBe(4)
     expect(status.empty).toBe(false)
     expect(status.dot).toBeUndefined()
     expect(note.hang).toBe(2)
@@ -194,7 +195,7 @@ describe('PlainTasks line classification', () => {
     const note = lineContaining(text, 'note')
     expect(parent.depth).toBe(5)
     expect(parent.hang).toBe(8)
-    expect(status.hang).toBe(6)
+    expect(status.hang).toBe(8)
     expect(status.owner).toBe(parent.index)
     expect(note.hang).toBe(6)
     expect(note.owner).toBe(parent.index)
@@ -231,6 +232,27 @@ describe('PlainTasks line classification', () => {
     for (const emphasized of ['*a*', '(*a*)', '*two words*', '*é*']) {
       expect(classifyDocument(emphasized).lines[0]!.inline.map(span => span.kind)).toEqual(['emMark', 'em', 'emMark'])
     }
+  })
+
+  test('classifies PlainTasks tags, lowercases names, and excludes protected text', () => {
+    const text = '@today @HIGH @low @critical @started(26-11-04 21:32) @done (26-11-04 21:32) @project(Tasks) @waiting (custom) **@bold**\n'
+      + 'email a@b.c `@code` [link](@target)\n```\n@fenced\n```'
+    const document = classifyDocument(text)
+    const first = document.lines[0]!
+    const tags = first.inline.filter(span => span.kind === 'tag')
+    expect(tags.map(span => text.slice(span.from, span.to))).toEqual([
+      '@today', '@HIGH', '@low', '@critical', '@started(26-11-04 21:32)', '@done (26-11-04 21:32)',
+      '@project(Tasks)', '@waiting (custom)',
+    ])
+    expect(tags.map(span => span.name)).toEqual([
+      'today', 'high', 'low', 'critical', 'started', 'done', 'project', 'waiting',
+    ])
+    expect(first.inline.some(span => text.slice(span.from, span.to) === '@bold')).toBe(false)
+    expect(document.lines[1]!.inline.some(span => span.kind === 'tag')).toBe(false)
+    expect(document.lines[2]!.inline).toEqual([])
+    expect(document.lines[3]!.kind).toBe('code')
+    expect(document.lines[3]!.inline).toEqual([])
+    expect(first.inline.every((span, index) => index === 0 || span.from >= first.inline[index - 1]!.to)).toBe(true)
   })
 
   test('keeps link targets available over hidden syntax but not code', () => {

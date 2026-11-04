@@ -6,8 +6,9 @@ import {
 } from '@codemirror/commands'
 
 import { rebaseRemote } from './changes'
+import type { EditorCommand } from './types'
 import {
-  clearRemoteHighlight, deleteEmptyTaskPrefix, documentDecorations, editorExtensions, moveToTaskLabel,
+  clearRemoteHighlight, deleteEmptyTaskPrefix, documentDecorations, editorExtensions, moveToTaskLabel, runEditorCommand,
   remoteHighlights, remoteTransaction,
 } from './extensions'
 
@@ -57,10 +58,10 @@ describe('editor extensions', () => {
     const text = '# Project\n- [ ] **bold** *em* ~~strike~~ `code` [guide](#project)\n  - **agent** planning\n  note\n> quote\n- plain bullet\n- [ ] \n'
     const state = stateFor(text, text.length)
     expect(hiddenText(state)).toEqual([
-      '# ', '- ', '**', '**', '*', '*', '~~', '~~', '`', '`', '[', '](#project)', '- ', '**', '**', '> ', '- ',
+      '# ', '- ', '**', '**', '*', '*', '~~', '~~', '`', '`', '[', '](#project)', '**', '**', '> ', '- ',
     ])
     expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-level-1', 'pt-strong', 'pt-em', 'pt-strike', 'pt-code', 'pt-link', 'pt-marker-open', 'pt-marker-empty',
+      'pt-level-1', 'pt-strong', 'pt-em', 'pt-strike', 'pt-code', 'pt-link', 'pt-bullet-hidden', 'pt-marker-open', 'pt-marker-empty',
     ]))
     for (const className of ['pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark']) {
       expect(classes(state)).not.toContain(className)
@@ -83,8 +84,26 @@ describe('editor extensions', () => {
     }
     expect(decorations(state).filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-hang'))
       .map(({ decoration }) => decoration.spec.attributes.style)).toEqual([
-      '--pt-hang: 4', '--pt-hang: 2', '--pt-hang: 2', '--pt-hang: 4',
+      '--pt-hang: 4', '--pt-hang: 4', '--pt-hang: 2', '--pt-hang: 4',
     ])
+  })
+
+  test('decorates tags with their shared and sanitized name classes', () => {
+    const text = '@today @HIGH @waiting\n`@code`\n```\n@fenced\n```'
+    const state = stateFor(text, text.length)
+    expect(classes(state)).toEqual(expect.arrayContaining([
+      'pt-tag', 'pt-tag-today', 'pt-tag-high', 'pt-tag-waiting',
+    ]))
+    expect(classes(state)).not.toContain('pt-tag-code')
+    expect(classes(state)).not.toContain('pt-tag-fenced')
+    expect(hiddenText(state)).not.toContain('@today')
+    expect(hiddenText(state)).not.toContain('@HIGH')
+  })
+
+  test('returns false for unavailable Tab and Shift-Tab actions so the browser can handle them', () => {
+    const view = { state: stateFor('```\ncode\n```') } as unknown as EditorView
+    expect(runEditorCommand(view, 'tab' as EditorCommand)).toBe(false)
+    expect(runEditorCommand(view, 'outdent', true)).toBe(false)
   })
 
   test('editing lines reveal delimiters, including selections touching multiple lines, while task and status bullets stay hidden', () => {
@@ -98,10 +117,10 @@ describe('editor extensions', () => {
       userEvent: 'select.pointer',
     }).state
     expect(state.field(documentDecorations).editing).toEqual([1, 2, 3, 4, 5])
-    expect(hiddenText(state)).toEqual(['- ', '- '])
+    expect(hiddenText(state)).toEqual(['- '])
     expect(replacements(state).some(({ decoration }) => decoration.spec.widget)).toBe(false)
     expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-line-editing', 'pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark', 'pt-bullet',
+      'pt-line-editing', 'pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark', 'pt-bullet', 'pt-bullet-hidden',
     ]))
   })
 
@@ -130,7 +149,7 @@ describe('editor extensions', () => {
     const state = stateFor(text, text.length)
     for (let level = 1; level <= 6; level += 1) expect(classes(state)).toContain(`pt-level-${level}`)
     expect(decorations(state).filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-hang'))
-      .map(({ decoration }) => decoration.spec.attributes.style)).toEqual(['--pt-hang: 8', '--pt-hang: 6', '--pt-hang: 6'])
+      .map(({ decoration }) => decoration.spec.attributes.style)).toEqual(['--pt-hang: 8', '--pt-hang: 8', '--pt-hang: 6'])
   })
 
   test('reuses preview and atomic ranges for caret moves inside a line, including pointer access to a marker', () => {
