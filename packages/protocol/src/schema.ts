@@ -104,7 +104,7 @@ export type TodoSet = typeof TodoSet.Type
 export const EditOp = Schema.Union([Replace, Append, TodoAdd, TodoSet])
 export type EditOp = typeof EditOp.Type
 
-const SectionId = Schema.optionalKey(Text)
+const SectionId = Schema.optional(Text)
 
 export const StatusPayload = Schema.Struct({})
 export const StatusDocument = Schema.Struct({
@@ -197,7 +197,7 @@ export const DiffSuccess = Schema.Struct({
 
 export const WatchPayload = Schema.Struct({
   path: Path,
-  since: Schema.optionalKey(Version),
+  since: Schema.optional(Version),
   section: SectionId,
   text: Schema.Boolean,
 })

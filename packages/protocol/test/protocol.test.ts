@@ -74,6 +74,14 @@ const roundTrip = (schema: any, value: any): unknown => {
 }
 
 describe('protocol schemas', () => {
+  it('accepts explicit undefined for optional payload fields', () => {
+    const madeRead = Schema.make(ReadPayload.ast)
+    const madeWatch = Schema.make(WatchPayload.ast)
+    expect(Schema.decodeUnknownSync(madeRead)({ path: '/TODO.md', section: undefined })).toMatchObject({ path: '/TODO.md', section: undefined })
+    expect(Schema.decodeUnknownSync(madeWatch)({ path: '/TODO.md', since: undefined, text: false })).toMatchObject({ path: '/TODO.md', since: undefined, text: false })
+    expect(Schema.decodeUnknownSync(ReadPayload)({ path: '/TODO.md', section: undefined })).toMatchObject({ path: '/TODO.md', section: undefined })
+  })
+
   it('round trips every payload and success schema through JSON', () => {
     const samples: Array<readonly [any, any]> = [
       [StatusPayload, {}],
