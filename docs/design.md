@@ -269,9 +269,13 @@ that event. `text: true` adds the full current text (the web uses it).
 ```ts
 ensureDaemon(opts?: { home?: string; spawn?: boolean }): Effect<DaemonInfo, DaemonUnavailable>
   // read daemon.json, GET /health (500 ms timeout), pid and appVersion match -> reuse.
+  // A health check that times out is retried after 500 ms, 1 s and 2 s, so a busy
+  // machine does not replace a live daemon. A dead pid, a refused connection, or
+  // another appVersion makes the daemon unusable at once.
   // Otherwise take daemon.lock (mkdir; stale when its pid is dead or older than 10 s),
   // spawn `bun <server entry>` detached (stdio to daemon.log, unref), poll /health up to 5 s.
-  // A daemon of another appVersion is stopped and replaced.
+  // An unusable daemon that is still alive (another appVersion, or no answer
+  // after the retries) is stopped and replaced.
 stopDaemon(): Effect<boolean>               // rpc stop, else SIGTERM the pid; false when none ran
 RpcClientLayer(info: DaemonInfo)            // RpcClient.layerProtocolHttp + ndjson + bearer header
 ```
