@@ -32,9 +32,24 @@ flowchart LR
   that sizes, plans, and delivers every task through worker agents and one
   shared tester.
 
-## Quick start
+## Install
 
 Needs [Bun](https://bun.sh) 1.3 or newer on macOS or Linux.
+
+```bash
+bun add -g claude-do-it        # or: npm install -g claude-do-it (Bun still runs it)
+do-it skill install            # the /do-it skill, copied into ~/.claude/skills/do-it
+do-it --help
+```
+
+Run `do-it skill install` again after upgrading to refresh the skill. It never
+replaces a skill directory it did not create unless you pass `--force`.
+`do-it --skill` prints the skill, and `do-it skill path` shows where the
+package keeps it. To try it without installing, use `bunx claude-do-it open TODO.md`.
+
+The command is `do-it`, not `do`: `do` is a reserved word in bash and zsh.
+
+### From source
 
 ```bash
 git clone https://github.com/DomiR/claude-do-it ~/Developer/claude-do-it
@@ -43,11 +58,8 @@ bun install
 bun run build:web                                          # the editor the daemon serves
 mkdir -p ~/.local/bin
 ln -sf "$PWD/packages/cli/src/bin.ts" ~/.local/bin/do-it   # any directory on PATH works
-ln -s "$PWD/skill" ~/.claude/skills/do-it                  # the Claude Code skill
-do-it --help
+ln -s "$PWD/skill" ~/.claude/skills/do-it                  # the skill, always current with the checkout
 ```
-
-The command is `do-it`, not `do`: `do` is a reserved word in bash and zsh.
 
 ## Use it from Claude Code
 
@@ -160,6 +172,7 @@ in [docs/plan.md](docs/plan.md) and [docs/design.md](docs/design.md).
 bun run test                          # unit, daemon, and end to end tests
 bun run typecheck
 bun run build:web
+bun run build:npm                     # the npm package, in dist/npm
 bun --cwd packages/web run dev        # editor with a proxy to the daemon on 47100
 ```
 
