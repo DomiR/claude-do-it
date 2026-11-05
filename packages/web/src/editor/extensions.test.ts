@@ -39,19 +39,52 @@ const classes = (state: EditorState): string[] => {
   return result
 }
 
+interface FakeElement {
+  tagName: string
+  className: string
+  textContent: string
+  attributes: Record<string, string>
+  children: FakeElement[]
+  setAttribute(name: string, value: string): void
+  append(...children: FakeElement[]): void
+}
+const fakeView = {
+  dom: {
+    ownerDocument: {
+      createElement: (tagName: string): FakeElement => ({
+        tagName, className: '', textContent: '', attributes: {}, children: [],
+        setAttribute(name, value) { this.attributes[name] = value },
+        append(...children) { this.children.push(...children) },
+      }),
+    },
+  },
+} as unknown as EditorView
+const widgetTexts = (state: EditorState) => replacements(state).filter(({ decoration }) => decoration.spec.widget)
+  .map(({ from, to }) => state.doc.sliceString(from, to))
+/** Each rendered marker as its source text, box classes, symbol, and label. */
+const markers = (state: EditorState) => replacements(state).flatMap(({ from, to, decoration }) => {
+  const source = state.doc.sliceString(from, to)
+  if (!decoration.spec.widget || !/^\[.\]$/.test(source)) return []
+  const element = decoration.spec.widget.toDOM(fakeView) as unknown as FakeElement
+  return [{ source, className: element.className, symbol: element.children[0]?.textContent, label: element.attributes['aria-label'] }]
+})
+
 describe('editor extensions', () => {
-  test('reveals marker source for every selection range and reclassifies a changed checkbox', () => {
+  test('markers are always rendered, with the caret or a selection on them, and follow a changed checkbox', () => {
     let state = stateFor('- [ ] Ship\n')
-    expect(classes(state)).toContain('pt-marker-open')
-    expect(classes(state)).not.toContain('pt-marker-source')
+    expect(markers(state)).toEqual([{ source: '[ ]', className: 'pt-marker pt-marker-open', symbol: '☐', label: 'Open' }])
     state = state.update({
-      selection: EditorSelection.create([EditorSelection.cursor(0), EditorSelection.cursor(3)], 0), userEvent: 'select.pointer',
+      selection: EditorSelection.create([EditorSelection.cursor(0), EditorSelection.range(2, 5)], 0), userEvent: 'select.pointer',
     }).state
-    expect(classes(state)).toContain('pt-marker-source')
-    state = state.update({ changes: { from: 3, to: 4, insert: 'x' }, selection: { anchor: 8 } }).state
-    expect(classes(state)).toContain('pt-line-task-done')
-    expect(classes(state)).toContain('pt-marker-done')
+    expect(markers(state)).toEqual([{ source: '[ ]', className: 'pt-marker pt-marker-open', symbol: '☐', label: 'Open' }])
     expect(classes(state)).not.toContain('pt-marker-source')
+    expect(classes(state)).not.toContain('pt-line-editing')
+    state = state.update({ changes: { from: 3, to: 4, insert: 'x' }, selection: { anchor: 3 } }).state
+    expect(classes(state)).toContain('pt-line-task-done')
+    expect(markers(state)).toEqual([{ source: '[x]', className: 'pt-marker pt-marker-done', symbol: '✔', label: 'Done' }])
+    state = state.update({ changes: { from: 3, to: 4, insert: '-' } }).state
+    expect(markers(state)).toEqual([{ source: '[-]', className: 'pt-marker pt-marker-cancelled', symbol: '✘', label: 'Cancelled' }])
+    expect(markers(stateFor('- [ ] \n'))).toEqual([{ source: '[ ]', className: 'pt-marker pt-marker-open pt-marker-empty', symbol: '☐', label: 'Open' }])
   })
 
   test('decorated lines hide syntax and prose bullets while preserving styled text and marker slots', () => {
@@ -61,27 +94,16 @@ describe('editor extensions', () => {
       '# ', '- ', '**', '**', '*', '*', '~~', '~~', '`', '`', '[', '](#project)', '**', '**', '> ', '- ',
     ])
     expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-level-1', 'pt-strong', 'pt-em', 'pt-strike', 'pt-code', 'pt-link', 'pt-bullet-hidden', 'pt-marker-open', 'pt-marker-empty',
+      'pt-level-1', 'pt-strong', 'pt-em', 'pt-strike', 'pt-code', 'pt-link', 'pt-bullet-hidden',
     ]))
-    for (const className of ['pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark']) {
+    for (const className of ['pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark', 'pt-marker-source']) {
       expect(classes(state)).not.toContain(className)
     }
-    const widgets = replacements(state).filter(({ decoration }) => decoration.spec.widget)
-    expect(widgets.map(({ from, to }) => text.slice(from, to))).toEqual(['-'])
-    const element = { tagName: '', className: '', textContent: '' }
-    const widgetView = {
-      dom: { ownerDocument: { createElement: (tag: string) => { element.tagName = tag; return element } } },
-    } as unknown as EditorView
-    widgets[0]!.decoration.spec.widget.toDOM(widgetView)
-    expect(element).toEqual({ tagName: 'span', className: 'pt-bullet-dot', textContent: '•' })
-    const markers = decorations(state).filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-marker'))
-    expect(markers.map(({ from, to }) => text.slice(from, to))).toEqual(['[ ]', '[ ]'])
-    for (const marker of markers) {
-      expect(marker.decoration.spec.widget).toBeUndefined()
-      for (const replacement of replacements(state)) {
-        expect(replacement.to <= marker.from || replacement.from >= marker.to).toBe(true)
-      }
-    }
+    expect(widgetTexts(state)).toEqual(['[ ]', '-', '[ ]'])
+    const dot = replacements(state).find(({ from, to }) => text.slice(from, to) === '-')!
+    const element = dot.decoration.spec.widget.toDOM(fakeView) as unknown as FakeElement
+    expect([element.tagName, element.className, element.textContent]).toEqual(['span', 'pt-bullet-dot', '•'])
+    expect(markers(state).map(({ className }) => className)).toEqual(['pt-marker pt-marker-open', 'pt-marker pt-marker-open pt-marker-empty'])
     expect(decorations(state).filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-hang'))
       .map(({ decoration }) => decoration.spec.attributes.style)).toEqual([
       '--pt-hang: 4', '--pt-hang: 4', '--pt-hang: 2', '--pt-hang: 4',
@@ -106,8 +128,8 @@ describe('editor extensions', () => {
     expect(runEditorCommand(view, 'outdent', true)).toBe(false)
   })
 
-  test('editing lines reveal delimiters, including selections touching multiple lines, while task and status bullets stay hidden', () => {
-    const text = '# Project\n- [ ] **bold** *em* ~~strike~~ `code` [guide](#project)\n  - **agent** planning\n> quote\n- plain bullet\n'
+  test('other edited lines reveal delimiters, even in selections spanning task and status lines, which stay rendered', () => {
+    const text = '# Project\n- [ ] **bold** *em* ~~strike~~ `code` [guide](#project)\n  - **agent** planning\n> quote\n- plain **bullet**\n'
     let state = stateFor(text, text.length)
     state = state.update({
       selection: EditorSelection.create([
@@ -116,15 +138,27 @@ describe('editor extensions', () => {
       ]),
       userEvent: 'select.pointer',
     }).state
-    expect(state.field(documentDecorations).editing).toEqual([1, 2, 3, 4, 5])
-    expect(hiddenText(state)).toEqual(['- '])
-    expect(replacements(state).some(({ decoration }) => decoration.spec.widget)).toBe(false)
+    expect(state.field(documentDecorations).editing).toEqual([1, 4, 5])
+    expect(hiddenText(state)).toEqual(['- ', '**', '**', '*', '*', '~~', '~~', '`', '`', '[', '](#project)', '**', '**'])
+    expect(widgetTexts(state)).toEqual(['[ ]'])
     expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-line-editing', 'pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark', 'pt-bullet', 'pt-bullet-hidden',
+      'pt-line-editing', 'pt-heading-marks', 'pt-strong-mark', 'pt-bullet', 'pt-bullet-hidden',
     ]))
+    for (const className of ['pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark']) expect(classes(state)).not.toContain(className)
   })
 
-  test('atomic ranges contain exactly the replacements and never labels, line breaks or checkbox slots', () => {
+  test('a link on a task line stays rendered with the caret inside it, while a prose link reveals its Markdown', () => {
+    const text = '- [ ] Read [the guide](https://example.com/guide) today\nSee [notes](#notes)\n'
+    const inside = text.indexOf('guide]') + 2
+    let state = stateFor(text, inside)
+    expect(state.field(documentDecorations).editing).toEqual([])
+    expect(hiddenText(state)).toEqual(['- ', '[', '](https://example.com/guide)', '[', '](#notes)'])
+    state = state.update({ selection: { anchor: text.indexOf('notes]') }, userEvent: 'select.pointer' }).state
+    expect(state.field(documentDecorations).editing).toEqual([2])
+    expect(hiddenText(state)).toEqual(['- ', '[', '](https://example.com/guide)'])
+  })
+
+  test('atomic ranges contain exactly the replacements, including markers, and never labels or line breaks', () => {
     const text = '# Project\n- [ ] **label**\n- bullet\n'
     const state = stateFor(text, text.length)
     const preview = state.field(documentDecorations)
@@ -140,8 +174,8 @@ describe('editor extensions', () => {
     for (const [from, to] of atomic) {
       expect(text.slice(from, to)).not.toContain('\n')
       expect(text.slice(from, to)).not.toContain('label')
-      expect(text.slice(from, to)).not.toContain('[ ]')
     }
+    expect(atomic.map(([from, to]) => text.slice(from, to))).toContain('[ ]')
   })
 
   test('emits heading level classes and hanging columns with mixed indentation', () => {
@@ -152,36 +186,35 @@ describe('editor extensions', () => {
       .map(({ decoration }) => decoration.spec.attributes.style)).toEqual(['--pt-hang: 8', '--pt-hang: 8', '--pt-hang: 6'])
   })
 
-  test('reuses preview and atomic ranges for caret moves inside a line, including pointer access to a marker', () => {
-    let state = stateFor('- [ ] **Task**\nOther', 8)
+  test('caret moves on and between task lines reuse the preview, which only changes for lines that reveal Markdown', () => {
+    let state = stateFor('- [ ] **Task**\n- [ ] Next\nOther', 8)
     const preview = state.field(documentDecorations)
     const sets = state.facet(EditorView.decorations)
+    expect(hiddenText(state)).toEqual(['- ', '**', '**', '- '])
     state = state.update({ selection: { anchor: 9 }, userEvent: 'select' }).state
     expect(state.field(documentDecorations)).toBe(preview)
     expect(state.facet(EditorView.decorations)).toBe(sets)
-    state = state.update({ selection: { anchor: 3 }, userEvent: 'select.pointer' }).state
+    state = state.update({ selection: { anchor: state.doc.line(2).to }, userEvent: 'select.pointer' }).state
     expect(state.field(documentDecorations)).toBe(preview)
-    expect(classes(state)).toContain('pt-marker-source')
-    state = state.update({ selection: { anchor: 8 }, userEvent: 'select.pointer' }).state
-    expect(state.field(documentDecorations)).toBe(preview)
-    expect(classes(state)).not.toContain('pt-marker-source')
-    state = state.update({ selection: { anchor: state.doc.line(2).from }, userEvent: 'select' }).state
+    state = state.update({ selection: { anchor: state.doc.line(3).from }, userEvent: 'select' }).state
     expect(state.field(documentDecorations)).not.toBe(preview)
-    expect(hiddenText(state)).toEqual(['- ', '**', '**'])
+    expect(hiddenText(state)).toEqual(['- ', '**', '**', '- '])
     const beforeEdit = state.field(documentDecorations)
     state = state.update({ changes: { from: state.doc.length, insert: '!' }, userEvent: 'input.type' }).state
     expect(state.field(documentDecorations)).not.toBe(beforeEdit)
   })
 
-  test('keyboard carets skip task prefixes but pointer, range and programmatic selections retain source access', () => {
+  test('keyboard and pointer carets skip task prefixes while range and programmatic selections keep their position', () => {
     const text = ' \t- [ ] Task\n- [ ] Other'
     const state = stateFor(text, text.length)
     const label = text.indexOf('Task')
     for (let anchor = 2; anchor < label; anchor += 1) {
       expect(state.update({ selection: { anchor }, userEvent: 'select' }).state.selection.main.head).toBe(label)
-      expect(state.update({ selection: { anchor }, userEvent: 'select.pointer' }).state.selection.main.head).toBe(anchor)
+      expect(state.update({ selection: { anchor }, userEvent: 'select.pointer' }).state.selection.main.head).toBe(label)
       expect(state.update({ selection: { anchor } }).state.selection.main.head).toBe(anchor)
     }
+    const fromLabel = stateFor(text, label + 2)
+    expect(fromLabel.update({ selection: { anchor: 3 }, userEvent: 'select.pointer' }).state.selection.main.head).toBe(label)
     expect(state.update({ selection: { anchor: 1 }, userEvent: 'select' }).state.selection.main.head).toBe(1)
     const range = state.update({ selection: { anchor: 2, head: 5 }, userEvent: 'select' }).state.selection.main
     expect([range.anchor, range.head]).toEqual([2, 5])

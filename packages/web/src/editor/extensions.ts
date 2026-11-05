@@ -1,5 +1,5 @@
 import {
-  Annotation, ChangeSet, EditorSelection, EditorState, Facet, Prec, RangeSet, StateEffect, StateField,
+  ChangeSet, EditorSelection, EditorState, Prec, RangeSet, StateField,
   type Extension, type Range, type SelectionRange, type StateCommand,
 } from '@codemirror/state'
 import {
@@ -11,20 +11,13 @@ import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 
 import { Message } from '../message'
 import { runAction } from './actions'
+import { clearRemoteHighlight, editorFacts, remoteTransaction } from './facts'
 import { bindings, type Platform } from './keymap'
-import { classifyDocument, linkAt, type ClassifiedDocument, type ClassifiedLine, type InlineKind, type Span } from './lines'
+import { classifyDocument, linkAt, linkRangeOn, type ClassifiedDocument, type ClassifiedLine, type InlineKind, type Span } from './lines'
+import { closeLinkEditor, editLink, linkEdits, openLinkEditor } from './link-popover'
 import type { ActionId, EditorCommand, TextSelection } from './types'
 
-export const remoteTransaction = Annotation.define<number>()
-export const clearRemoteHighlight = StateEffect.define<null>()
-
-export type EditorFact =
-  | typeof Message.PressedEditorCommand.Type
-  | typeof Message.ShowedEditorNotice.Type
-
-export const editorFacts = Facet.define<(fact: EditorFact) => void, (fact: EditorFact) => void>({
-  combine: listeners => fact => { for (const listener of listeners) listener(fact) },
-})
+export { clearRemoteHighlight, editorFacts, remoteTransaction, type EditorFact } from './facts'
 
 const selectionOf = (view: EditorView): TextSelection => ({
   ranges: view.state.selection.ranges.map(({ anchor, head }) => ({ anchor, head })),
@@ -78,6 +71,7 @@ export const runEditorCommand = (view: EditorView, command: EditorCommand, fallT
         command, link: linkAt(view.state.doc.toString(), view.state.selection.main.head),
       }))
       return true
+    case 'editLink': return editLink(view)
     default: return runEditorAction(view, command, selectionOf(view), false, fallThroughUnavailable)
   }
 }
@@ -101,13 +95,43 @@ class BulletDot extends WidgetType {
   }
 }
 
-const editingLines = (state: EditorState): number[] => {
+const markerSymbols: Record<string, string> = { open: '☐', done: '✔', cancelled: '✘' }
+
+/** The rendered checkbox of a task line. The `[ ]` source never shows. */
+class Marker extends WidgetType {
+  constructor(private readonly state: string, private readonly empty: boolean) { super() }
+  eq(other: Marker): boolean { return other.state === this.state && other.empty === this.empty }
+  ignoreEvent(): boolean { return false }
+  toDOM(view: EditorView): HTMLElement {
+    const document = view.dom.ownerDocument
+    // The outer box keeps the width of `[ ]` in the editor font, so wrapped lines still hang under the label.
+    const span = document.createElement('span')
+    span.className = `pt-marker pt-marker-${this.state}${this.empty ? ' pt-marker-empty' : ''}`
+    span.setAttribute('aria-label', this.state === 'done' ? 'Done' : this.state === 'cancelled' ? 'Cancelled' : 'Open')
+    const symbol = document.createElement('span')
+    symbol.className = 'pt-marker-symbol'
+    symbol.textContent = markerSymbols[this.state] ?? '☐'
+    span.append(symbol)
+    return span
+  }
+}
+
+/**
+ * Task lines and the status lines under them always show their rendered
+ * form: markers, link text, and styled text never turn back into Markdown
+ * while the caret is on them. Links are edited through their popover.
+ */
+export const alwaysRendered = (line: ClassifiedLine): boolean => line.kind === 'task' || line.kind === 'status'
+
+/** One based numbers of the selected lines that reveal their Markdown while edited. */
+const editingLines = (state: EditorState, classified: ClassifiedDocument): number[] => {
   const touched: number[] = []
   for (const range of state.selection.ranges) {
     const first = state.doc.lineAt(range.from).number
     const last = state.doc.lineAt(range.to).number
     for (let number = Math.max(first, (touched[touched.length - 1] ?? 0) + 1); number <= last; number += 1) {
-      touched.push(number)
+      const line = classified.lines[number - 1]
+      if (!line || !alwaysRendered(line)) touched.push(number)
     }
   }
   return touched
@@ -152,6 +176,7 @@ const lineDecorations = (classified: ClassifiedDocument, editing: readonly numbe
       attributes: hanging ? { style: `--pt-hang: ${line.hang}` } : undefined,
     }).range(line.from))
     for (const span of line.alwaysHidden) replace(span)
+    if (line.checkbox) replace(line.checkbox, new Marker(line.state ?? 'open', line.empty))
     if (line.kind === 'status') mark(line.hiddenBullet, 'pt-bullet-hidden')
     if (editing) mark(line.marks, 'pt-heading-marks')
     else {
@@ -181,14 +206,14 @@ export const documentDecorations = StateField.define<{
 }>({
   create: state => {
     const classified = classifyDocument(state.doc.toString())
-    const editing = editingLines(state)
+    const editing = editingLines(state, classified)
     return { classified, editing, ...lineDecorations(classified, editing) }
   },
   update: (value, transaction) => {
     if (!transaction.docChanged && !transaction.selection) return value
-    const editing = editingLines(transaction.state)
-    if (!transaction.docChanged && sameNumbers(value.editing, editing)) return value
     const classified = transaction.docChanged ? classifyDocument(transaction.newDoc.toString()) : value.classified
+    const editing = editingLines(transaction.state, classified)
+    if (!transaction.docChanged && sameNumbers(value.editing, editing)) return value
     return { classified, editing, ...lineDecorations(classified, editing) }
   },
   provide: field => [
@@ -197,68 +222,10 @@ export const documentDecorations = StateField.define<{
   ],
 })
 
-const sourceMarkers = (state: EditorState, classified: ClassifiedDocument): number[] => {
-  const touched = new Set<number>()
-  for (const range of state.selection.ranges) {
-    const first = state.doc.lineAt(range.from).number - 1
-    const last = state.doc.lineAt(range.to).number - 1
-    for (let index = first; index <= last; index += 1) {
-      const slot = classified.lines[index]?.checkbox
-      if (slot && (range.empty ? range.head >= slot.from && range.head < slot.to : range.from < slot.to && range.to > slot.from)) {
-        touched.add(index)
-      }
-    }
-  }
-  return [...touched]
-}
-
-const markerDecoration = (line: ClassifiedLine, source: boolean): Range<Decoration> => Decoration.mark({
-  class: `pt-marker pt-marker-${line.state ?? 'open'}${source ? ' pt-marker-source' : ''}${line.empty ? ' pt-marker-empty' : ''}`,
-}).range(line.checkbox!.from, line.checkbox!.to)
-
-// Source visibility changes only at slot boundaries, independently of the cached line preview and atomic ranges.
-const markerDecorations = StateField.define<{ sources: readonly number[]; decorations: DecorationSet }>({
-  create: state => {
-    const classified = state.field(documentDecorations).classified
-    const sources = sourceMarkers(state, classified)
-    const touched = new Set(sources)
-    return {
-      sources,
-      decorations: Decoration.set(classified.lines.flatMap(line => line.checkbox ? [markerDecoration(line, touched.has(line.index))] : [])),
-    }
-  },
-  update: (value, transaction) => {
-    if (!transaction.docChanged && !transaction.selection) return value
-    const classified = transaction.state.field(documentDecorations).classified
-    const sources = sourceMarkers(transaction.state, classified)
-    const touched = new Set(sources)
-    if (transaction.docChanged) return {
-      sources,
-      decorations: Decoration.set(classified.lines.flatMap(line => line.checkbox ? [markerDecoration(line, touched.has(line.index))] : [])),
-    }
-    if (sameNumbers(value.sources, sources)) return value
-    const previous = new Set(value.sources)
-    const changed = [...new Set([...value.sources, ...sources])]
-      .filter(index => previous.has(index) !== touched.has(index))
-      .sort((left, right) => left - right)
-    const add = changed.map(index => markerDecoration(classified.lines[index]!, touched.has(index)))
-    const starts = new Set(add.map(range => range.from))
-    return {
-      sources,
-      decorations: value.decorations.update({
-        filter: from => !starts.has(from),
-        filterFrom: add[0]!.from,
-        filterTo: add[add.length - 1]!.to,
-        add, sort: true,
-      }),
-    }
-  },
-  provide: field => EditorView.decorations.from(field, value => value.decorations),
-})
-
+// A caret never rests inside a task's rendered prefix, where typing would break the task syntax.
 const taskCaretFilter = EditorState.transactionFilter.of(transaction => {
-  if (!transaction.isUserEvent('select') || transaction.isUserEvent('select.pointer') ||
-    transaction.annotation(remoteTransaction) !== undefined) return transaction
+  if (!transaction.isUserEvent('select') || transaction.annotation(remoteTransaction) !== undefined) return transaction
+  const pointer = transaction.isUserEvent('select.pointer')
   const classified = transaction.docChanged
     ? classifyDocument(transaction.newDoc.toString())
     : transaction.startState.field(documentDecorations).classified
@@ -268,6 +235,7 @@ const taskCaretFilter = EditorState.transactionFilter.of(transaction => {
     const line = classified.lines[transaction.newDoc.lineAt(range.head).number - 1]
     if (line?.kind !== 'task' || !line.bullet || !line.label || range.head < line.bullet.from || range.head >= line.label.from) return range
     moved = true
+    if (pointer) return EditorSelection.cursor(line.label.from)
     const previous = transaction.startState.selection.ranges[index]
     const previousHead = previous === undefined ? undefined : transaction.changes.mapPos(previous.head)
     if (previousHead !== undefined && previousHead >= line.label.from &&
@@ -281,7 +249,7 @@ const taskCaretFilter = EditorState.transactionFilter.of(transaction => {
   }] : transaction
 })
 
-// Home targets the label directly so it cannot be mistaken for a leftward step into the marker slot.
+// Home targets the label directly so it cannot be mistaken for a leftward step into the task prefix.
 export const moveToTaskLabel: StateCommand = ({ state, dispatch }) => {
   const classified = state.field(documentDecorations).classified
   const ranges: SelectionRange[] = []
@@ -361,6 +329,9 @@ export const editorExtensions = (platform: Platform): Extension => [
   EditorView.contentAttributes.of({ 'aria-label': 'Todo document' }),
   Prec.highest(inputGuard),
   Prec.highest(keymap.of([{
+    key: 'Escape',
+    run: closeLinkEditor,
+  }, {
     key: 'Backspace',
     run: view => view.composing || view.plugin(inputGuard)?.ignoreKey ? false : deleteEmptyTaskPrefix(view),
   }, {
@@ -375,7 +346,7 @@ export const editorExtensions = (platform: Platform): Extension => [
   }))))),
   keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: 'Escape', run: temporarilySetTabFocusMode }]),
   search({ top: true }),
-  documentDecorations, markerDecorations, taskCaretFilter, remoteHighlights, highlightTimer,
+  documentDecorations, taskCaretFilter, remoteHighlights, highlightTimer, linkEdits,
   EditorView.domEventHandlers({
     mousedown(event, view) {
       const target = event.target
@@ -393,6 +364,22 @@ export const editorExtensions = (platform: Platform): Extension => [
         view.focus()
       }
       return true
+    },
+    // Links on rendered lines show only their text, so a plain click opens the popover that edits them.
+    click(event, view) {
+      const target = event.target
+      if (!(target instanceof Element) || view.composing || event.button !== 0 ||
+        event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false
+      const element = target.closest('.pt-link')
+      if (!element || !view.contentDOM.contains(element) || !view.state.selection.main.empty) return false
+      const position = view.posAtDOM(element)
+      const line = view.state.field(documentDecorations).classified.lines[view.state.doc.lineAt(position).number - 1]
+      if (!line || !alwaysRendered(line)) return false
+      const text = view.state.doc.toString()
+      const link = linkRangeOn(text, line, position)
+      if (!link) return false
+      openLinkEditor(view, { from: link.from, to: link.to, label: text.slice(link.label.from, link.label.to), target: link.target }, false)
+      return false
     },
   }),
 ]

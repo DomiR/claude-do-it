@@ -10,7 +10,7 @@ export const EditorAction = Schema.Literals([
 ])
 export const EditorCommandName = Schema.Union([
   EditorAction,
-  Schema.Literals(['openLink', 'gotoProject', 'commandPalette', 'find', 'showShortcuts']),
+  Schema.Literals(['openLink', 'editLink', 'gotoProject', 'commandPalette', 'find', 'showShortcuts']),
 ])
 export const Selection = Schema.Struct({ anchor: Schema.Number, head: Schema.Number })
 export type Selection = typeof Selection.Type

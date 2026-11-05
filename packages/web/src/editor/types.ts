@@ -29,6 +29,7 @@ export type ActionId =
 export type EditorCommand =
   | ActionId
   | 'openLink'
+  | 'editLink'
   | 'gotoProject'
   | 'commandPalette'
   | 'find'
