@@ -353,6 +353,41 @@ const deleteAcrossMarks = (forward: boolean): Command => view => {
 export const deleteBackwardAcrossMarks = deleteAcrossMarks(false)
 export const deleteForwardAcrossMarks = deleteAcrossMarks(true)
 
+/** The rendered width of a task's box and the space after it, so a note lines up under the label. */
+const NOTE_INDENT = '    '
+
+/**
+ * Shift-Enter on a task, or on a line already in a task's block, splits at
+ * the caret and starts a plain line inside that block: under a task at the
+ * task's text column, under a status line or note at its own indentation.
+ * Folding the task hides the new line, because the block is every deeper
+ * line below it (`blockEnd`). Elsewhere Shift-Enter stays a plain newline.
+ */
+export const insertNoteLine: StateCommand = ({ state, dispatch }) => {
+  const classified = state.field(documentDecorations).classified
+  const plans: Array<{ from: number; to: number; insert: string }> = []
+  for (const range of state.selection.ranges) {
+    const line = classified.lines[state.doc.lineAt(range.head).number - 1]
+    if (!line || (line.kind !== 'task' && line.owner === undefined)) return false
+    const lead = /^[ \t]*/.exec(state.doc.sliceString(line.from, line.to))![0]
+    const indent = line.kind === 'task' ? lead + NOTE_INDENT : lead
+    // The line's own prefix stays where it is: the split is never inside it.
+    const textStart = line.prefix?.to ?? line.from + lead.length
+    let from = Math.max(range.from, textStart)
+    let to = Math.max(range.to, from)
+    while (to < line.to && /[ \t]/.test(state.doc.sliceString(to, to + 1))) to += 1
+    while (from > textStart && /[ \t]/.test(state.doc.sliceString(from - 1, from))) from -= 1
+    plans.push({ from, to, insert: `\n${indent}` })
+  }
+  const changes = state.changes(plans)
+  dispatch(state.update({
+    changes,
+    selection: EditorSelection.create(plans.map(plan => EditorSelection.cursor(changes.mapPos(plan.from, -1) + plan.insert.length)), state.selection.mainIndex),
+    userEvent: 'input', annotations: isolateHistory.of('full'), scrollIntoView: true,
+  }))
+  return true
+}
+
 // Home targets the label directly so it cannot be mistaken for a leftward step into the task prefix.
 export const moveToTaskLabel: StateCommand = ({ state, dispatch }) => {
   const classified = state.field(documentDecorations).classified
@@ -447,6 +482,9 @@ export const editorExtensions = (platform: Platform): Extension => [
   }, {
     key: 'Home',
     run: unlessComposing(moveToTaskLabel),
+  }, {
+    key: 'Shift-Enter',
+    run: unlessComposing(insertNoteLine),
   }])),
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,

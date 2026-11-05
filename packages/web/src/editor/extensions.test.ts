@@ -6,11 +6,13 @@ import {
   selectCharBackwardLogical, undo, undoDepth,
 } from '@codemirror/commands'
 
+import { blockEnd, lines } from '@do-it/doc/text'
+
 import { rebaseRemote } from './changes'
 import type { EditorCommand } from './types'
 import {
   clearRemoteHighlight, deleteBackwardAcrossMarks, deleteEmptyTaskPrefix, deleteForwardAcrossMarks, documentDecorations,
-  editorExtensions, moveToTaskLabel, prefixTyping, remoteHighlights, remoteTransaction, runEditorCommand,
+  editorExtensions, insertNoteLine, moveToTaskLabel, prefixTyping, remoteHighlights, remoteTransaction, runEditorCommand,
 } from './extensions'
 
 const stateFor = (text: string, anchor = 0, head = anchor) => EditorState.create({
@@ -432,6 +434,69 @@ describe('deleting rendered syntax', () => {
     expect(remote.doc.toString()).toBe('-  ] Ship')
     const action = state.update({ changes: { from: 3, to: 4, insert: 'x' }, userEvent: 'input.action' }).state
     expect(action.doc.toString()).toBe('- [x] Ship')
+  })
+})
+
+describe('Shift-Enter under a task', () => {
+  const shiftEnter = (state: EditorState) => {
+    let next = state
+    const handled = insertNoteLine({ state, dispatch: transaction => { next = transaction.state } })
+    return { handled, state: next }
+  }
+  /** The lines folding the task on `line` hides: its block, as moves and archives see it. */
+  const folded = (text: string, line: number) => {
+    const all = lines(text)
+    return all.slice(line + 1, blockEnd(all, line)).map(each => text.slice(each.from, each.to))
+  }
+
+  test('on a top-level task it starts a plain line at the task text column, inside the task fold', () => {
+    const text = '- [ ] Ship it now\n- [ ] Next'
+    const { handled, state } = shiftEnter(stateFor(text, text.indexOf(' now')))
+    expect(handled).toBe(true)
+    expect(state.doc.toString()).toBe('- [ ] Ship it\n    now\n- [ ] Next')
+    expect(state.selection.main.head).toBe(state.doc.line(2).from + 4)
+    expect(folded(state.doc.toString(), 0)).toEqual(['    now'])
+    const note = state.field(documentDecorations).classified.lines[1]!
+    expect([note.kind, note.owner, note.prefix]).toEqual(['note', 0, undefined])
+    expect(widgetTexts(state)).toEqual(['- [ ] ', '- [ ] '])
+  })
+
+  test('on an indented or finished task it nests one text column deeper, inside that task and its parent', () => {
+    for (const box of ['[ ]', '[x]', '[-]']) {
+      const text = `- [ ] Parent\n  - ${box} Child task\n- [ ] Next`
+      const { state } = shiftEnter(stateFor(text, text.indexOf('\n- [ ] Next')))
+      expect(state.doc.toString()).toBe(`- [ ] Parent\n  - ${box} Child task\n      \n- [ ] Next`)
+      expect(state.selection.main.head).toBe(state.doc.line(3).to)
+      const typed = state.update({ changes: { from: state.doc.line(3).to, insert: 'details' }, userEvent: 'input.type' }).state.doc.toString()
+      expect(folded(typed, 1)).toEqual(['      details'])
+      expect(folded(typed, 0)).toEqual([`  - ${box} Child task`, '      details'])
+    }
+  })
+
+  test('the caret before the label moves the label down and leaves the box', () => {
+    const { state } = shiftEnter(stateFor('  - [ ] Ship', 2))
+    expect(state.doc.toString()).toBe('  - [ ] \n      Ship')
+  })
+
+  test('on a note or a status line in a task fold it keeps that line indentation', () => {
+    let result = shiftEnter(stateFor('- [ ] Task\n    a note\n- [ ] Next', '- [ ] Task\n    a note'.length))
+    expect(result.state.doc.toString()).toBe('- [ ] Task\n    a note\n    \n- [ ] Next')
+    result = shiftEnter(stateFor('- [ ] Task\n  - **t1** planning', '- [ ] Task\n  - **t1** planning'.length))
+    const text = result.state.doc.toString()
+    expect(text).toBe('- [ ] Task\n  - **t1** planning\n  ')
+    const typed = result.state.update({ changes: { from: text.length, insert: 'answer' }, userEvent: 'input.type' }).state
+    expect(folded(typed.doc.toString(), 0)).toEqual(['  - **t1** planning', '  answer'])
+    expect(typed.field(documentDecorations).classified.lines[2]!.kind).toBe('note')
+  })
+
+  test('it is one undoable change and leaves other lines to the ordinary newline', () => {
+    let state = shiftEnter(stateFor('- [ ] Ship it', 13)).state
+    expect(undoDepth(state)).toBe(1)
+    expect(undo({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+    expect(state.doc.toString()).toBe('- [ ] Ship it')
+    for (const text of ['Plain prose', '# Project', '- bullet', '> quote', '']) {
+      expect(shiftEnter(stateFor(text, text.length)).handled).toBe(false)
+    }
   })
 })
 
