@@ -34,7 +34,7 @@ $D watch TODO.md --todos                  # every change, as task lines
 - Text starting with `-` goes after `--`. `-` alone reads standard input (multi line blocks).
 - `edit --old` must match exactly one place; add context until it does.
 - Name yourself: `--as NAME` or `export DO_IT_AGENT=NAME`. The person sees the name next to your changes, and `watch --as NAME` skips your own changes.
-- When `do-it` is not on PATH, define it as a shell function at the top of every Bash call (functions do not survive between calls, and `D="bun ..."` breaks in zsh because `$D` is not word split): `do-it() { bun "<this skill's base directory>/../packages/cli/src/bin.ts" "$@"; }`. Monitor commands spell out the `bun .../bin.ts` call in full.
+- When `do-it` is not on PATH, define it as a shell function at the top of every Bash call (functions do not survive between calls, and `D="bun ..."` breaks in zsh because `$D` is not word split): `do-it() { bunx claude-do-it "$@"; }` (from a repo checkout: `do-it() { bun "<repo>/packages/cli/src/bin.ts" "$@"; }`). Monitor commands spell out the `bunx claude-do-it` (or `bun .../bin.ts`) call in full.
 - Exit codes: 0 done, 1 refused or version mismatch, 2 invalid arguments, 3 daemon not running and could not start, 4 nothing yet, 9 the document was deleted.
 
 ## Step 1. Open the todo

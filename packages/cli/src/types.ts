@@ -14,3 +14,6 @@ export type ParsedCommand =
   | { kind: "watch"; options: GlobalOptions; path: string; displayPath: string; since?: number; section?: string; todos: boolean; settle?: number; quiet: boolean }
   | { kind: "status"; options: GlobalOptions }
   | { kind: "stop"; options: GlobalOptions }
+  | { kind: "skill-install"; options: GlobalOptions; dir?: string; force: boolean }
+  | { kind: "skill-path"; options: GlobalOptions }
+  | { kind: "skill-show"; options: GlobalOptions }

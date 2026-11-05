@@ -1,5 +1,5 @@
-import { Effect, FileSystem, Path } from "effect"
-import { HttpServerResponse as Response } from "effect/http"
+import { Effect, FileSystem, Option, Path } from "effect"
+import { HttpServerResponse as Response, Mime } from "effect/http"
 
 /** Serves the built web app from `root`, falling back to index.html for app routes. */
 export const staticResponse = Effect.fn("staticResponse")(function* (root: string, pathname: string) {
@@ -16,5 +16,6 @@ export const staticResponse = Effect.fn("staticResponse")(function* (root: strin
   if (!file) path = paths.resolve(canonical, "index.html")
   path = yield* fs.realPath(path)
   if (!path.startsWith(canonical + paths.sep)) return Response.text("Forbidden", { status: 403 })
-  return yield* Response.file(path)
+  // Set the type explicitly: HEAD responses carry no body to infer it from.
+  return yield* Response.file(path, { contentType: Option.getOrElse(Mime.getType(path), () => "application/octet-stream") })
 })

@@ -21,6 +21,10 @@ function unless<B>(reason: PlatformError.SystemErrorTag, fallback: B) {
  */
 const lockTurn = Semaphore.makeUnsafe(1)
 
+/** Set by the npm build, which bundles the daemon next to the CLI. */
+declare const DO_IT_DAEMON_ENTRY: string | undefined
+const daemonEntry = new URL(typeof DO_IT_DAEMON_ENTRY === "string" ? DO_IT_DAEMON_ENTRY : "../../server/src/main.ts", import.meta.url)
+
 /** `exec` keeps the shell's pid for the daemon, and the redirection sends its output to the log. */
 const daemonScript = 'exec "$0" "$1" >>"$2" 2>&1'
 
@@ -107,7 +111,7 @@ export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: Ensure
     const size = yield* fs.stat(p.log).pipe(Effect.map(stat => stat.size), unless("NotFound", 0n), Effect.mapError(unavailable))
     if (size >= 1024n * 1024n) yield* fs.rename(p.log, `${p.log}.old`).pipe(Effect.mapError(unavailable))
     yield* fs.writeFileString(p.log, "", { flag: "a", mode: 0o600 }).pipe(Effect.mapError(unavailable))
-    const main = yield* path.fromFileUrl(new URL("../../server/src/main.ts", import.meta.url)).pipe(Effect.mapError(unavailable))
+    const main = yield* path.fromFileUrl(daemonEntry).pipe(Effect.mapError(unavailable))
     const env: Record<string, string> = { ...options.env, DO_IT_HOME: p.home }
     if (options.port !== undefined) env.DO_IT_PORT = String(options.port)
     const command = ChildProcess.make("/bin/sh", ["-c", daemonScript, process.execPath, main, p.log], {

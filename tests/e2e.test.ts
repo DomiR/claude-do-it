@@ -1,6 +1,6 @@
 import { describe, expect, it, setDefaultTimeout } from "bun:test"
 import { Effect } from "effect"
-import { existsSync, unlinkSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { ensureDaemon, withClient } from "@do-it/client"
 import { runClient } from "../packages/client/test/environment"
@@ -194,5 +194,32 @@ describe("do-it CLI end to end", () => {
     const statusBody = jsonLine<{ documents: Array<{ path: string }> }>(status)
     expect(statusBody.documents.some(document => document.path === fixture.file)).toBe(true)
     await stopFixture(fixture)
+  })
+
+  it("installs, updates, and prints the skill without replacing someone else's", async () => {
+    const fixture = makeFixture()
+    const target = join(fixture.root, "skills", "do-it")
+    const skill = readFileSync(join(import.meta.dir, "../skill/SKILL.md"), "utf8")
+    const printed = await runCli(["--skill"], fixture.env)
+    expect(printed.code).toBe(0)
+    expect(printed.stdout).toBe(skill.endsWith("\n") ? skill : `${skill}\n`)
+    const path = await runCli(["skill", "path"], fixture.env)
+    expect(path.stdout.trim()).toBe(join(import.meta.dir, "../skill"))
+    const installed = await runCli(["skill", "install", "--dir", target, "--json"], fixture.env)
+    expect(installed.code).toBe(0)
+    expect(jsonLine<{ kind: string; path: string }>(installed)).toEqual({ kind: "installed", path: target })
+    expect(readFileSync(join(target, "SKILL.md"), "utf8")).toBe(skill)
+    expect((await runCli(["skill", "install", "--dir", target], fixture.env)).stdout).toContain("Updated the do-it skill")
+    const foreign = join(fixture.root, "skills", "mine")
+    mkdirSync(foreign, { recursive: true })
+    writeFileSync(join(foreign, "SKILL.md"), "my own skill\n")
+    const refused = await runCli(["skill", "install", "--dir", foreign], fixture.env)
+    expect(refused.code).toBe(1)
+    expect(readFileSync(join(foreign, "SKILL.md"), "utf8")).toBe("my own skill\n")
+    expect((await runCli(["skill", "install", "--dir", foreign, "--force"], fixture.env)).code).toBe(0)
+    expect(readFileSync(join(foreign, "SKILL.md"), "utf8")).toBe(skill)
+    const linked = join(fixture.root, "skills", "linked")
+    symlinkSync(join(import.meta.dir, "../skill"), linked)
+    expect((await runCli(["skill", "install", "--dir", linked], fixture.env)).stdout).toContain("already links to this skill")
   })
 })

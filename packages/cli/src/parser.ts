@@ -26,6 +26,8 @@ const valueFlags = new Set(["--old", "--new", "--section", "--version", "--since
 /** Effect CLI treats a following dash-prefixed token as short flags. Make the
  * values of our string/number flags explicit while preserving `--` text. */
 export function normalizeArgv(input: ReadonlyArray<string>): ReadonlyArray<string> {
+  // `do-it --skill` prints the skill, the same as `do-it skill show`.
+  if (input[0] === "--skill") return normalizeArgv(["skill", "show", ...input.slice(1)])
   const result: string[] = []
   let options = true
   for (let index = 0; index < input.length; index += 1) {
@@ -110,7 +112,7 @@ function withCommon<Values, Name extends string, Input, ContextInput extends { r
 
 export function makeCli(run: CommandRunner) {
   const root = Command.make("do-it").pipe(
-    Command.withDescription("Commands: open, read, sections, edit, append, todo add, todo start, todo check, todo uncheck, todo cancel, todo uncancel, todo list, diff, watch, status, stop"),
+    Command.withDescription("Commands: open, read, sections, edit, append, todo add, todo start, todo check, todo uncheck, todo cancel, todo uncancel, todo list, diff, watch, status, stop, skill install, skill path, skill show (or --skill)"),
     Command.withSharedFlags(commonFlags),
   )
 
@@ -173,7 +175,17 @@ export function makeCli(run: CommandRunner) {
   const status = Command.make("status", {}, input => withCommon(root, input, run, (_config, common) => ({ kind: "status", options: common })))
   const stop = Command.make("stop", {}, input => withCommon(root, input, run, (_config, common) => ({ kind: "stop", options: common })))
 
-  return root.pipe(Command.withSubcommands([open, read, sections, edit, append, todo, diff, watch, status, stop]))
+  const skillInstall = Command.make("install", {
+    dir: Flag.String("dir").pipe(Flag.optional), force: Flag.Boolean("force").pipe(Flag.withDefault(false)),
+  }, input => withCommon(root, input, run, (config, common) => ({ kind: "skill-install", options: common, dir: optionValue(config.dir), force: config.force })))
+  const skillPath = Command.make("path", {}, input => withCommon(root, input, run, (_config, common) => ({ kind: "skill-path", options: common })))
+  const skillShow = Command.make("show", {}, input => withCommon(root, input, run, (_config, common) => ({ kind: "skill-show", options: common })))
+  const skill = Command.make("skill").pipe(
+    Command.withDescription("Install the /do-it skill for Claude Code, print it, or print where this CLI keeps it"),
+    Command.withSubcommands([skillInstall, skillPath, skillShow]),
+  )
+
+  return root.pipe(Command.withSubcommands([open, read, sections, edit, append, todo, diff, watch, status, stop, skill]))
 }
 
 export function parseArgs(input: ReadonlyArray<string>): Effect.Effect<ParsedCommand, CliError.CliError, BunServices.BunServices> {

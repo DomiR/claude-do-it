@@ -122,6 +122,7 @@ test("static assets have content types, SPA fallback, and no symlink escape", as
   expect(await (await fetch(`${info.baseUrl}/some/route`)).text()).toContain("Do it test")
   expect((await fetch(`${info.baseUrl}/app.js`)).headers.get("content-type")).toContain("javascript")
   expect((await fetch(`${info.baseUrl}/app.css`)).headers.get("content-type")).toContain("text/css")
+  expect((await fetch(`${info.baseUrl}/app.js`, { method: "HEAD" })).headers.get("content-type")).toContain("javascript")
   symlinkSync((await runClient(paths(home))).token, join(web, "secret"))
   expect((await fetch(`${info.baseUrl}/secret`)).status).toBe(403)
   renameSync(join(web, "index.html"), join(web, "index.saved"))
