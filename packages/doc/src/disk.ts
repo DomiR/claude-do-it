@@ -1,8 +1,5 @@
-import { Buffer } from "node:buffer"
-import { randomUUID } from "node:crypto"
-import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, openSync, readSync,
-  renameSync, statSync, unlinkSync, writeSync, type Stats } from "node:fs"
-import { basename, dirname, join } from "node:path"
+import { Effect, FileSystem, Option, Path, PlatformError } from "effect"
+import { SecureRandom } from "effect/crypto"
 import { MAX_BYTES } from "./constants"
 import { checkText } from "./edit"
 import { DocError } from "./errors"
@@ -10,84 +7,90 @@ import { DocError } from "./errors"
 export interface Stamp { mtimeMs: number; size: number; ino: number }
 export interface Format { bom: boolean; crlf: boolean }
 
-function of(stat: Stats): Stamp { return { mtimeMs: stat.mtimeMs, size: stat.size, ino: stat.ino } }
-function missing(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException)?.code === "ENOENT"
+function of(info: FileSystem.File.Info): Stamp {
+  return { mtimeMs: Option.match(info.mtime, { onNone: () => 0, onSome: date => date.getTime() }),
+    size: Number(info.size), ino: Number(Option.getOrElse(info.ino, () => 0n)) }
+}
+/** True when a file system call failed because the path does not exist. */
+export function isNotFound(error: unknown): boolean {
+  return PlatformError.isPlatformError(error) && error.reason._tag === "NotFound"
 }
 function ioError(path: string, error: unknown): DocError {
   if (error instanceof DocError) return error
-  return new DocError({ code: missing(error) ? "not-found" : "invalid",
+  return new DocError({ code: isNotFound(error) ? "not-found" : "invalid",
     message: `Could not access ${path}: ${error instanceof Error ? error.message : String(error)}` })
 }
-function checkBytes(size: number): void {
-  if (size > MAX_BYTES) throw new DocError({ code: "too-large", message: `The file is ${size} bytes, over the limit of ${MAX_BYTES}` })
+function checkBytes(size: number): Effect.Effect<void, DocError> {
+  return size > MAX_BYTES
+    ? Effect.fail(new DocError({ code: "too-large", message: `The file is ${size} bytes, over the limit of ${MAX_BYTES}` }))
+    : Effect.void
 }
+const notRegular = (path: string) => new DocError({ code: "invalid", message: `${path} is not a regular file` })
 
-export function stamp(path: string): Stamp | null {
-  try { return of(statSync(path)) }
-  catch (error) { if (missing(error)) return null; throw ioError(path, error) }
-}
+/** The file's identity for change detection, or null when it does not exist. */
+export const stamp = Effect.fn("stamp")(function* (path: string) {
+  const fs = yield* FileSystem.FileSystem
+  return yield* fs.stat(path).pipe(
+    Effect.map((info): Stamp | null => of(info)),
+    Effect.catchIf(isNotFound, () => Effect.succeed(null)),
+    Effect.mapError(error => ioError(path, error)),
+  )
+})
 
-export function readFile(path: string): { text: string; stamp: Stamp; format: Format } {
-  let fd: number | undefined
-  try {
-    // Avoid blocking if a path is replaced by a FIFO between inspection and open.
-    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK)
-    const stat = fstatSync(fd)
-    if (!stat.isFile()) throw new DocError({ code: "invalid", message: `${path} is not a regular file` })
-    checkBytes(stat.size)
+export const readFile = Effect.fn("readFile")(function* (path: string) {
+  const fs = yield* FileSystem.FileSystem
+  // Opening a FIFO blocks until a writer appears, so refuse anything that is
+  // not a regular file before opening it. The descriptor is checked again below.
+  if ((yield* fs.stat(path)).type !== "File") return yield* Effect.fail(notRegular(path))
+  return yield* Effect.scoped(Effect.gen(function* () {
+    const file = yield* fs.open(path, { flag: "r" })
+    const info = yield* file.stat
+    if (info.type !== "File") return yield* Effect.fail(notRegular(path))
+    yield* checkBytes(Number(info.size))
     // The extra byte detects growth during the read without ever reading an
     // unbounded file into memory. Metadata and contents use the same descriptor.
-    const bytes = Buffer.allocUnsafe(MAX_BYTES + 1)
+    const bytes = new Uint8Array(MAX_BYTES + 1)
     let size = 0
     while (size < bytes.length) {
-      const read = readSync(fd, bytes, size, bytes.length - size, null)
+      const read = yield* file.read(bytes.subarray(size))
       if (!read) break
       size += read
     }
-    checkBytes(size)
+    yield* checkBytes(size)
     let raw: string
     try { raw = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, size)) }
-    catch { throw new DocError({ code: "invalid", message: `${path} is not valid UTF-8 text` }) }
+    catch { return yield* Effect.fail(new DocError({ code: "invalid", message: `${path} is not valid UTF-8 text` })) }
     const bom = raw.startsWith("\ufeff")
     if (bom) raw = raw.slice(1)
     const firstBreak = raw.indexOf("\n")
     const crlf = firstBreak > 0 && raw[firstBreak - 1] === "\r"
-    return { text: raw.replace(/\r\n/g, "\n"), stamp: of(stat), format: { bom, crlf } }
-  } catch (error) { throw ioError(path, error) }
-  finally { if (fd !== undefined) closeSync(fd) }
-}
+    return { text: raw.replace(/\r\n/g, "\n"), stamp: of(info), format: { bom, crlf } satisfies Format }
+  }))
+}, (effect, path) => Effect.mapError(effect, error => ioError(path, error)))
 
-export function writeAtomic(path: string, text: string, format: Format): Stamp {
-  checkText(text)
-  const encoded = Buffer.from((format.bom ? "\ufeff" : "") + (format.crlf ? text.replace(/\n/g, "\r\n") : text))
-  checkBytes(encoded.length)
-  const temporary = join(dirname(path), `.${basename(path)}.do-it-${process.pid}-${randomUUID()}.tmp`)
-  let fd: number | undefined
+export const writeAtomic = Effect.fn("writeAtomic")(function* (path: string, text: string, format: Format) {
+  const fs = yield* FileSystem.FileSystem
+  const paths = yield* Path.Path
+  yield* Effect.try({ try: () => checkText(text), catch: error => error })
+  const encoded = new TextEncoder().encode((format.bom ? "\ufeff" : "") + (format.crlf ? text.replace(/\n/g, "\r\n") : text))
+  yield* checkBytes(encoded.length)
+  const temporary = paths.join(paths.dirname(path), `.${paths.basename(path)}.do-it-${SecureRandom.uuidV4Unsafe()}.tmp`)
+  const mode = yield* fs.stat(path).pipe(
+    Effect.map((info): number | undefined => info.mode & 0o7777),
+    Effect.catchIf(isNotFound, () => Effect.succeed(undefined)),
+  )
   let created = false
-  try {
-    let mode: number | undefined
-    try { mode = statSync(path).mode & 0o7777 }
-    catch (error) { if (!missing(error)) throw error }
-    fd = openSync(temporary, "wx", mode ?? 0o666)
+  const write = Effect.scoped(Effect.gen(function* () {
+    const file = yield* fs.open(temporary, { flag: "wx", mode: mode ?? 0o666 })
     created = true
-    let written = 0
-    while (written < encoded.length) {
-      const count = writeSync(fd, encoded, written, encoded.length - written)
-      if (!count) throw new Error("The file write made no progress")
-      written += count
-    }
-    if (mode !== undefined) fchmodSync(fd, mode)
-    fsyncSync(fd)
-    const result = of(fstatSync(fd))
-    closeSync(fd)
-    fd = undefined
-    renameSync(temporary, path)
-    created = false
-    return result
-  } catch (error) { throw ioError(path, error) }
-  finally {
-    if (fd !== undefined) closeSync(fd)
-    if (created) { try { unlinkSync(temporary) } catch { /* Preserve the original I/O error. */ } }
-  }
-}
+    yield* file.writeAll(encoded)
+    // The umask narrows the mode given to open, so set the original mode again.
+    if (mode !== undefined) yield* fs.chmod(temporary, mode)
+    yield* file.sync
+    return of(yield* file.stat)
+  }))
+  return yield* write.pipe(
+    Effect.tap(() => fs.rename(temporary, path)),
+    Effect.onError(() => created ? Effect.ignore(fs.remove(temporary)) : Effect.void),
+  )
+}, (effect, path) => Effect.mapError(effect, error => ioError(path, error)))

@@ -1,33 +1,43 @@
+import { isNotFound } from "@do-it/doc"
 import { DoItRpcs } from "@do-it/protocol"
 import { BunHttpServer, BunHttpServerRequest } from "@effect/platform-bun"
-import { Deferred, Effect, Layer } from "effect"
+import { Deferred, Effect, FileSystem, Layer, Path, Schedule } from "effect"
 import { HttpEffect, HttpRouter, HttpServerRequest as Request, HttpServerResponse as Response } from "effect/http"
 import { RpcSerialization, RpcServer } from "effect/rpc"
-import { chmodSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
 import { Auth } from "./auth"
 import { APP_VERSION, MAX_BODY, config, type ServerConfig } from "./config"
 import { Documents, DocumentsLive } from "./documents"
 import { HandlersLive, type RuntimeInfo } from "./handlers"
 import { readJson } from "./files"
 import { Log } from "./log"
+import { alive } from "./process"
 import { staticResponse } from "./static"
 import { Versions } from "./versions"
 
-export const makeServer = Effect.fn("makeServer")(function* (options: ServerConfig = config()) {
-  yield* Effect.sync(() => { mkdirSync(options.home, { recursive: true, mode: 0o700 }); chmodSync(options.home, 0o700) })
-  const log = new Log(options.home)
-  const auth = yield* Effect.sync(() => new Auth(options.home))
-  const versions = new Versions(options.home, log)
+const encoder = new TextEncoder()
+
+export const makeServer = Effect.fn("makeServer")(function* (options?: ServerConfig) {
+  const settings = options ?? (yield* config)
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  yield* fs.makeDirectory(settings.home, { recursive: true, mode: 0o700 })
+  yield* fs.chmod(settings.home, 0o700)
+  const log = yield* Log.make(settings.home)
+  const auth = yield* Auth.make(settings.home)
+  const versions = yield* Versions.make(settings.home, log)
   const stop = yield* Deferred.make<void>()
   const shutdown = new AbortController()
-  let stopTimer: ReturnType<typeof setTimeout> | undefined
-  const runtime: RuntimeInfo = { port: options.port, startedAt: Date.now(), stop: () => {
-    if (!stopTimer) stopTimer = setTimeout(() => { Deferred.doneUnsafe(stop, Effect.void) }, 50)
-  } }
-  const serverOptions = { hostname: "127.0.0.1", port: options.port, maxRequestBodySize: MAX_BODY,
+  const scope = yield* Effect.scope
+  let stopping = false
+  // Answer the stop request before the server scope starts closing.
+  const runtime: RuntimeInfo = { port: settings.port, startedAt: Date.now(), stop: Effect.suspend(() => {
+    if (stopping) return Effect.void
+    stopping = true
+    return Effect.asVoid(Effect.forkIn(Effect.delay(Deferred.succeed(stop, undefined), "50 millis"), scope))
+  }) }
+  const serverOptions = { hostname: "127.0.0.1", port: settings.port, maxRequestBodySize: MAX_BODY,
     disablePreemptiveShutdown: true }
-  const server = yield* BunHttpServer.make(serverOptions).pipe(Effect.catchCause(cause => options.port === 0
+  const server = yield* BunHttpServer.make(serverOptions).pipe(Effect.catchCause(cause => settings.port === 0
     ? Effect.failCause(cause) : BunHttpServer.make({ ...serverOptions, port: 0 })))
   if (!("port" in server.address)) return yield* Effect.die(new Error("Expected an IP listening address"))
   runtime.port = server.address.port
@@ -72,7 +82,7 @@ export const makeServer = Effect.fn("makeServer")(function* (options: ServerConf
       if (Number(request.headers["content-length"] ?? 0) > MAX_BODY) return Response.text("Request body is too large", { status: 413 })
       const body = yield* request.text.pipe(Effect.result)
       if (body._tag === "Failure") return Response.text("Could not read request body", { status: 413 })
-      if (Buffer.byteLength(body.success) > MAX_BODY) return Response.text("Request body is too large", { status: 413 })
+      if (encoder.encode(body.success).length > MAX_BODY) return Response.text("Request body is too large", { status: 413 })
       // Bound RPC envelopes too, so a body of tiny batched calls cannot create
       // an arbitrarily large number of waiting handler fibers.
       let frames = 0
@@ -82,7 +92,7 @@ export const makeServer = Effect.fn("makeServer")(function* (options: ServerConf
       return yield* rpc
     }
     if (request.method !== "GET" && request.method !== "HEAD") return Response.text("Not found", { status: 404 })
-    return staticResponse(options.webDist, url.pathname)
+    return yield* staticResponse(settings.webDist, url.pathname)
   })
   yield* server.serve(http.pipe(Effect.flatMap(response => Effect.gen(function* () {
     if (response.body._tag !== "Stream") return response
@@ -98,36 +108,35 @@ export const makeServer = Effect.fn("makeServer")(function* (options: ServerConf
     }))
   }))))
   const record = { pid: process.pid, port: runtime.port, appVersion: APP_VERSION, startedAt: runtime.startedAt }
-  const recordPath = join(options.home, "daemon.json")
-  yield* Effect.sync(() => {
-    // Exclusive publication also rejects concurrent manual starts. A dead
-    // process's record may be removed; a live daemon's record is never replaced.
-    let prior: { pid?: number } | undefined
-    try { prior = readJson(recordPath, 4096) as typeof prior } catch { /* Missing or corrupt stale record. */ }
-    let running = false
-    if (prior?.pid && prior.pid !== process.pid) {
-      try { process.kill(prior.pid, 0); running = true }
-      catch (error) { running = (error as NodeJS.ErrnoException).code === "EPERM" }
-    }
-    if (running) throw new Error("A daemon is already running for this home")
-    try { unlinkSync(recordPath) } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
-    writeFileSync(recordPath, JSON.stringify(record), { mode: 0o600, flag: "wx" })
+  const recordPath = path.join(settings.home, "daemon.json")
+  // Exclusive publication also rejects concurrent manual starts. A dead
+  // process's record may be removed; a live daemon's record is never replaced.
+  const prior = yield* readJson(recordPath, 4096).pipe(Effect.map(value => value as { pid?: number } | null),
+    Effect.catch(() => Effect.succeed(undefined)))
+  if (prior?.pid && prior.pid !== process.pid && alive(prior.pid)) {
+    return yield* Effect.fail(new Error("A daemon is already running for this home"))
+  }
+  yield* fs.remove(recordPath).pipe(Effect.catchIf(isNotFound, () => Effect.void))
+  yield* fs.writeFileString(recordPath, JSON.stringify(record), { mode: 0o600, flag: "wx" })
+  const tick = Effect.gen(function* () {
+    // Logging cannot prevent idle shutdown.
+    yield* Effect.ignore(log.rotate())
+    if (active === 0 && registry.totalWatchers === 0 && Date.now() - lastRequest >= settings.idleMs) yield* runtime.stop
   })
-  const idle = setInterval(() => {
-    try { log.rotate() } catch { /* Logging cannot prevent idle shutdown. */ }
-    if (active === 0 && registry.totalWatchers === 0 && Date.now() - lastRequest >= options.idleMs) runtime.stop()
-  }, Math.max(10, Math.min(1000, options.idleMs / 4)))
-  yield* Effect.addFinalizer(() => Effect.sync(() => {
-    clearInterval(idle)
-    if (stopTimer) clearTimeout(stopTimer)
+  yield* Effect.forkScoped(Effect.repeat(tick, Schedule.spaced(Math.max(10, Math.min(1000, settings.idleMs / 4)))))
+  yield* Effect.addFinalizer(() => Effect.gen(function* () {
     shutdown.abort()
-    registry.close()
-    try {
-      const current = readJson(recordPath, 4096) as typeof record
-      if (current.pid === record.pid && current.startedAt === record.startedAt && current.port === record.port) unlinkSync(recordPath)
-    } catch { /* The record has already been removed. */ }
-    log.write("Daemon stopped")
+    yield* registry.close()
+    yield* readJson(recordPath, 4096).pipe(
+      Effect.flatMap(value => {
+        const current = value as typeof record
+        return current.pid === record.pid && current.startedAt === record.startedAt && current.port === record.port ? fs.remove(recordPath) : Effect.void
+      }),
+      // The record has already been removed.
+      Effect.ignore,
+    )
+    yield* log.write("Daemon stopped")
   }))
-  log.write(`Daemon listening on 127.0.0.1:${runtime.port}`)
-  return { ...record, home: options.home, auth, documents: registry, stopped: Deferred.await(stop), stop: runtime.stop }
+  yield* log.write(`Daemon listening on 127.0.0.1:${runtime.port}`)
+  return { ...record, home: settings.home, auth, documents: registry, stopped: Deferred.await(stop), stop: runtime.stop }
 })

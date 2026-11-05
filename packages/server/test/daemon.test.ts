@@ -6,7 +6,7 @@ import { join } from "node:path"
 import type { EditOp, WatchEvent } from "@do-it/protocol"
 import { ensureDaemon, paths, RpcClient, RpcClientLive, stopDaemon, withClient, type DaemonInfo, type DoItClient } from "../../client/src"
 import { TEMPLATE } from "../src/config"
-import { isolateDaemonEnvironment } from "../../client/test/environment"
+import { isolateDaemonEnvironment, runClient } from "../../client/test/environment"
 
 isolateDaemonEnvironment()
 const home = mkdtempSync(join(tmpdir(), "do-it-server-"))
@@ -41,7 +41,7 @@ async function eventually<A>(read: () => Promise<A> | A, check: (value: A) => bo
   return last!
 }
 async function start() {
-  info = await Effect.runPromise(ensureDaemon({ home, port: 0, env: { DO_IT_WEB_DIST: web } }))
+  info = await runClient(ensureDaemon({ home, port: 0, env: { DO_IT_WEB_DIST: web } }))
   pids.add(info.pid)
 }
 function watch(path: string, options: { since?: number; text?: boolean; section?: string } = {}) {
@@ -69,7 +69,7 @@ beforeAll(async () => {
   await start()
 }, 15000)
 afterAll(async () => {
-  await Effect.runPromise(stopDaemon(home).pipe(Effect.catch(() => Effect.succeed(false))))
+  await runClient(stopDaemon(home).pipe(Effect.catch(() => Effect.succeed(false))))
   for (const pid of pids) { try { process.kill(pid, "SIGTERM") } catch {} }
   rmSync(home, { recursive: true, force: true })
 })
@@ -122,7 +122,7 @@ test("static assets have content types, SPA fallback, and no symlink escape", as
   expect(await (await fetch(`${info.baseUrl}/some/route`)).text()).toContain("Do it test")
   expect((await fetch(`${info.baseUrl}/app.js`)).headers.get("content-type")).toContain("javascript")
   expect((await fetch(`${info.baseUrl}/app.css`)).headers.get("content-type")).toContain("text/css")
-  symlinkSync(paths(home).token, join(web, "secret"))
+  symlinkSync((await runClient(paths(home))).token, join(web, "secret"))
   expect((await fetch(`${info.baseUrl}/secret`)).status).toBe(403)
   renameSync(join(web, "index.html"), join(web, "index.saved"))
   try { expect(await (await fetch(`${info.baseUrl}/`)).text()).toContain("bun run build:web") }
@@ -254,9 +254,9 @@ test("restart preserves versions and cookies, while offline file edits take the 
   const cookie = (await fetch(opened.url, { redirect: "manual" })).headers.get("set-cookie")!.split(";")[0]!
   await edit(path, 1, { _tag: "Replace", old: "before", new: "after" })
   const token = info.token
-  await Effect.runPromise(stopDaemon(home))
+  await runClient(stopDaemon(home))
   expect(readFileSync(path, "utf8")).toBe("after\n")
-  expect(existsSync(paths(home).versions)).toBe(true)
+  expect(existsSync((await runClient(paths(home))).versions)).toBe(true)
   await start()
   expect(info.token).toBe(token)
   expect(await call(client => client.read({ path }))).toEqual({ version: 2, text: "after\n" })
@@ -266,7 +266,7 @@ test("restart preserves versions and cookies, while offline file edits take the 
   expect((await failure(client => client.sync({ path, base: 1, text: "stale\n" })))._tag).toBe("Forgotten")
   const conflict = await failure(client => client.edit({ path, version: 1, author: { _tag: "Agent", name: "old" }, op: { _tag: "Append", text: "x" } }))
   expect(conflict).toMatchObject({ _tag: "VersionMismatch", latest: 2, forgotten: true, diff: null })
-  await Effect.runPromise(stopDaemon(home))
+  await runClient(stopDaemon(home))
   writeFileSync(path, "offline edit\n")
   await start()
   expect(await call(client => client.read({ path }))).toEqual({ version: 3, text: "offline edit\n" })

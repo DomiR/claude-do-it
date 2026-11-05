@@ -1,7 +1,9 @@
 import { describeAuthor, exitCodeFor, formatTodoChange, formatVersionHeader } from "@do-it/protocol"
 import type { Author, Change, EditSuccess, RpcFailure, TodoChange } from "@do-it/protocol"
-export function writeLine(text = ""): void { process.stdout.write(text.endsWith("\n") ? text : `${text}\n`) }
-export function writeJson(value: unknown): void { writeLine(JSON.stringify(value)) }
+import { Console, Effect } from "effect"
+/** Writes `text` and one line break. A text that already ends in a line break gets no second one. */
+export function writeLine(text = ""): Effect.Effect<void> { return Console.log(text.endsWith("\n") ? text.slice(0, -1) : text) }
+export function writeJson(value: unknown): Effect.Effect<void> { return writeLine(JSON.stringify(value)) }
 export function diffText(header: string, diff: string | null): string { return diff ? `${header}\n${diff}` : header }
 export function editReply(result: EditSuccess): { text: string; json: Record<string, unknown> } {
   if (!result.changed) return { text: `Unchanged. Version: ${result.version}`, json: { kind: "unchanged", version: result.version, section: result.section, others: result.others, diff: result.others?.diff ?? null } }

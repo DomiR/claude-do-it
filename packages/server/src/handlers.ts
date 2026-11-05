@@ -3,9 +3,9 @@ import { DoItRpcs, DocumentGone, Forgotten, NothingYet, type Author, type DiffSu
 import { Cause, Deferred, Effect, Stream } from "effect"
 import { Auth } from "./auth"
 import { APP_VERSION } from "./config"
-import { Documents, DocumentRegistry, rpcTry } from "./documents"
+import { Documents, DocumentRegistry, rpcTry, type OpenDocument } from "./documents"
 
-export interface RuntimeInfo { port: number; startedAt: number; stop: () => void }
+export interface RuntimeInfo { port: number; startedAt: number; stop: Effect.Effect<void> }
 export function author(origin: Origin): Author {
   return origin.kind === "agent" ? { _tag: "Agent", name: origin.name }
     : origin.kind === "user" ? { _tag: "User" } : { _tag: "File" }
@@ -13,7 +13,7 @@ export function author(origin: Origin): Author {
 function origin(by: Author): Origin {
   return by._tag === "Agent" ? { kind: "agent", name: by.name } : { kind: by._tag === "User" ? "user" : "file" }
 }
-function changes(entry: ReturnType<DocumentRegistry["get"]>, since: number, section?: string): DiffSuccess | null {
+function changes(entry: OpenDocument, since: number, section?: string): DiffSuccess | null {
   const result = entry.doc.changes(since, section)
   return result ? { ...result, by: result.by.map(author) } : null
 }
@@ -21,9 +21,11 @@ function changes(entry: ReturnType<DocumentRegistry["get"]>, since: number, sect
 /** One pull reads the newest document version. There is no subscriber queue. */
 export function watchDocument(registry: DocumentRegistry, request: WatchPayload) {
   return Stream.fromPull(Effect.gen(function* () {
-    const entry = yield* rpcTry(() => registry.get(request.path))
-    if (request.section !== undefined) yield* rpcTry(() => findSection(entry.doc.text, request.section!))
-    const release = yield* rpcTry(() => registry.subscribe(entry))
+    // The subscription keeps the entry open once the stream exists.
+    const { entry, release } = yield* registry.withEntry(request.path, entry => Effect.gen(function* () {
+      if (request.section !== undefined) yield* rpcTry(() => findSection(entry.doc.text, request.section!))
+      return { entry, release: yield* rpcTry(() => registry.subscribe(entry)) }
+    }))
     yield* Effect.addFinalizer(() => Effect.sync(release))
     let first = true
     let ended = false
@@ -62,79 +64,62 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
       status: Effect.fn("rpc.status")(function* () {
         return { pid: process.pid, appVersion: APP_VERSION, port: runtime.port, startedAt: runtime.startedAt, documents: registry.status() }
       }),
-      stop: Effect.fn("rpc.stop")(function* () { runtime.stop(); return {} }),
-      open: Effect.fn("rpc.open")(function* (request) {
-        const { entry, created } = yield* rpcTry(() => registry.open(request.path, request.create))
-        const code = yield* rpcTry(() => auth.mint(entry.path))
-        return { path: entry.path, version: entry.doc.version, created,
+      stop: Effect.fn("rpc.stop")(function* () { yield* runtime.stop; return {} }),
+      open: request => registry.withOpened(request.path, ({ entry, created }) => Effect.gen(function* () {
+        const version = entry.doc.version
+        const code = yield* auth.mint(entry.path)
+        return { path: entry.path, version, created,
           url: `http://127.0.0.1:${runtime.port}/auth?code=${code}&path=${encodeURIComponent(entry.path)}` }
-      }),
-      read: Effect.fn("rpc.read")(function* (request) {
-        const entry = yield* rpcTry(() => registry.get(request.path))
-        return yield* rpcTry(() => {
-          const scope = request.section === undefined ? null : findSection(entry.doc.text, request.section)
-          return { version: entry.doc.version, text: scope ? entry.doc.text.slice(scope.from, scope.to) : entry.doc.text }
-        })
-      }),
-      sections: Effect.fn("rpc.sections")(function* (request) {
-        const entry = yield* rpcTry(() => registry.get(request.path))
-        return { version: entry.doc.version, sections: sections(entry.doc.text).map(({ id, title, level, line }) => ({ id, title, level, line })) }
-      }),
-      todos: Effect.fn("rpc.todos")(function* (request) {
-        const entry = yield* rpcTry(() => registry.get(request.path))
-        return yield* rpcTry(() => {
-          const all = todos(entry.doc.text)
-          if (request.section === undefined) return { version: entry.doc.version, todos: all }
-          const scope = findSection(entry.doc.text, request.section)
-          const following = sections(entry.doc.text).find(section => section.from === scope.to)?.line ?? Infinity
-          return { version: entry.doc.version, todos: all.filter(todo => todo.line >= scope.line && todo.line < following) }
-        })
-      }),
-      edit: Effect.fn("rpc.edit")(function* (request) {
-        const entry = yield* rpcTry(() => registry.get(request.path))
-        return yield* rpcTry(() => {
-          const previous = entry.doc.version
-          const result = entry.doc.agentEdit(origin(request.author), { version: request.version, section: request.section }, text => {
-            const op = request.op
-            switch (op._tag) {
-              case "Replace": return replaceUnique(text, op.old, op.new, request.section)
-              case "Append": return appendBlock(text, op.text, request.section)
-              case "TodoAdd": return addTodo(text, op.text, request.section)
-              case "TodoSet": return setTodoStateStamped(text, findTodo(text, op.target, request.section), op.state, new Date())
-              case "TodoStart": return stampTodo(text, findTodo(text, op.target, request.section), "started", new Date())
-            }
-          })
-          registry.changed(entry, previous)
-          return { ...result, section: request.section ?? null }
-        }, () => entry.doc.version)
-      }),
-      sync: Effect.fn("rpc.sync")(function* (request) {
-        const entry = yield* rpcTry(() => registry.get(request.path))
-        return yield* rpcTry(() => {
-          const previous = entry.doc.version
-          entry.doc.userEdit(request.base, request.text)
-          registry.changed(entry, previous)
-          return { version: entry.doc.version, text: entry.doc.text }
-        }, () => entry.doc.version)
-      }),
-      diff: Effect.fn("rpc.diff")(function* (request) {
-        const entry = yield* rpcTry(() => registry.get(request.path))
-        entry.waiters++
-        const read = Effect.gen(function* () {
-          const deadline = Date.now() + request.wait * 1000
-          while (true) {
-            const signal = entry.signal
-            if (entry.deleted) return yield* Effect.fail(new DocumentGone({ path: entry.path }))
-            const result = changes(entry, request.since)
-            if (!result) return yield* Effect.fail(new Forgotten({ latest: entry.doc.version }))
-            if (entry.doc.version !== request.since) return result
-            const remaining = deadline - Date.now()
-            if (remaining <= 0) return yield* Effect.fail(new NothingYet({}))
-            yield* Deferred.await(signal).pipe(Effect.timeoutOption(remaining))
+      }), request.create).pipe(Effect.withSpan("rpc.open")),
+      read: request => registry.withEntry(request.path, entry => rpcTry(() => {
+        const scope = request.section === undefined ? null : findSection(entry.doc.text, request.section)
+        return { version: entry.doc.version, text: scope ? entry.doc.text.slice(scope.from, scope.to) : entry.doc.text }
+      })).pipe(Effect.withSpan("rpc.read")),
+      sections: request => registry.withEntry(request.path, entry => Effect.sync(() => ({ version: entry.doc.version,
+        sections: sections(entry.doc.text).map(({ id, title, level, line }) => ({ id, title, level, line })) }))).pipe(Effect.withSpan("rpc.sections")),
+      todos: request => registry.withEntry(request.path, entry => rpcTry(() => {
+        const all = todos(entry.doc.text)
+        if (request.section === undefined) return { version: entry.doc.version, todos: all }
+        const scope = findSection(entry.doc.text, request.section)
+        const following = sections(entry.doc.text).find(section => section.from === scope.to)?.line ?? Infinity
+        return { version: entry.doc.version, todos: all.filter(todo => todo.line >= scope.line && todo.line < following) }
+      })).pipe(Effect.withSpan("rpc.todos")),
+      edit: request => registry.withEntry(request.path, entry => Effect.gen(function* () {
+        const previous = entry.doc.version
+        const result = yield* rpcTry(() => entry.doc.agentEdit(origin(request.author), { version: request.version, section: request.section }, text => {
+          const op = request.op
+          switch (op._tag) {
+            case "Replace": return replaceUnique(text, op.old, op.new, request.section)
+            case "Append": return appendBlock(text, op.text, request.section)
+            case "TodoAdd": return addTodo(text, op.text, request.section)
+            case "TodoSet": return setTodoStateStamped(text, findTodo(text, op.target, request.section), op.state, new Date())
+            case "TodoStart": return stampTodo(text, findTodo(text, op.target, request.section), "started", new Date())
           }
-        })
-        return yield* read.pipe(Effect.ensuring(Effect.sync(() => { entry.waiters-- })))
-      }),
+        }), () => entry.doc.version)
+        yield* registry.changed(entry, previous)
+        return { ...result, section: request.section ?? null }
+      })).pipe(Effect.withSpan("rpc.edit")),
+      sync: request => registry.withEntry(request.path, entry => Effect.gen(function* () {
+        const previous = entry.doc.version
+        yield* rpcTry(() => entry.doc.userEdit(request.base, request.text), () => entry.doc.version)
+        // Read the reply before yielding: a deleted file frees the document.
+        const reply = { version: entry.doc.version, text: entry.doc.text }
+        yield* registry.changed(entry, previous)
+        return reply
+      })).pipe(Effect.withSpan("rpc.sync")),
+      diff: request => registry.withEntry(request.path, entry => Effect.gen(function* () {
+        const deadline = Date.now() + request.wait * 1000
+        while (true) {
+          const signal = entry.signal
+          if (entry.deleted) return yield* Effect.fail(new DocumentGone({ path: entry.path }))
+          const result = changes(entry, request.since)
+          if (!result) return yield* Effect.fail(new Forgotten({ latest: entry.doc.version }))
+          if (entry.doc.version !== request.since) return result
+          const remaining = deadline - Date.now()
+          if (remaining <= 0) return yield* Effect.fail(new NothingYet({}))
+          yield* Deferred.await(signal).pipe(Effect.timeoutOption(remaining))
+        }
+      })).pipe(Effect.withSpan("rpc.diff")),
       watch: request => watchDocument(registry, request),
     }
   }))

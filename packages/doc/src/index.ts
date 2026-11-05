@@ -8,4 +8,4 @@ export { todos, findTodo, setTodoState, addTodo, appendBlock, replaceUnique, typ
 export { formatStamp, stampTodo, unstampTodo, setTodoStateStamped, withoutStamps, type StampTag } from "./stamp"
 export { todoChanges, formatTodoChange, type TodoChangeKind, type TodoChange } from "./todo-changes"
 export { Document, type Applied, type Changes, type WriteTicket } from "./document"
-export { readFile, stamp, writeAtomic, type Stamp, type Format } from "./disk"
+export { isNotFound, readFile, stamp, writeAtomic, type Stamp, type Format } from "./disk"

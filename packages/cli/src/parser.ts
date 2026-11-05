@@ -1,14 +1,13 @@
 import { APP_VERSION } from "@do-it/protocol"
 import { BunServices } from "@effect/platform-bun"
-import { Effect, Option, Schema } from "effect"
+import { Config, Effect, Option, Path, Schema } from "effect"
 import { Argument, CliConfig, CliError, CliOutput, Command, Flag, GlobalFlag } from "effect/cli"
-import { resolve } from "node:path"
 
 import type { ParsedCommand } from "./types"
 
 export type { ParsedCommand } from "./types"
 
-export type CommandRunner = (command: ParsedCommand) => Effect.Effect<void>
+export type CommandRunner = (command: ParsedCommand) => Effect.Effect<void, never, Command.Environment>
 
 export const cliFormatter: CliOutput.Formatter = {
   ...CliOutput.defaultFormatter({ colors: false }),
@@ -81,24 +80,31 @@ const wait = Flag.Finite("wait").pipe(Flag.withDefault(0), Flag.withSchema(Secon
 const settle = Flag.Finite("settle").pipe(Flag.withSchema(Seconds), Flag.optional)
 
 const optionValue = <A>(value: Option.Option<A>): A | undefined => Option.isSome(value) ? value.value : undefined
+/** `path` is relative to the working directory here. `withCommon` resolves it. */
 const pathValue = (value: string | undefined, optional = false): { path: string; displayPath: string } => {
   const displayPath = optional ? value ?? "TODO.md" : value!
-  return { displayPath, path: resolve(process.cwd(), displayPath) }
+  return { displayPath, path: displayPath }
 }
+const defaultAgent = Config.option(Config.String("DO_IT_AGENT")).pipe(
+  Effect.map(name => Option.getOrElse(name, () => "").trim() || "agent"),
+  Effect.orDie,
+)
 const commonFlags = {
   json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
-  as: Flag.String("as").pipe(Flag.withDefault(process.env.DO_IT_AGENT?.trim() || "agent"), Flag.withSchema(AgentName)),
+  as: Flag.String("as").pipe(Flag.withDefault(defaultAgent), Flag.withSchema(AgentName)),
 }
 
-function withCommon<Config, Name extends string, Input, ContextInput extends { readonly json: boolean; readonly as: string }, E, R>(
+function withCommon<Values, Name extends string, Input, ContextInput extends { readonly json: boolean; readonly as: string }, E, R>(
   root: Command.Command<Name, Input, ContextInput, E, R>,
-  input: Config,
+  input: Values,
   run: CommandRunner,
-  make: (config: Config, common: ContextInput) => ParsedCommand,
-): Effect.Effect<void, E, R | Command.CommandContext<Name>> {
+  make: (values: Values, common: ContextInput) => ParsedCommand,
+): Effect.Effect<void, E, R | Command.CommandContext<Name> | Command.Environment> {
   return Effect.gen(function* () {
     const globals = yield* root
-    yield* run(make(input, globals))
+    const path = yield* Path.Path
+    const command = make(input, globals)
+    yield* run("path" in command ? { ...command, path: path.resolve(command.path) } : command)
   })
 }
 
