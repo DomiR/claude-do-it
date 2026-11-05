@@ -148,7 +148,7 @@ Use `--quiet` to skip the initial `Watching PATH at version N` line instead of f
 
 ## Step 3. Triage each new task
 
-A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, is not an indented `- [ ]` line under a task whose `state.json` entry is L (those are its subtasks, the person's own additions included), and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone.
+A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, is not an indented `- [ ]` line under a task whose `state.json` entry is L (those are its subtasks, the person's own additions included), and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone. The template's `## Example` samples fall out of these rules (open ones carry a `**t0**` status line, the rest are resolved); real ids start at t1.
 
 **Start it first.** The moment you take a task, before sizing it, run `todo start` on it, queued tasks included, so the person sees at once that it was picked up:
 
