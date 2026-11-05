@@ -176,7 +176,7 @@ do-it edit "$TODO" --version $V --section tasks \
 
 With a messenger (Step 4) you only append `- conductor t3 status: M, planning with Fable` to the inbox and it writes the line. Everywhere below, **write under the task** means exactly this: yourself without a messenger, through a `conductor` inbox line with one.
 
-Never rewrite the person's own task text. Your lines are indented sub bullets starting with `**tN**`; there is exactly one status line per task, which you replace as the task moves, plus any `**tN question:**` lines. Record every task in `$STATE/state.json` (id, text, size, repo, branch, worktree, agent id or name, status) after every transition; it is how you resume.
+Never rewrite the person's own task text. Your lines are indented sub bullets starting with `**tN**`; there is exactly one status line per task, which you replace as the task moves, plus any `**tN question:**` lines. Record every task in `$STATE/state.json` (id, text, size, repo, branch, worktree, agent id or name, status) before its first status line and after every transition; it is how you resume, and how the messenger finds the task for a `tN`.
 
 ## Step 4. Deliver
 
@@ -220,7 +220,7 @@ This needs nothing but Claude Code: `isolation: "worktree"` makes each worker's 
 3. **Test.** When the `tests.md` watch shows an open request and no tester runs, start one: `Agent(subagent_type: "general-purpose", run_in_background: true)` with the tester brief. It drains the queue one request at a time, oldest first, and exits; start it again for the next requests.
 4. **Questions.** A worker that needs the person appends a `question` to the inbox and ends its run with `QUESTION: ...`. Write it under the task (`  - **tN question:** ...`, status `waiting for you`; the messenger does both from the worker's inbox line). When the person answers under it, resume that same worker with `SendMessage` to its agent id: `From the TODO: <their answer>`.
 5. **Review.** When a worker ends with `DONE`, verify (below, which also saves the diff to `$STATE/reviews/tN.diff`), then run `fable-advisor` with the task, `$STATE/plans/tN.md`, that diff file, and `$STATE/tests.md` (it has no shell, so pass paths, not pasted text). `ship`: delivered. `fix-first`: resume the worker with the findings.
-6. **Messenger.** When it is on and the inbox watch shows new lines while no messenger runs, start one: `Agent(subagent_type: "general-purpose", run_in_background: true)` with the messenger brief. It writes everything since `$STATE/messenger.version` and ends with `INBOX DRAINED`. Lines that arrive while it runs wait for one restart after it ends; never run two.
+6. **Messenger.** When it is on and new inbox lines arrive while no messenger runs (the inbox watch skips your own lines, so also right after you append a `conductor` line), start one: `Agent(subagent_type: "general-purpose", run_in_background: true)` with the messenger brief. It writes everything since `$STATE/messenger.version` and ends with `INBOX DRAINED`. Lines that arrive while it runs wait for one restart after it ends; never run two.
 
 Worker brief:
 
@@ -229,7 +229,6 @@ TASK tN (size S|M|L): <the person's task line, verbatim, plus their sub notes>
 REPO: <repo root>. You run in your own git worktree on your own branch; commit there.
 PLAN: <the plan from $STATE/plans/tN.md>
 NAME: export DO_IT_AGENT=tN before any do-it command.
-TASK TARGET: keep the person's task text verbatim. For todo start and todo check, target that exact text after --, never a remembered task number. If the text is unavailable, run do-it todo list immediately before choosing a target.
 COMPUTE RULE: never run builds, tests, linters, type checkers, dev servers, or browsers yourself.
   Formatters are fine. To test, queue one request and wait for the answer:
     do-it todo add <STATE>/tests.md --version <v> --section queue "tNrK tN: <command> in <your worktree>"
@@ -263,18 +262,20 @@ Messenger brief:
 
 ```
 You write the person's todo for the conductor. export DO_IT_AGENT=messenger. TODO=<todo path>,
-INBOX=<STATE>/inbox.md (section messages), CURSOR=<STATE>/messenger.version. Your input is every
+INBOX=<STATE>/inbox.md (section messages), CURSOR=<STATE>/messenger.version, and
+STATE=<STATE>/state.json, where each task's entry gives the task text for its tN. Your input is every
 inbox line added after the version in CURSOR, in order (do-it diff <INBOX> --since <cursor>; on
 "no longer kept", do-it read it and take the lines you have not written yet):
   "tN progress: x"            status line of tN becomes "**tN** x" (a few words)
   "tN question: q"            add "  - **tN question:** q" under tN, status "waiting for you"
-  "tN blocked: x", "tN done"  nothing: the conductor decides
+  "tN blocked: x", "tN failed: x", "tN done"   nothing: the conductor decides
   "conductor tN status: x"    status line of tN becomes "**tN** x"
   "conductor tN answered"     remove the "**tN question:**" line
   "conductor tN answer: path" status "**tN** answered", the file's lines as sub bullets under it
   "conductor tN delivered: x" status line of tN becomes "**tN** delivered: x"
-Each task has exactly one "**tN**" status line, an indented sub bullet right under the task, which
-you replace in place; the last line wins. Read the todo before each write, skip a question or
+Each task has exactly one "**tN**" status line, an indented sub bullet right under the task (the
+line whose text is the state.json entry for tN), which you add when missing and otherwise replace
+in place; the last line wins. Read the todo before each write, skip a question or
 answer that is already there, and change only your "**tN**" lines with do-it edit --section tasks
 naming the version. Never touch the person's text, task lines, checkboxes, or @ tags, never put @
 words in a line, and never use dash separators. Once every line up to the inbox version you read
@@ -349,7 +350,7 @@ Each task becomes a T3 Code thread in its own worktree. Flags differ between T3 
   ```
   `$BASE` is the repo's integration branch (`origin/main` unless the repo says otherwise). Add `--provider claudeAgent --model claude-opus-5-5` (and `--effort high`) only when `--help` lists them; otherwise the thread uses the project's default model. Keep the thread id in `state.json`. Start threads in the background: never pass a flag that `--help` describes as opening, focusing, or revealing the thread in the app.
 - **Tester**: one thread in the project folder (no `--worktree`), started when the first request is queued: `TID=$(t3 thread start . "$TESTER_BRIEF" --title do-tester --json | jq -r '.threadId // .thread.id // .id')`. It drains the queue and ends its turn with `QUEUE EMPTY`. For later requests, `t3 thread send "$TID" "New test requests are queued: drain the queue"`; never start a second tester.
-- **Messenger**: one thread in the project folder titled `do-messenger` with the messenger brief, started with the first task. It drains the inbox and ends its turn with `INBOX DRAINED`; on new inbox lines, `t3 thread send "$MID" "New inbox lines: drain them"`. Never start a second one.
+- **Messenger**: one thread in the project folder titled `do-messenger` with the messenger brief, started with the first task. It drains the inbox and ends its turn with `INBOX DRAINED`; on new inbox lines, and right after you append a `conductor` line (your watch skips those), `t3 thread send "$MID" "New inbox lines: drain them"`. Never start a second one.
 - **Answers**: `t3 thread send "$ID" "From the TODO: <their text>"`. A send never interrupts; a busy thread takes it as its next turn.
 - **Parked workers**: after 30 quiet minutes, `t3 thread show "$ID"`, and nudge it when it waits. A thread that waits for an answer inside the app (exit code 2 from a `--wait` send) gets a question line under its task.
 

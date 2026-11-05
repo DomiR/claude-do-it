@@ -77,8 +77,8 @@ task `@started` as soon as it picks it up, sizes it, and delegates the rest
 to agents, watching them instead of doing the work itself. Each task gets one
 status line under it, plus any question it needs you to answer (answer by
 writing under the question). Delivered tasks are checked off with `@done`,
-their branch, and their test result. Once several tasks run, an optional
-messenger agent writes those lines for the conductor.
+their branch, and their test result. An optional messenger agent can write
+those lines for the conductor.
 
 PlainTasks tags steer the work: `@critical`, `@high`, and `@today` go first,
 `@low` last, and `@due(date)` reaches the worker as a deadline. Agents never
