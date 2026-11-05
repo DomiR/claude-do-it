@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import { LoroDoc, LoroText } from "loro-crdt"
-import { Document, DocError, KEPT, MAX_BYTES, addTodo, describeOrigin, findTodo,
+import { COMPACT_KEEP, Document, DocError, KEPT, MAX_BYTES, addTodo, describeOrigin, findTodo,
   replaceUnique, setTodoState, type Origin, type WriteTicket } from "../src"
 import type { History } from "../src/version"
 
@@ -395,24 +395,23 @@ describe("user and file merges", () => {
 describe("compaction", () => {
   test("thresholds, dirty and pending writes gate compaction, later edits still work", () => {
     const doc = open("one\ntwo\n")
-    expect(doc.compact()).toBe(false)
+    expect(doc.compact()).toBeNull()
     edit(doc, "two", "TWO")
-    expect(doc.compact(0, 0)).toBe(false)
+    expect(doc.compact(0, 0)).toBeNull()
     const write = doc.toWrite()
     doc.wrote(write)
     const inFlight = doc.toWrite()
-    expect(doc.compact(0, 0)).toBe(false)
+    expect(doc.compact(0, 0)).toBeNull()
     doc.notWritten(inFlight)
     const version = doc.version
     const text = doc.text
-    expect(doc.compact(0, 256)).toBe(true)
+    expect(doc.compact(0, 256)).toMatchObject({ reason: "ops", kept: 2, oldest: 1 })
     expect(doc.version).toBe(version)
     expect(doc.text).toBe(text)
-    expect(doc.textAt(1)).toBeNull()
-    expect(doc.changes(1)).toBeNull()
+    expect(doc.textAt(1)).toBe("one\ntwo\n")
+    expect(doc.changes(1)).not.toBeNull()
     expect(doc.textAt(version)).toBe(text)
-    expect(internals(doc).history.size).toBe(1)
-    error(() => doc.userEdit(1, "old"), "forgotten")
+    expect(internals(doc).history.size).toBe(2)
     doc.mergeFile("zero\n" + text)
     edit(doc, "TWO", "three")
     doc.userEdit(doc.version, doc.text + "four\n")
@@ -425,10 +424,30 @@ describe("compaction", () => {
     edit(doc, "a", "b")
     doc.wrote(doc.toWrite())
     expect(peers(doc)).toBe(2)
-    expect(doc.compact(Number.MAX_SAFE_INTEGER, 2)).toBe(false)
-    expect(doc.compact(Number.MAX_SAFE_INTEGER, 1)).toBe(true)
+    expect(doc.compact(Number.MAX_SAFE_INTEGER, 2)).toBeNull()
+    expect(doc.compact(Number.MAX_SAFE_INTEGER, 1)).toMatchObject({ reason: "peers", peers: 2 })
     expect(peers(doc)).toBe(1)
     edit(doc, "b", "c")
     expect(doc.text).toBe("c")
+  })
+
+  test("keeps the last COMPACT_KEEP versions and merges stale edits inside the window", () => {
+    const doc = open("base\n")
+    for (let i = 0; i < COMPACT_KEEP + 4; i++) doc.userEdit(doc.version, `${doc.text}v${i}\n`)
+    const before = doc.text
+    const current = doc.version
+    const inside = current - COMPACT_KEEP + 1
+    const older = inside - 1
+    const insideText = doc.textAt(inside)
+    expect(insideText).not.toBeNull()
+    doc.wrote(doc.toWrite())
+    expect(doc.compact(0, 0)).toMatchObject({ reason: "ops", kept: COMPACT_KEEP, oldest: inside })
+    expect(doc.text).toBe(before)
+    expect(doc.textAt(inside)).toBe(insideText)
+    expect(doc.changes(inside)).not.toBeNull()
+    expect(doc.textAt(older)).toBeNull()
+    expect(doc.changes(older)).toBeNull()
+    doc.userEdit(inside, `${insideText}stale\n`)
+    expect(doc.text).toContain("stale\n")
   })
 })

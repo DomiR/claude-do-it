@@ -161,8 +161,8 @@ export function makeCli(run: CommandRunner) {
 
   const watch = Command.make("watch", {
     path: Argument.String("path"), optionalSince, section,
-    todos: Flag.Boolean("todos").pipe(Flag.withDefault(false)), settle,
-  }, input => withCommon(root, input, run, (config, common) => ({ kind: "watch", options: common, ...pathValue(config.path), since: optionValue(config.optionalSince), section: optionValue(config.section), todos: config.todos, settle: optionValue(config.settle) })))
+    todos: Flag.Boolean("todos").pipe(Flag.withDefault(false)), settle, quiet: Flag.Boolean("quiet").pipe(Flag.withDefault(false)),
+  }, input => withCommon(root, input, run, (config, common) => ({ kind: "watch", options: common, ...pathValue(config.path), since: optionValue(config.optionalSince), section: optionValue(config.section), todos: config.todos, settle: optionValue(config.settle), quiet: config.quiet })))
 
   const status = Command.make("status", {}, input => withCommon(root, input, run, (_config, common) => ({ kind: "status", options: common })))
   const stop = Command.make("stop", {}, input => withCommon(root, input, run, (_config, common) => ({ kind: "stop", options: common })))

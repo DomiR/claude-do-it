@@ -34,7 +34,7 @@ export function watchDocument(registry: DocumentRegistry, request: WatchPayload)
         const signal = entry.signal
         if (first) {
           first = false
-          const resync = since > entry.doc.version
+          const resync = request.since !== undefined && (since > entry.doc.version || since < entry.doc.version && entry.doc.textAt(since) === null)
           if (request.since === undefined || resync) since = entry.doc.version
           return [{ _tag: resync ? "Resync" : "Watching", version: entry.doc.version,
             ...(request.text ? { text: entry.doc.text } : {}) } satisfies WatchEvent] as const

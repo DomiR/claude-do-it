@@ -112,12 +112,17 @@ function stopCommand(command: Extract<ParsedCommand, { kind: "stop" }>) {
 }
 
 function initialWatchOutput(command: Extract<ParsedCommand, { kind: "watch" }>, version: number): void {
+  if (command.quiet) return
   if (command.options.json) writeJson({ event: "watching", version })
   else writeLine(`Watching ${command.displayPath} at version ${version}`)
 }
 function restartOutput(command: Extract<ParsedCommand, { kind: "watch" }>, version: number): void {
   if (command.options.json) writeJson({ event: "restarted", version })
   else writeLine(`Daemon restarted, now version ${version}`)
+}
+function resyncOutput(command: Extract<ParsedCommand, { kind: "watch" }>, version: number): void {
+  if (command.options.json) writeJson({ event: "resync", version })
+  else writeLine(`Missed changes, now at version ${version}: run do-it read`)
 }
 function deletedOutput(command: Extract<ParsedCommand, { kind: "watch" }>): void {
   if (command.options.json) writeJson({ event: "deleted" })
@@ -135,6 +140,7 @@ function watchCommand(command: Extract<ParsedCommand, { kind: "watch" }>) {
     let timer: ReturnType<typeof setTimeout> | undefined
     let settleVersion = 0
     let settleBy: string[] = []
+    let lastFailure: string | undefined
     const cancelTimer = () => { if (timer) { clearTimeout(timer); timer = undefined } }
     const schedule = (version: number, by: ReadonlyArray<Author>) => {
       if (command.settle === undefined) return
@@ -146,19 +152,30 @@ function watchCommand(command: Extract<ParsedCommand, { kind: "watch" }>) {
     try {
       while (!deleted) {
         const daemon = yield* Effect.exit(ensureDaemon())
-        if (Exit.isFailure(daemon)) { yield* Effect.sleep(`${backoff} millis`); backoff = Math.min(5000, backoff * 2); continue }
+        if (Exit.isFailure(daemon)) {
+          if (Cause.hasInterruptsOnly(daemon.cause)) break
+          const failure = Cause.squash(daemon.cause)
+          const tag = errorTag(failure)
+          if (tag !== "DaemonUnavailable") {
+            const message = errorMessage(failure)
+            if (message !== lastFailure) outputText(command.options, `Watch failed: ${message}, retrying`, { event: "error", message })
+            lastFailure = message
+          } else lastFailure = undefined
+          yield* Effect.sleep(`${backoff} millis`); backoff = Math.min(5000, backoff * 2); continue
+        }
         const info = daemon.value
         if (pid !== undefined && pid !== info.pid) announce = true
         pid = info.pid
         const payload = { path: command.path, ...(since === undefined ? {} : { since }), ...(command.section === undefined ? {} : { section: command.section }), text: false }
         const exit = yield* Effect.exit(rpc(info, client => client.watch(payload).pipe(Stream.runForEach((event: WatchEvent) => Effect.sync(() => {
+          lastFailure = undefined
           if (event._tag === "Watching") {
             backoff = 250
             if (first) { initialWatchOutput(command, event.version); first = false }
             else if (announce) { restartOutput(command, event.version); announce = false }
             since = event.version; return
           }
-          if (event._tag === "Resync") { restartOutput(command, event.version); since = event.version; announce = false; return }
+          if (event._tag === "Resync") { resyncOutput(command, event.version); if (command.settle !== undefined) schedule(event.version, []); since = event.version; announce = false; return }
           if (event._tag === "Deleted") { deletedOutput(command); deleted = true; return }
           since = event.to
           if (sameAgent(event.by, command.options.as)) return
@@ -168,6 +185,17 @@ function watchCommand(command: Extract<ParsedCommand, { kind: "watch" }>) {
           else writeLine(changeReply(event, false))
         })))))
         if (deleted) break
+        if (Exit.isFailure(exit)) {
+          if (Cause.hasInterruptsOnly(exit.cause)) break
+          const failure = Cause.squash(exit.cause)
+          const tag = errorTag(failure)
+          if (tag === "DocumentGone" || tag === "Refused") return errorResult(command, failure)
+          if (tag !== "DaemonUnavailable" && tag !== "RpcClientError") {
+            const message = errorMessage(failure)
+            if (message !== lastFailure) outputText(command.options, `Watch failed: ${message}, retrying`, { event: "error", message })
+            lastFailure = message
+          } else lastFailure = undefined
+        } else lastFailure = undefined
         yield* Effect.sleep(`${backoff} millis`)
         backoff = Math.min(5000, backoff * 2)
       }

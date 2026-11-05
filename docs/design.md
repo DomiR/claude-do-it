@@ -52,6 +52,7 @@ const describeOrigin: (o: Origin) => string // "the user" | name | "file"
 
 const MAX_BYTES = 2 * 1024 * 1024           // largest document (UTF-8 bytes)
 const KEPT = 512                            // versions kept in the history ring
+const COMPACT_KEEP = 128                    // versions replayed during compaction
 const MAX_DIFF = 64 * 1024                  // largest diff a reply carries
 const MAX_ITEM = 4096                       // longest task text
 
@@ -124,10 +125,10 @@ class Document {
   changes(since: Version, section?: string): Changes | null   // null when forgotten
   origin(version: Version): Origin | null   // who made that version
 
-  // Bounded history: rebuild from the current text (as Herdr compact) when the
-  // oplog passes 50k ops or 256 peers and nothing waits to be written. Keeps
-  // text and version; older diffs are forgotten.
-  compact(): boolean
+  // Bounded history: replay the last COMPACT_KEEP versions when the oplog
+  // passes 50k ops or 256 peers and nothing waits to be written. Older diffs
+  // are forgotten, while the kept versions remain readable and mergeable.
+  compact(): { reason: "ops" | "peers"; ops: number; peers: number; kept: number; oldest: Version } | null
 }
 ```
 
@@ -228,8 +229,9 @@ loops: if `doc.version > lastSent`, emit `changes(lastSent, section)` and set
 `lastSent`; otherwise await the current `Deferred` (read before checking the
 version, so a change between emit and await is never missed). A slow reader
 gets one coalesced `Change { from, to }` (printed `Versions A-N`). When
-`lastSent` is forgotten it emits `Resync`. `text: true` adds the full current
-text (the web uses it).
+`lastSent` is forgotten it emits `Resync` as the first event for a resumed
+watch. The CLI prints `Missed changes, now at version N: run do-it read` for
+that event. `text: true` adds the full current text (the web uses it).
 
 ## Daemon (`packages/server`)
 
@@ -295,7 +297,7 @@ ensures the daemon first (exit 3 when it cannot start).
 | `todo check\|uncheck\|cancel\|uncancel PATH --version N [--section ID] NUMBER\|TEXT` | see replies, updating PlainTasks time stamps |
 | `todo list PATH [--section ID]` | `Version: N` then `3. [x] Ship` per task |
 | `diff PATH --since N [--wait S]` | `Version N by WHO` then the diff; exit 4 when nothing came |
-| `watch PATH [--since N] [--section ID] [--todos] [--settle S]` | `Watching PATH at version N`, then per change `Version N by WHO` (or `Versions A-N by WHO, WHO`) and the diff, or with `--todos` lines like `checked 3. Ship`. Changes made only by `--as NAME` are skipped. `--settle S` prints only `Settled at version N by WHO` after S quiet seconds. Reconnects (and restarts the daemon) with backoff; prints `Daemon restarted, now version N` once. Exit 9 when the document is deleted |
+| `watch PATH [--since N] [--section ID] [--todos] [--settle S] [--quiet]` | `Watching PATH at version N`, then per change `Version N by WHO` (or `Versions A-N by WHO, WHO`) and the diff, or with `--todos` lines like `checked 3. Ship`. `--quiet` omits the initial Watching line. A forgotten or future `--since` prints `Missed changes, now at version N: run do-it read`. Changes made only by `--as NAME` are skipped. `--settle S` prints `Settled at version N by WHO` after S quiet seconds. Reconnects with backoff; a daemon restart prints `Daemon restarted, now version N` when the resumed watch is still kept. Exit 9 when the document is deleted |
 | `status` | daemon pid, port, uptime, open documents |
 | `stop` | `Stopped` or `Not running` |
 

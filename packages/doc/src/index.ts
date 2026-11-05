@@ -1,4 +1,4 @@
-export { MAX_BYTES, KEPT, MAX_DIFF, MAX_ITEM } from "./constants"
+export { MAX_BYTES, KEPT, COMPACT_KEEP, MAX_DIFF, MAX_ITEM } from "./constants"
 export { DocError } from "./errors"
 export { describeOrigin, type Version, type Origin, type Conflict } from "./version"
 export { applyEdits, mapOffset, type Edit } from "./edit"

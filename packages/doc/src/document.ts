@@ -5,6 +5,7 @@ import { DocError } from "./errors"
 import { lines } from "./markdown"
 import { findSection, sections, sectionText } from "./section"
 import { todoChanges, type TodoChange } from "./todo-changes"
+import { COMPACT_KEEP } from "./constants"
 import { checkVersion, History, originKey, type Origin, type Version } from "./version"
 
 const TEXT = "markdown"
@@ -266,26 +267,50 @@ export class Document {
     return origin ? { ...origin } : null
   }
 
-  compact(maxOps = 50_000, maxPeers = 256): boolean {
-    if (this.dirty || this.writing.length) return false
+  // Loro counts one op per character, so the op limit grows with the text; a
+  // large document must not compact again on every flush.
+  compact(maxOps = Math.max(50_000, 4 * this.current.length), maxPeers = 256, keep = COMPACT_KEEP): { reason: "ops" | "peers"; ops: number; peers: number; kept: number; oldest: Version } | null {
+    if (this.dirty || this.writing.length) return null
+    let ops = 0
+    let peers = 0
     const vv = this.doc.oplogVersion()
-    try {
-      if (this.doc.opCount() <= maxOps && vv.length() <= maxPeers) return false
-    } finally { vv.free() }
+    try { ops = this.doc.opCount(); peers = vv.length() } finally { vv.free() }
+    if (ops <= maxOps && peers <= maxPeers) return null
+    const reason = ops > maxOps ? "ops" : "peers"
+    const snapshots = this.history.list().slice(-Math.max(1, keep)).map(entry => ({
+      ...entry,
+      text: entry.version === this.version ? this.current : this.textAt(entry.version)!,
+    }))
+    if (snapshots.length === 0 || snapshots.at(-1)!.version !== this.version) throw new Error("Compaction history does not include the current document")
     const doc = new LoroDoc()
     const body = doc.getText(TEXT)
-    body.insert(0, this.current)
-    doc.commit()
-    const origin = this.origin(this.version)
+    const history = new History()
+    try {
+      const first = snapshots[0]!
+      body.insert(0, first.text)
+      doc.commit()
+      history.record(first.version, doc.frontiers(), first.origin)
+      let previous = first.text
+      for (const entry of snapshots.slice(1)) {
+        splice(body, edits(previous, entry.text))
+        doc.commit()
+        history.record(entry.version, doc.frontiers(), entry.origin)
+        previous = entry.text
+      }
+      if (previous !== this.current) throw new Error("Compaction did not preserve the current document")
+    } catch (error) {
+      body.free()
+      doc.free()
+      throw error
+    }
     this.body.free()
     this.doc.free()
     this.doc = doc
     this.body = body
     this.disk = { ...this.disk, frontiers: doc.frontiers() }
-    this.history = new History()
-    this.history.record(this.version, doc.frontiers(), origin)
+    this.history = history
     this.generation++
-    return true
+    return { reason, ops, peers, kept: snapshots.length, oldest: snapshots[0]!.version }
   }
 
   private snapshot(): Snapshot {

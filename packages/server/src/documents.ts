@@ -150,7 +150,8 @@ export class DocumentRegistry {
         entry.stamp = file.stamp
         this.changed(entry, previous)
         this.versions.record(entry.path, entry.doc.version, entry.doc.text)
-        entry.doc.compact()
+        const compacted = entry.doc.compact()
+        if (compacted) this.log.write(`Compacted ${entry.path} at version ${entry.doc.version} (${compacted.reason}: ${compacted.ops} ops, ${compacted.peers} peers), kept versions ${compacted.oldest}-${entry.doc.version}`)
       }
       this.scheduleWrite(entry)
     } catch (error) { this.log.write(`Could not merge ${entry.path}: ${String(error)}`) }
@@ -181,7 +182,8 @@ export class DocumentRegistry {
         ticket = undefined
       }
       this.versions.record(entry.path, entry.doc.version, entry.doc.text)
-      entry.doc.compact()
+      const compacted = entry.doc.compact()
+      if (compacted) this.log.write(`Compacted ${entry.path} at version ${entry.doc.version} (${compacted.reason}: ${compacted.ops} ops, ${compacted.peers} peers), kept versions ${compacted.oldest}-${entry.doc.version}`)
     } catch (error) {
       if (ticket) entry.doc.notWritten(ticket)
       this.log.write(`Could not write ${entry.path}: ${String(error)}`)

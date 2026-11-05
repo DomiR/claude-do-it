@@ -35,7 +35,7 @@ export class Versions {
       // version through the public API, then forget the synthetic predecessor.
       doc = Document.open(text === "" ? "\n" : "", old.version)
       doc.mergeFile(text)
-      doc.compact(0, 0)
+      doc.compact(0, 0, 1)
     } else doc = Document.open(text, old?.version)
     this.record(path, doc.version, text)
     return doc
