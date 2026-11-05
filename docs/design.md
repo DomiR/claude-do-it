@@ -363,6 +363,7 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
 | Tab, tag completion, or indent | `Tab` | `Tab` | Expand a PlainTasks snippet when the caret follows a completion token, otherwise indent the current line or selected task blocks. `s`, `t`, `c`, `h`, `l`, `cr`, `d`, and `@s` expand to the supported tags; a bare `@started` or `@created` gets a local date. |
 | Outdent | `Shift-Tab`, `Cmd-[` | `Shift-Tab`, `Ctrl-[` | Outdent the current line or selected task blocks. |
 | Open link | `Cmd-Shift-u`, `Alt-Enter` | `Alt-Enter` | Open the link under the caret, or reveal a project anchor. |
+| Edit link | `Cmd-k` | `Ctrl-k` | Edit the text and URL of the link under the caret in a popover, or link the selected text. Clicking a link on a task line opens it too. |
 | Go to project | `Cmd-p` | `Ctrl-p` | Open the project palette and move to the selected heading. |
 | Command palette | `Cmd-Shift-p`, `F1` | `Ctrl-Shift-p`, `F1` | Search and run editor commands. |
 | Find | `Cmd-f` | `Ctrl-f` | Open CodeMirror Find. |

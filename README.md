@@ -27,7 +27,9 @@ flowchart LR
   on demand and stops after 30 idle minutes.
 - **The browser editor.** Built with Foldkit and CodeMirror 6. It keeps the
   todo as plain Markdown while showing a live PlainTasks preview with markers,
-  tags, actions, stamps, and a command palette.
+  tags, actions, stamps, and a command palette. Task lines always stay
+  rendered: markers show as ☐ ✔ ✘ and links as their text, with a popover to
+  edit them.
 - **The `/do-it` skill for Claude Code.** It turns a session into a conductor
   that sizes, plans, and delivers every task through worker agents and one
   shared tester.
@@ -133,6 +135,7 @@ agent.
 | Expand a PlainTasks tag, or indent | `Tab` | `Tab` |
 | Outdent | `Shift-Tab` or `Cmd-[` | `Shift-Tab` or `Ctrl-[` |
 | Open link | `Cmd-Shift-U` or `Alt-Enter` | `Alt-Enter` |
+| Edit link (or click a link on a task line) | `Cmd-K` | `Ctrl-K` |
 | Go to project | `Cmd-P` | `Ctrl-P` |
 | Command palette | `Cmd-Shift-P` or `F1` | `Ctrl-Shift-P` or `F1` |
 | Find | `Cmd-F` | `Ctrl-F` |
