@@ -113,7 +113,27 @@ do-it read "$TODO"
 
 Opening the todo again from the same pane reuses and reloads that split.
 
-Tell the person in one line that the todo is open and that they can add tasks there. Create the two agent channels with your Write tool if missing (nobody has them open yet): `$STATE/inbox.md` (`# Inbox`, `## Messages`) and `$STATE/tests.md` (`# Tests`, `## Queue`). If `$STATE/state.json` exists, this is a resume: reconcile it with what still runs (Herdr: `herdr agent list`, `herdr worktree list --json`; Orca: `orca worktree list --json`, `orca terminal list --json`; T3 Code: `t3 thread list`; otherwise the worktrees in `git worktree list`) and only dispatch tasks that have no live worker and are not delivered.
+Tell the person in one line that the todo is open and that they can add tasks there. Create the two agent channels with your Write tool if missing (nobody has them open yet): `$STATE/inbox.md` (`# Inbox`, `## Messages`) and `$STATE/tests.md` (`# Tests`, `## Queue`). If `$STATE/state.json` exists, this is a resume: do Step 1a, then go on with Step 2 as in any run.
+
+When `DO_IT_HOME` or `DO_IT_PORT` is set in your environment, every agent you start must use the same daemon: put `export DO_IT_HOME=... DO_IT_PORT=...` (their current values) as the first line of every worker, tester, messenger, and Q brief, and pass both as `--env KEY=VALUE` to `herdr tab create`. A worker that misses them talks to another daemon about the same files.
+
+## Step 1a. Resume
+
+A conductor that stopped (a crash, a closed tab, a new session) leaves its workers, tester, and messenger running, and events kept arriving while nobody watched. Resuming is catching up, then conducting as usual: it is never done by one pass.
+
+1. **Stop the old watches.** A crashed conductor's `do-it watch ... --as conductor` processes outlive it. List them with `pgrep -fl "do-it watch"` and kill only the ones naming this run's todo or `$STATE` with `--as conductor`; leave the tester's and messenger's watches alone.
+2. **Find what still runs.** Herdr: `herdr agent list` (the agent names and panes from `state.json`, plus any `do-*` agent whose cwd is a worktree of this repo or `$STATE`), `herdr worktree list --json`; Orca: `orca worktree list --json`, `orca terminal list --json`; T3 Code: `t3 thread list`; plain: `git worktree list` (subagents do not survive their conductor). Reuse the tester and messenger named in `state.json` while they run; start new ones only when they are gone.
+3. **Read what you missed.** `do-it read` the todo, the inbox, and `tests.md` whole (not a watch: a watch only shows what comes next). Compare with `state.json`: inbox lines after `versions.inbox` (all of them when it is missing), answers in `tests.md`, and the person's edits in the todo since `versions.todo` (new tasks, notes under tasks, answers to questions).
+4. **Act on each task**, by its `state.json` status and what you found:
+   - `delivered`: nothing. Never re-dispatch it, re-check it, or rewrite its status line.
+   - a worker whose `done` line is in the inbox but who is not `delivered`: verify and deliver it now (Step 5).
+   - a live worker without `done`: keep it, send it any note the person wrote while you were away (`From the TODO: ...`), and never start a second worker on that task.
+   - a worker that is gone without `done`: its worktree and branch still hold its work, so start a new session in that same worktree (Herdr: `herdr worktree open --no-focus`, then focus your own workspace again) with its brief plus `RESUMED: continue from the commits on your branch`; never create a second worktree for it.
+   - `queued`: dispatch it in tag order as workers free up, with any note the person wrote under it in the brief.
+   - a task line with `@started` and a `**tN**` status line but no `state.json` entry: find its worker by name before treating it as new; with `@started` and no status line, triage it (Step 3) and keep the stamp.
+5. **Arm the watches** (Step 2) with `--since` the versions you just read, save those versions in `state.json`, and keep conducting. Never end the turn after the catch up without the watches running.
+
+Only one conductor runs per todo. When another live session still conducts it (its watches run and it answers), do not resume: tell the person in chat.
 
 ## Step 1b. Seed from a request
 
@@ -143,6 +163,8 @@ do-it watch "$TODO" --as conductor --settle 25          # one line once the pers
 do-it watch "$STATE/inbox.md" --as conductor --section messages
 do-it watch "$STATE/tests.md" --as conductor --todos    # plain and t3code: when to start or wake the tester
 ```
+
+Run all three for the whole run, and never end a turn without them: an event that lands while a watch is down is seen only by the next full read. A Monitor expires after its `timeout_ms` (at most 30 minutes): set the maximum, and on expiry re-arm the same watch with `--since` the last version you read. Stop a watch (TaskStop) before you start its replacement, so one file never has two conductor watches. Keep the watch unfiltered or filter for every event you act on (`done`, `question`, `blocked`, `failed`, `progress`, `subtask`), not only for one task.
 
 Use `--quiet` to skip the initial `Watching PATH at version N` line instead of filtering it with grep. A filter must be line buffered, or lines arrive late. `Settled at version N by the user` means the person changed the todo and paused. Then `do-it read "$TODO"` once and compare it with your picture of the file. Never act on a half typed line. `Missed changes, now at version N: run do-it read` means the watch history was forgotten, so read the current todo before acting. `Daemon restarted, now version N` needs nothing but a fresh read. When re-arming a watch, pass `--since` the last version you have read, not the original one. Exit 9 means the todo was deleted or moved: stop and report in chat.
 
@@ -193,7 +215,7 @@ With a messenger (Step 4) you only append `- conductor t3 status: M, planning wi
 
 Until the person checks off `Review this task`, the task waits and nothing is dispatched. They may edit, add, or delete subtasks in the editor first: the subtask lines as they read when the review is checked are the plan the worker gets. A note under the task asking for a different split goes to the planner with its plan; its new list replaces the unchecked subtasks the same way. Once the review is checked, dispatch one worker for the whole task, with the subtasks in order (Step 5). Subtask texts can repeat across tasks: target a subtask by its text only when it is unique, otherwise by the number a fresh `do-it todo list` shows.
 
-Never rewrite the person's own task text. Your lines are indented sub bullets starting with `**tN**`; there is exactly one status line per task, which you replace as the task moves, plus any `**tN question:**` lines. Record every task in `$STATE/state.json` (id, text, size, repo, branch, worktree, agent id or name, status, and for L its subtasks) before its first status line and after every transition; it is how you resume, and how the messenger finds the task for a `tN`.
+Never rewrite the person's own task text. Your lines are indented sub bullets starting with `**tN**`; there is exactly one status line per task, which you replace as the task moves, plus any `**tN question:**` lines. Record every task in `$STATE/state.json` (id, text, size, repo, branch, worktree path, agent id or name and pane or handle, status, and for L its subtasks) before its first status line and after every transition; it is how you resume (Step 1a), and how the messenger finds the task for a `tN`. Keep there too the tester's and messenger's names and panes (`"agents": {"tester": {"name": ..., "pane": ...}, "messenger": {...}}`), and `"versions": {"todo": N, "inbox": N, "tests": N}`, the last version of each you read and acted on, updated after every event you handle. Write the file whole with your Write tool (it is yours alone), not with `sed`.
 
 ## Step 4. Deliver
 
@@ -319,7 +341,11 @@ PLAN AND REVIEW: S and M: plan with an Opus planner before you edit. L: the plan
   review of your branch (Opus; for L the stronger reviewer from models.json when there is one) before DONE.
 CONDUCTOR: talk to the conductor only through the inbox. Answers arrive as prompts starting "From the TODO".
   After a question, wait for that prompt instead of ending your session.
+DONE (in place of the worker brief's DONE): commits on your branch, the final test request PASSED. Append
+  "- tN done: branch <name>, worktree <path>, commits <shas>, tests <request ids>" to the inbox.
 ```
+
+A session worker's last message stays in its own session, which the conductor does not read, so its `done` line in the inbox is the only delivery signal, and the one a resumed conductor finds (Step 1a).
 
 ### Inside Herdr (`HARNESS=herdr`): worktrees and tabs
 
