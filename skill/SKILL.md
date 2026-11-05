@@ -23,7 +23,7 @@ $D sections TODO.md
 $D todo list TODO.md                      # "3. [x] Ship" per task
 $D todo add TODO.md --version 7 --section tasks "Write tests"
 $D todo start TODO.md --version 8 --section tasks -- "Write tests"  # add the PlainTasks start time
-$D todo check TODO.md --version 9 -- "Write tests"       # by text; also uncheck, cancel, uncancel
+$D todo check TODO.md --version 9 -- "Write tests"       # by text or by the number from todo list; also uncheck, cancel, uncancel
 $D append TODO.md --version 10 --section notes -- "- found: flaky CI"
 $D edit TODO.md --version 10 --old "ship friday" --new "ship monday"
 $D diff TODO.md --since 9 --wait 100      # waits for the next change, exit 4 when none came (keep it under the Bash tool's 120 s default)
@@ -46,7 +46,7 @@ The editor understands PlainTasks `@` tags on task lines and colours them. There
 | Tag | Who sets it | How |
 | --- | --- | --- |
 | `@started(26-11-05 14:02)` | the conductor | `do-it todo start`, the moment it takes a task (Step 3). The editor also completes `s` and `@s` to it; a stamp the person typed is replaced by `todo start` |
-| `@done (26-11-05 15:40)` | the conductor | `do-it todo check`, once the task is delivered (Step 5) |
+| `@done (26-11-05 15:40)` | the conductor, or the person when they check off `Review this task` in the editor | `do-it todo check`, once the task is delivered (Step 5) |
 | `@cancelled (26-11-05 15:40)` | the person (`[-]` or Alt-click in the editor), or the conductor only when the person asks in words to cancel or drop the task | `do-it todo cancel` |
 | `@today`, `@high`, `@low`, `@critical` | the person | typed (Tab after `t`, `h`, `l`, `c`) |
 | `@due(date)`, `@created(date)` | the person | typed (Tab after `d`, `cr`) |
@@ -148,7 +148,7 @@ Use `--quiet` to skip the initial `Watching PATH at version N` line instead of f
 
 ## Step 3. Triage each new task
 
-A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, is not a subtask of an L task in `state.json`, and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone.
+A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, is not an indented `- [ ]` line under a task whose `state.json` entry is L (those are its subtasks, the person's own additions included), and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone.
 
 **Start it first.** The moment you take a task, before sizing it, run `todo start` on it, queued tasks included, so the person sees at once that it was picked up:
 
@@ -180,7 +180,7 @@ do-it edit "$TODO" --version $V --section tasks \
 
 With a messenger (Step 4) you only append `- conductor t3 status: M, planning with Opus` to the inbox and it writes the line. Everywhere below, **write under the task** means exactly this: yourself without a messenger, through a `conductor` inbox line with one.
 
-**L tasks become subtasks, and the person reviews them first.** No worker starts on an L task until the person agrees with its split. In every transport, plan it right away yourself with a planner agent, as Step 4 plain item 1 does (session workers get the plan in their brief), and ask the planner to end the plan with its subtasks, in order, one line each. Save the plan to `$STATE/plans/tN.md` and the subtask lines to `$STATE/plans/tN-subtasks.md`, the first one always `Review this task`. Write them under the task as indented `- [ ]` lines, after its status line (with a messenger: `- conductor tN subtasks: <path>`), and set the status:
+**L tasks become subtasks, and the person reviews them first.** No worker starts on an L task until the person agrees with its split. In every transport, plan it right away yourself with a planner agent, as Step 4 plain item 1 does (session workers get the plan in their brief), and ask the planner to end the plan with its subtasks, in order, one line each. Save the plan to `$STATE/plans/tN.md` and the subtask lines to `$STATE/plans/tN-subtasks.md`, the first one always `Review this task`. Record the subtasks in `state.json` under the task with status `review` first, then write them under the task as indented `- [ ]` lines, after its status line (with a messenger: `- conductor tN subtasks: <path>`), and set the status:
 
 ```markdown
 - [ ] Move the sync protocol to CRDT updates @started(26-11-05 14:02)
@@ -191,7 +191,7 @@ With a messenger (Step 4) you only append `- conductor t3 status: M, planning wi
   - [ ] Apply updates in the web client
 ```
 
-Record the subtasks in `state.json` under the task with status `review`. Until the person checks off `Review this task`, the task waits and nothing is dispatched. They may edit, add, or delete subtasks in the editor first: the subtask lines as they read when the review is checked are the plan the worker gets. A note under the task asking for a different split goes to the planner with its plan; its new list replaces the unchecked subtasks the same way. Once the review is checked, dispatch one worker for the whole task, with the subtasks in order (Step 5). Subtask texts can repeat across tasks: target a subtask by its text only when it is unique, otherwise by the number a fresh `do-it todo list` shows.
+Until the person checks off `Review this task`, the task waits and nothing is dispatched. They may edit, add, or delete subtasks in the editor first: the subtask lines as they read when the review is checked are the plan the worker gets. A note under the task asking for a different split goes to the planner with its plan; its new list replaces the unchecked subtasks the same way. Once the review is checked, dispatch one worker for the whole task, with the subtasks in order (Step 5). Subtask texts can repeat across tasks: target a subtask by its text only when it is unique, otherwise by the number a fresh `do-it todo list` shows.
 
 Never rewrite the person's own task text. Your lines are indented sub bullets starting with `**tN**`; there is exactly one status line per task, which you replace as the task moves, plus any `**tN question:**` lines. Record every task in `$STATE/state.json` (id, text, size, repo, branch, worktree, agent id or name, status, and for L its subtasks) before its first status line and after every transition; it is how you resume, and how the messenger finds the task for a `tN`.
 
@@ -246,7 +246,7 @@ Worker brief:
 ```
 TASK tN (size S|M|L): <the person's task line, verbatim, plus their sub notes>
 REPO: <repo root>. You run in your own git worktree on your own branch; commit there.
-PLAN: <the plan from $STATE/plans/tN.md>
+PLAN: <the plan from $STATE/plans/tN.md; for S and M in a session transport: none, plan it yourself>
 SUBTASKS (L only): <the subtask lines as the person left them, without Review this task>. Work them
   in order. When you begin one, append "- tN subtask started: <its text>" to the inbox; when its
   commits are in, "- tN subtask done: <its text>". HARD PARTS: <the stronger model from models.json, or none>.
@@ -296,7 +296,8 @@ inbox line added after the version in CURSOR, in order (do-it diff <INBOX> --sin
   "conductor tN answered"     remove the "**tN question:**" line
   "conductor tN answer: path" status "**tN** answered", the file's lines as sub bullets under it
   "conductor tN delivered: x" status line of tN becomes "**tN** delivered: x"
-  "conductor tN subtasks: path"  replace tN's unchecked subtasks with the file's lines, as indented
+  "conductor tN subtasks: path"  only while tN's "Review this task" is unchecked (otherwise skip the
+                              line): replace tN's unchecked subtasks with the file's lines, as indented
                               "- [ ] " lines after its status line (the only task lines you write)
 Each task has exactly one "**tN**" status line, an indented sub bullet right under the task (the
 line whose text is the state.json entry for tN), which you add when missing and otherwise replace
@@ -351,11 +352,12 @@ Run `herdr --help` once for the CLI; never split your own pane.
 
 Each task becomes an Orca workspace with Claude in its first terminal. Read Orca's guide for this CLI version once (`orca skills get orca-cli`), pass `--json`, and read the fields named here from the results.
 
-- **Worker per task**: an independent worktree from the repo's default base, then Claude on the task's tier (`$MODEL`: `sonnet` for S, `opus` for M and L) in a terminal of its own, briefed as the tester is:
+- **Worker per task**: an independent worktree from the repo's default base, then Claude on the task's tier (`$MODEL`: `sonnet` for S, `opus` for M and L) in a terminal of its own, briefed the same way as the tester below. Use only flags Orca's guide lists for this version:
   ```bash
   W=$(orca worktree create --name do-tN-<short-slug> --no-parent --comment "tN planning" --json)
+  WT=$(jq -r '.result.worktree.id // .worktree.id' <<<"$W")
   T=$(orca terminal create --worktree "id:$WT" --title do-tN --command "claude --model $MODEL --effort high --dangerously-skip-permissions" --json)
-  orca terminal wait --terminal "$H" --for tui-idle --timeout-ms 60000 --json   # $WT: worktree.id in $W; $H: the handle in $T
+  orca terminal wait --terminal "$H" --for tui-idle --timeout-ms 60000 --json   # $H: the terminal handle in $T
   orca terminal send --terminal "$H" --text "$BRIEF" --enter --wait-submit 10 --json
   ```
   Keep `worktree.id` (the whole `<repoId>::<path>`), `worktree.path`, and the terminal handle in `state.json`. This creates the worktree in the background, without switching Orca's view: never add `--activate` or `--run-hooks` (both reveal the new worktree), and never pass `--focus` to `orca terminal create`.
@@ -395,8 +397,9 @@ Each task becomes a T3 Code thread in its own worktree. Flags differ between T3 
 | The person answers a question (an indented line under `**tN question:**`) | forward it the same way, then remove the question line (with a messenger: append `- conductor tN answered`) |
 | The person deletes a task, or writes "stop" under it | tell its worker to stop and commit its work in progress; status `stopped`, keep the worktree. Only "cancel" or "drop it" in words also gets `todo cancel` |
 | The person unchecks a delivered task | their new note under it is a follow up for the same worktree and worker; keep its `@started` |
-| The person checks off `Review this task` under an L task | read the task's subtask lines as they are now, save them in `state.json`, and dispatch one worker with them (status `L, building subtask 1 of N`) |
-| The person writes under an L task still in review | a different split: send it to the planner with its plan and write the new subtasks (Step 3); anything else waits for the review |
+| The person checks off `Review this task` under an L task | if a `conductor tN subtasks:` line of yours is not written yet, wait for the messenger to drain it first; then read the task's subtask lines as they are now, save them in `state.json`, and dispatch one worker with them (status `L, building subtask 1 of N`) |
+| The person adds or edits a `- [ ]` line under an L task still in review | a subtask edit: nothing to do until the review is checked |
+| The person writes a plain note under an L task still in review | a request for a different split: send it to the planner with its plan and write the new subtasks (Step 3) |
 | Inbox `subtask started` or `subtask done` | `todo start` or `todo check` on that subtask line; the status reads `L, building subtask K of N` |
 | A Q agent returns `ANSWER: <path>` | write under the task: without a messenger, the file's lines as sub bullets under `**tN** answered`; with one, `- conductor tN answer: <path>`. Then `todo check` |
 | Inbox `progress` | update the status line only, in a few words (the messenger does this by itself) |
