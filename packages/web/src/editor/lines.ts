@@ -367,17 +367,46 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
   return { lines: classified, projects, stats }
 }
 
-export const linkAt = (text: string, offset: number): string | undefined => {
-  const document = classifyDocument(text)
-  for (const line of document.lines) {
-    if (!inlineKinds.has(line.kind) || offset < line.from || offset > line.to) continue
-    for (const link of linkCandidates(text, line.from, line.to)) {
-      if (offset < link.from || offset > link.to) continue
-      if (line.inline.some(span => (span.kind === 'link' || span.kind === 'linkMark') &&
-        span.from >= link.from && span.to <= link.to)) return link.target
-    }
+/** A link as written in the document: `[label](target)`, `<target>`, or a bare URL. */
+export interface LinkRange extends Span {
+  readonly label: Span
+  readonly target: string
+}
+
+/** The rendered link on `line` that contains `offset`, honouring the same precedence as the inline styles. */
+export const linkRangeOn = (text: string, line: ClassifiedLine, offset: number): LinkRange | undefined => {
+  if (!inlineKinds.has(line.kind) || offset < line.from || offset > line.to) return undefined
+  for (const link of linkCandidates(text, line.from, line.to)) {
+    if (offset < link.from || offset > link.to) continue
+    if (line.inline.some(span => (span.kind === 'link' || span.kind === 'linkMark') &&
+      span.from >= link.from && span.to <= link.to)) return { from: link.from, to: link.to, label: link.label, target: link.target }
   }
   return undefined
+}
+
+export const linkRangeAt = (document: ClassifiedDocument, text: string, offset: number): LinkRange | undefined => {
+  for (const line of document.lines) {
+    if (offset < line.from) break
+    const link = linkRangeOn(text, line, offset)
+    if (link) return link
+  }
+  return undefined
+}
+
+export const linkAt = (text: string, offset: number): string | undefined =>
+  linkRangeAt(classifyDocument(text), text, offset)?.target
+
+/**
+ * Markdown for a link with this text and target. Brackets and line breaks
+ * cannot appear in a label, and spaces and parentheses cannot appear in a
+ * target, so those are dropped or percent encoded. An empty target leaves
+ * plain text; an empty label shows the target.
+ */
+export const linkMarkdown = (label: string, target: string): string => {
+  const url = target.trim().replace(/\s/g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29')
+  const text = label.replace(/[\[\]\r\n]/g, '').trim()
+  if (!url) return text
+  return `[${text || url}](${url})`
 }
 
 export const formatStats = (stats: Stats): string => `${stats.done + stats.cancelled}/${stats.total} done`

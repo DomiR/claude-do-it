@@ -710,73 +710,106 @@ button {
 }
 
 /* PlainTasks markers */
+/* The box is as wide as the `[ ]` it replaces, so wrapped lines keep hanging under the label. */
 .pt-editor-host .pt-marker {
-  position: relative;
-  color: transparent;
+  display: inline-block;
+  width: 3ch;
   cursor: pointer;
-}
-
-.pt-editor-host .pt-marker::before,
-.pt-editor-host .pt-marker::after {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 1;
-  display: block;
-  content: '';
-  pointer-events: none;
+  text-align: center;
   text-indent: 0;
   white-space: nowrap;
 }
 
-.pt-editor-host .pt-marker::before {
+.pt-editor-host .pt-marker-symbol {
   font-family: 'Apple Symbols', 'Segoe UI Symbol', 'DejaVu Sans', Menlo, sans-serif;
   font-size: 1.15em;
   line-height: 1;
 }
 
-.pt-editor-host .pt-marker-open::before {
-  content: '☐';
+.pt-editor-host .pt-marker-open,
+.pt-editor-host .pt-marker-empty {
   color: var(--pt-marker-open);
-  transform: translate(-50%, -50%);
   font-weight: 400;
 }
 
-.pt-editor-host .pt-marker-empty::before {
-  content: '☐';
-  color: var(--pt-marker-open);
-  transform: translate(-50%, -50%);
-  font-weight: 400;
-}
-
-.pt-editor-host .pt-marker-done::before {
-  content: '✔';
+.pt-editor-host .pt-marker-done {
   color: var(--pt-marker-done);
-  transform: translate(-50%, -50%);
   font-weight: 700;
 }
 
-.pt-editor-host .pt-marker-cancelled::before {
-  content: '✘';
+.pt-editor-host .pt-marker-cancelled {
   color: var(--pt-marker-cancelled);
-  transform: translate(-50%, -50%);
   font-weight: 700;
 }
 
-.pt-editor-host .pt-marker-open::after,
-.pt-editor-host .pt-marker-empty::after,
-.pt-editor-host .pt-marker-done::after,
-.pt-editor-host .pt-marker-cancelled::after {
-  display: none;
+/* Link popover. CodeMirror adds `cm-tooltip` to the form itself; three classes outrank its theme. */
+.pt-editor-host .cm-tooltip.pt-link-popover {
+  display: grid;
+  gap: 8px;
+  width: min(360px, 86vw);
+  padding: 10px 12px;
+  border: 1px solid var(--pt-delimiter);
+  background: var(--pt-paper);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 16%);
+  color: var(--pt-ink);
+  font-family: Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+  line-height: 18px;
+  text-indent: 0;
 }
 
-.pt-editor-host .pt-marker-source {
-  color: var(--pt-delimiter);
+.pt-link-popover-field {
+  display: grid;
+  grid-template-columns: 4ch minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
 }
 
-.pt-editor-host .pt-marker-source::before,
-.pt-editor-host .pt-marker-source::after {
-  display: none;
+.pt-link-popover-caption {
+  color: var(--pt-prose);
+  font-size: 12px;
+}
+
+.pt-link-popover-input {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--pt-delimiter);
+  outline: 0;
+  background: transparent;
+  color: var(--pt-ink);
+  font: inherit;
+}
+
+.pt-link-popover-input:focus {
+  border-color: var(--pt-link);
+}
+
+.pt-link-popover-input::placeholder {
+  color: var(--pt-prose);
+}
+
+.pt-link-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.pt-link-popover-button {
+  padding: 2px 8px;
+  border: 1px solid var(--pt-delimiter);
+  background: transparent;
+  color: var(--pt-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pt-link-popover-button[type='submit'] {
+  background: var(--pt-active-row);
+}
+
+.pt-link-popover-button:hover,
+.pt-link-popover-button:focus-visible {
+  border-color: var(--pt-ink);
 }
 
 .pt-editor-host .pt-remote-highlight {
@@ -907,10 +940,5 @@ button {
 
   .pt-editor-host .pt-marker {
     color: CanvasText;
-  }
-
-  .pt-editor-host .pt-marker::before,
-  .pt-editor-host .pt-marker::after {
-    display: none;
   }
 }
