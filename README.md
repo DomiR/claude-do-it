@@ -1,5 +1,7 @@
 # claude-do-it
 
+[![CI](https://github.com/DomiR/claude-do-it/actions/workflows/ci.yml/badge.svg)](https://github.com/DomiR/claude-do-it/actions/workflows/ci.yml)
+
 **A Markdown todo that you and Claude edit at the same time.**
 
 You type in a browser editor. Claude reads the list, plans each task, hands it
@@ -219,6 +221,22 @@ bun run build:web
 bun run build:npm                     # the npm package, in dist/npm
 bun --cwd packages/web run dev        # editor with a proxy to the daemon on 47100
 ```
+
+CI runs the typecheck, tests, and both builds on every push and pull request.
+
+### Release
+
+Set `APP_VERSION` in `packages/protocol/src/index.ts` (the npm package takes its
+version from it), commit to `main`, then tag and push:
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+The Release workflow checks that the tag equals `v` plus `APP_VERSION`, runs the
+CI checks, builds `dist/npm`, and publishes it to npm with provenance. It needs
+a repository secret `NPM_TOKEN`: a granular npm token with publish rights for
+`claude-do-it`.
 
 ## Acknowledgements
 
