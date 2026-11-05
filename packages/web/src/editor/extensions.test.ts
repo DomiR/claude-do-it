@@ -12,7 +12,8 @@ import { rebaseRemote } from './changes'
 import type { EditorCommand } from './types'
 import {
   clearRemoteHighlight, deleteBackwardAcrossMarks, deleteEmptyTaskPrefix, deleteForwardAcrossMarks, documentDecorations,
-  editorExtensions, insertNoteLine, moveToTaskLabel, prefixTyping, remoteHighlights, remoteTransaction, runEditorCommand,
+  editorExtensions, insertNoteLine, moveToTaskLabel, pasteMarkdown, prefixTyping, remoteHighlights, remoteTransaction,
+  runEditorCommand,
 } from './extensions'
 
 const stateFor = (text: string, anchor = 0, head = anchor) => EditorState.create({
@@ -511,6 +512,90 @@ describe('Shift-Enter under a task', () => {
     for (const text of ['Plain prose', '# Project', '- bullet', '> quote', '']) {
       expect(shiftEnter(stateFor(text, text.length)).handled).toBe(false)
     }
+  })
+})
+
+describe('pasting Markdown', () => {
+  /** Pastes the way the editor's paste handler does, or as the editor's own paste when it declines. */
+  const paste = (state: EditorState, plain: string, html?: string) => {
+    const spec = pasteMarkdown(state, plain, html) ?? { ...state.replaceSelection(plain), userEvent: 'input.paste' }
+    return state.update(spec).state
+  }
+  const symbols = (state: EditorState) => markers(state).map(marker => marker.symbol)
+
+  test('a pasted task list renders as boxes at once, every spelling normalised', () => {
+    const state = paste(stateFor(''), '* [ ] Plan\n[ ] Draft\n- [x] Review\n[] Ship')
+    expect(state.doc.toString()).toBe('- [ ] Plan\n- [ ] Draft\n- [x] Review\n- [ ] Ship')
+    expect(symbols(state)).toEqual(['☐', '☐', '✔', '☐'])
+    expect(hiddenText(state)).not.toContain('* [')
+    expect(state.selection.main.head).toBe(state.doc.length)
+  })
+
+  test('bullets, headings, links, and emphasis render as they land', () => {
+    const state = paste(stateFor(''), '## Plan\n* first with **bold**\n+ a [link](https://example.com)')
+    expect(state.doc.toString()).toBe('## Plan\n- first with **bold**\n- a [link](https://example.com)')
+    expect(classes(state)).toEqual(expect.arrayContaining(['pt-line-project', 'pt-heading-title', 'pt-strong', 'pt-link']))
+    const widgets = replacements(state).filter(({ decoration }) => decoration.spec.widget)
+    expect(widgets.map(({ decoration }) => render(decoration).className)).toEqual(['pt-bullet-dot', 'pt-bullet-dot'])
+  })
+
+  test('nested tasks stay nested under the line the paste lands on', () => {
+    const text = '- [ ] Parent\n    '
+    const state = paste(stateFor(text, text.length), '  * [ ] child\n      * [x] grandchild\n  * [ ] sibling')
+    expect(state.doc.toString()).toBe('- [ ] Parent\n    - [ ] child\n        - [x] grandchild\n    - [ ] sibling')
+    expect(symbols(state)).toEqual(['☐', '☐', '✔', '☐'])
+  })
+
+  test('a paste into an empty task takes its place instead of nesting a second box', () => {
+    const text = '  - [ ] '
+    const state = paste(stateFor(text, text.length), '- [x] Done already')
+    expect(state.doc.toString()).toBe('  - [x] Done already')
+  })
+
+  test('a task pasted after text starts a new line, and the text after the caret keeps its own task below', () => {
+    const text = '- [ ] Ship it now'
+    const state = paste(stateFor(text, text.indexOf(' now')), '- [ ] Plan\n- [ ] Draft')
+    expect(state.doc.toString()).toBe('- [ ] Ship it\n- [ ] Plan\n- [ ] Draft\n- [ ] now')
+    expect(state.selection.main.head).toBe('- [ ] Ship it\n- [ ] Plan\n- [ ] Draft'.length)
+  })
+
+  test('pasted before the box, the tasks go above the line', () => {
+    const text = '- [ ] Existing'
+    const state = paste(stateFor(text, 0), '[ ] New')
+    expect(state.doc.toString()).toBe('- [ ] New\n- [ ] Existing')
+  })
+
+  test('pasted at the start of a task label, plain first text joins the task and the rest follows', () => {
+    const text = '- [ ] Existing'
+    const state = paste(stateFor(text, text.indexOf('Existing')), '**Bold** start\n- [ ] Next')
+    expect(state.doc.toString()).toBe('- [ ] **Bold** start\n- [ ] Next\n- [ ] Existing')
+  })
+
+  test('a selection across lines is replaced whole', () => {
+    const text = '- [ ] One\n- [ ] Two\n- [ ] Three'
+    const state = paste(stateFor(text, text.indexOf('One'), text.indexOf('Two') + 3), '* [ ] New')
+    expect(state.doc.toString()).toBe('- [ ] New\n- [ ] Three')
+  })
+
+  test('escaped Markdown and a rich text copy both land as todo source', () => {
+    expect(paste(stateFor(''), '\\- \\[ \\] Escaped').doc.toString()).toBe('- [ ] Escaped')
+    const rich = paste(stateFor(''), 'Plan\nDraft', '<ul><li><input type="checkbox"> Plan</li><li><input type="checkbox" checked> Draft</li></ul>')
+    expect(rich.doc.toString()).toBe('- [ ] Plan\n- [x] Draft')
+  })
+
+  test('inline Markdown pastes in place, and plain text is left to the editor', () => {
+    const text = '- [ ] Ship '
+    expect(pasteMarkdown(stateFor(text, text.length), 'it **now**')).toBeUndefined()
+    expect(paste(stateFor(text, text.length), 'it **now**').doc.toString()).toBe('- [ ] Ship it **now**')
+    expect(pasteMarkdown(stateFor(text, text.length), 'plain words')).toBeUndefined()
+    expect(paste(stateFor(text, text.length), 'x', '<b>bold</b>').doc.toString()).toBe('- [ ] Ship **bold**')
+  })
+
+  test('the paste is one undoable change', () => {
+    let state = paste(stateFor('Intro\n', 6), '* [ ] One\n* [ ] Two\n    * [ ] Nested')
+    expect(undoDepth(state)).toBe(1)
+    expect(undo({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+    expect(state.doc.toString()).toBe('Intro\n')
   })
 })
 

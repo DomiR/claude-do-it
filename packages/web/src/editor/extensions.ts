@@ -1,6 +1,6 @@
 import {
   ChangeSet, Compartment, EditorSelection, EditorState, Prec, RangeSet, StateField, Transaction, findClusterBreak,
-  type Extension, type Range, type SelectionRange, type StateCommand, type TransactionSpec,
+  type Extension, type Line, type Range, type SelectionRange, type StateCommand, type TransactionSpec,
 } from '@codemirror/state'
 import {
   Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap,
@@ -17,6 +17,7 @@ import {
   classifyDocument, linkAt, linkRangeOn, prefixHasWidth, type ClassifiedDocument, type InlineKind, type Span,
 } from './lines'
 import { closeLinkEditor, editLink, linkEdits, openLinkEditor } from './link-popover'
+import { clipboardMarkdown, startsBlock } from './paste'
 import { protectSyntax, type TextChange } from './syntax'
 import type { ActionId, EditorCommand, TextSelection } from './types'
 
@@ -298,6 +299,50 @@ export const prefixTyping = (state: EditorState, from: number, to: number, text:
   return undefined
 }
 
+/**
+ * Pasted Markdown lands as todo source in one undoable change, see
+ * `clipboardMarkdown`. A paste that starts with a task, bullet, heading, or
+ * quote, or spans lines, is laid out as lines: on a line's empty text it
+ * takes the line, after text it starts a new line, and text after the caret
+ * moves to a line of its own below, keeping its prefix. Every pasted line
+ * gets the indentation of the line the paste lands on, so nested tasks stay
+ * nested. Returns undefined when the editor's own paste does the same.
+ */
+export const pasteMarkdown = (state: EditorState, plain: string, html?: string): TransactionSpec | undefined => {
+  const markdown = clipboardMarkdown(plain, html)
+  if (markdown === null) return undefined
+  const paste = (spec: TransactionSpec): TransactionSpec => ({
+    ...spec, userEvent: 'input.paste', annotations: isolateHistory.of('full'), scrollIntoView: true,
+  })
+  const pasted = markdown.split('\n')
+  const first = pasted[0]!
+  if ((pasted.length === 1 && !startsBlock(first)) || state.selection.ranges.length > 1) {
+    return markdown === plain.replace(/\r\n?/g, '\n') ? undefined : paste(state.replaceSelection(markdown))
+  }
+  const { from, to } = state.selection.main
+  const classified = state.field(documentDecorations).classified
+  const textStart = (line: Line): number =>
+    classified.lines[line.number - 1]?.prefix?.to ?? line.from + /^[ \t]*/.exec(line.text)![0].length
+  const startLine = state.doc.lineAt(from)
+  const endLine = state.doc.lineAt(to)
+  const indent = /^[ \t]*/.exec(startLine.text)![0]
+  const indented = pasted.map(line => line.trim() ? indent + line : line)
+  const start = textStart(startLine)
+  const head = from > start
+    ? startsBlock(first)
+      ? `${state.sliceDoc(startLine.from, from).replace(/[ \t]+$/, '')}\n${indented[0]}`
+      : state.sliceDoc(startLine.from, from) + first
+    : from === start && !startsBlock(first) ? state.sliceDoc(startLine.from, from) + first : indented[0]!
+  const end = textStart(endLine)
+  const rest = state.sliceDoc(to, endLine.to)
+  const tail = to < end ? `\n${endLine.text}` : rest.trim() ? `\n${state.sliceDoc(endLine.from, end)}${rest.replace(/^[ \t]+/, '')}` : ''
+  const body = [head, ...indented.slice(1)].join('\n')
+  return paste({
+    changes: { from: startLine.from, to: endLine.to, insert: body + tail },
+    selection: EditorSelection.cursor(startLine.from + body.length),
+  })
+}
+
 const prefixInput = EditorView.inputHandler.of((view, from, to, text) => {
   if (view.composing) return false
   const spec = prefixTyping(view.state, from, to, text)
@@ -503,6 +548,14 @@ export const editorExtensions = (platform: Platform, wrap = false): Extension =>
   search({ top: true }),
   documentDecorations, prefixCaretFilter, syntaxGuard, prefixInput, remoteHighlights, highlightTimer, linkEdits,
   EditorView.domEventHandlers({
+    paste(event, view) {
+      const data = event.clipboardData
+      if (!data || view.composing || view.state.readOnly) return false
+      const spec = pasteMarkdown(view.state, data.getData('text/plain'), data.getData('text/html') || undefined)
+      if (!spec) return false
+      view.dispatch(spec)
+      return true
+    },
     mousedown(event, view) {
       const target = event.target
       if (!(target instanceof Element) || view.composing) return false
