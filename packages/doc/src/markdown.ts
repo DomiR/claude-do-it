@@ -74,7 +74,7 @@ export function blockEnd(all: Line[], index: number): number {
   let end = index + 1
   for (let probe = end; probe < all.length; probe++) {
     const line = all[probe]!
-    if (line.kind === "blank") continue
+    if (line.kind === "blank" || (line.kind === "code" && line.from === line.to)) continue
     if (line.depth <= depth || line.kind === "heading") break
     end = probe + 1
   }

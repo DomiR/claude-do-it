@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { LoroDoc } from "loro-crdt"
+import { blockEnd, lines } from "../src/text"
 import { Document, DocError, MAX_DIFF, MAX_ITEM, MAX_BYTES, addTodo, appendBlock, applyEdits,
   findSection, findTodo, formatTodoChange, replaceUnique, sections, sectionText, setTodoState,
   slug, todoChanges, todos, unified, type TaskState } from "../src"
@@ -106,6 +107,22 @@ describe("todo operations", () => {
     const plain = "# A\nparagraph\n\n# B\n"
     expect(applyEdits(plain, addTodo(plain, "next", "a"))).toBe("# A\nparagraph\n\n- [ ] next\n\n# B\n")
     code(() => addTodo(text, "new", "unknown"), "not-found")
+  })
+  test("keeps empty fence lines inside a task block", () => {
+    for (const newline of ["\n", "\r\n"]) {
+      const text = ["- [ ] Explain", "    ```html do-it", "    <p>First</p>", "", "    <p>Last</p>", "    ```", "- [ ] Next"].join(newline)
+      const parsed = lines(text)
+      expect(parsed[3]!.kind).toBe("code")
+      expect(parsed[3]!.from).toBe(parsed[3]!.to)
+      expect(blockEnd(parsed, 0)).toBe(6)
+      expect(text.slice(parsed[0]!.from, parsed[blockEnd(parsed, 0) - 1]!.to)).toBe(text.slice(0, text.indexOf(`${newline}- [ ] Next`)))
+    }
+  })
+  test("adds a todo after an attached HTML fence with an empty line", () => {
+    const text = "## Tasks\n- [ ] Explain\n    ```html do-it\n    <p>First</p>\n\n    <p>Last</p>\n    ```\n\n## Later\n"
+    expect(applyEdits(text, addTodo(text, "Follow up", "tasks"))).toBe(
+      "## Tasks\n- [ ] Explain\n    ```html do-it\n    <p>First</p>\n\n    <p>Last</p>\n    ```\n- [ ] Follow up\n\n## Later\n",
+    )
   })
   test("MAX_ITEM counts Unicode characters and rejects, never truncates", () => {
     expect(applyEdits("", addTodo("", "😀".repeat(MAX_ITEM)))).toBe(`- [ ] ${"😀".repeat(MAX_ITEM)}\n`)

@@ -1,5 +1,7 @@
 import { blockEnd, lines, type Line, type TaskState } from '@do-it/doc/text'
 
+import { scanBlocks, type BlockIndex, type BlockRole } from './blocks'
+
 export type LineKind =
   | 'project'
   | 'task'
@@ -52,6 +54,7 @@ export interface ClassifiedLine {
   readonly prefix?: LinePrefix
   readonly archived: boolean
   readonly owner?: number
+  readonly blockRole?: BlockRole
 }
 
 export type PrefixKind = 'task' | 'status' | 'bullet' | 'heading' | 'quote'
@@ -85,6 +88,7 @@ export interface ClassifiedDocument {
   readonly lines: ReadonlyArray<ClassifiedLine>
   readonly projects: ReadonlyArray<Project>
   readonly stats: Stats
+  readonly blocks: BlockIndex
 }
 
 interface InlineCandidate {
@@ -254,7 +258,9 @@ const inlineCandidates = (text: string, from: number, to: number): InlineCandida
 
 const acceptedCandidates = (text: string, line: ClassifiedLine): InlineCandidate[] => {
   if (!inlineKinds.has(line.kind)) return []
-  const candidates = inlineCandidates(text, line.label?.from ?? line.quoteMark?.to ?? line.from, line.to)
+  if (line.blockRole && line.blockRole !== 'details-summary') return []
+  const inlineEnd = line.blockRole === 'details-summary' ? line.label?.to ?? line.to : line.to
+  const candidates = inlineCandidates(text, line.label?.from ?? line.quoteMark?.to ?? line.from, inlineEnd)
     .sort((left, right) => left.from - right.from || right.to - right.from - (left.to - left.from))
   const accepted: InlineCandidate[] = []
   let end = line.from
@@ -313,6 +319,7 @@ const archivedLines = (all: Line[], text: string): ReadonlySet<number> => {
 
 export const classifyDocument = (text: string): ClassifiedDocument => {
   const parsed = lines(text)
+  const blocks = scanBlocks(text, parsed)
   const archived = archivedLines(parsed, text)
   const stats = { done: 0, cancelled: 0, open: 0, total: 0 }
   const projects: Project[] = []
@@ -400,6 +407,11 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
       }
     }
 
+    const block = blocks.byLine[index]
+    if (block) {
+      result.blockRole = block.role
+      if (block.title) result.label = block.title
+    }
     const candidates = acceptedCandidates(text, result)
     result.inline = candidates.flatMap(candidate => candidate.spans)
     result.constructs = constructsOf(candidates)
@@ -428,7 +440,7 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
     return result
   })
 
-  return { lines: classified, projects, stats }
+  return { lines: classified, projects, stats, blocks }
 }
 
 /** A link as written in the document: `[label](target)`, `<target>`, or a bare URL. */
@@ -440,7 +452,9 @@ export interface LinkRange extends Span {
 /** The rendered link on `line` that contains `offset`, honouring the same precedence as the inline styles. */
 export const linkRangeOn = (text: string, line: ClassifiedLine, offset: number): LinkRange | undefined => {
   if (!inlineKinds.has(line.kind) || offset < line.from || offset > line.to) return undefined
-  for (const link of linkCandidates(text, line.from, line.to)) {
+  if (line.blockRole && line.blockRole !== 'details-summary') return undefined
+  const title = line.blockRole === 'details-summary' ? line.label : undefined
+  for (const link of linkCandidates(text, title?.from ?? line.from, title?.to ?? line.to)) {
     if (offset < link.from || offset > link.to) continue
     if (line.inline.some(span => (span.kind === 'link' || span.kind === 'linkMark') &&
       span.from >= link.from && span.to <= link.to)) return { from: link.from, to: link.to, label: link.label, target: link.target }
