@@ -1,5 +1,5 @@
 /** Browser-safe text operations, without a CRDT document or disk dependencies. */
-export { MAX_BYTES, KEPT, MAX_DIFF, MAX_ITEM } from "./constants"
+export { MAX_BYTES, KEPT, COMPACT_KEEP, MAX_DIFF, MAX_ITEM } from "./constants"
 export { DocError } from "./errors"
 export { applyEdits, type Edit } from "./edit"
 export { edits as textEdits } from "./diff"

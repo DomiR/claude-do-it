@@ -82,10 +82,12 @@ do-it todo check TODO.md --version 9 3
 do-it edit TODO.md --version 10 --old "ship friday" --new "ship monday"
 do-it append TODO.md --version 11 --section notes -- "- found: flaky CI"
 do-it diff TODO.md --since 9 --wait 300
-do-it watch TODO.md --todos           # or --settle 25 for one line per pause
+do-it watch TODO.md --todos           # or --settle 25 for one line per pause; --quiet skips the initial Watching line
 do-it status
 do-it stop
 ```
+
+A resumed watch that missed history prints `Missed changes, now at version N: run do-it read`. Use `--quiet` when the initial `Watching PATH at version N` line is not needed.
 
 Every reply starts with the document's version and every change, by anyone,
 takes the next one. A change names the version it was made against; when the

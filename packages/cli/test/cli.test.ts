@@ -29,6 +29,7 @@ describe("cli argument parsing", () => {
   it("uses TODO.md for open and accepts a zero second wait", async () => {
     expect(await parse(["open", "--no-browser"])).toMatchObject({ kind: "open", displayPath: "TODO.md", noBrowser: true })
     expect(await parse(["diff", "TODO.md", "--since", "1", "--wait", "0"])).toMatchObject({ kind: "diff", wait: 0 })
+    expect(await parse(["watch", "TODO.md", "--quiet"])).toMatchObject({ kind: "watch", quiet: true })
   })
 
   it("rejects missing and out of range arguments", async () => {

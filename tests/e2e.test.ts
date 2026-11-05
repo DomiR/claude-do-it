@@ -141,6 +141,22 @@ describe("do-it CLI end to end", () => {
     watcher.kill(); settledWatcher.kill(); await stopFixture(fixture)
   }, 30_000)
 
+  it("resyncs a missed watch before settling and supports quiet startup", async () => {
+    const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n\n- [ ] first\n")
+    await openFixture(fixture)
+    const watcher = await startCli(["watch", fixture.file, "--since", "999", "--settle", "1"], fixture.env)
+    const lines = await readLines(watcher)
+    expect((await lines.next()).value).toContain("Missed changes, now at version 1: run do-it read")
+    expect((await lines.next()).value).toContain("Settled at version 1")
+    watcher.kill()
+    const quietWatcher = await startCli(["watch", fixture.file, "--since", "999", "--quiet"], fixture.env)
+    const quietLines = await readLines(quietWatcher)
+    const first = (await quietLines.next()).value as string
+    expect(first).toContain("Missed changes")
+    expect(first).not.toContain("Watching")
+    quietWatcher.kill(); await stopFixture(fixture)
+  }, 30_000)
+
   it("reconnects after the daemon is restarted", async () => {
     const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n\n- [ ] first\n")
     await openFixture(fixture)
@@ -150,7 +166,7 @@ describe("do-it CLI end to end", () => {
     const edit = await runCli(["todo", "add", fixture.file, "--version", "1", "after restart"], fixture.env)
     expect(edit.code).toBe(0)
     const restart = await lines.next()
-    expect(restart.value).toContain("Daemon restarted")
+    expect(restart.value).toMatch(/^(Daemon restarted, now version [12]|Missed changes, now at version 2: run do-it read)$/)
     const version = jsonLine<{ version: number }>(await runCli(["read", fixture.file, "--json"], fixture.env)).version
     await wait(250)
     const laterEdit = await runCli(["todo", "add", fixture.file, "--version", String(version), "later"], fixture.env)

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import { appendBlock, replaceUnique } from "@do-it/doc"
+import { COMPACT_KEEP, appendBlock, replaceUnique } from "@do-it/doc"
 import { Effect, Stream } from "effect"
 import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -63,18 +63,33 @@ test("a slow watch pull coalesces a burst into one Change from A to N", async ()
   expect(registry.totalWatchers).toBe(0)
 })
 
-test("watch starts with Watching, resyncs forgotten history, and includes full text for a section", async () => {
+test("watch resyncs forgotten history as its first event and includes full text for a section", async () => {
   const { registry, file } = fixture()
   const path = file("## A\na\n## B\nb\n")
   const entry = registry.get(path)
-  entry.doc.userEdit(1, "## A\nalpha\n## B\nb\n")
-  registry.changed(entry, 1)
+  for (let i = 0; i < COMPACT_KEEP + 1; i++) {
+    const previous = entry.doc.version
+    entry.doc.userEdit(previous, `${entry.doc.text}note ${i}\n`)
+    registry.changed(entry, previous)
+  }
   registry.flush(entry)
   entry.doc.compact(0, 0)
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const pull = yield* Stream.toPull(watchDocument(registry, { path, since: 1, section: "a", text: true }))
-    expect(yield* pull).toEqual([{ _tag: "Watching", version: 2, text: entry.doc.text }])
-    expect(yield* pull).toEqual([{ _tag: "Resync", version: 2, text: entry.doc.text }])
+    expect(yield* pull).toEqual([{ _tag: "Resync", version: entry.doc.version, text: entry.doc.text }])
+  })))
+})
+
+test("watch starts with Watching for kept history and then delivers the change", async () => {
+  const { registry, file } = fixture()
+  const path = file()
+  const entry = registry.get(path)
+  entry.doc.userEdit(1, `${entry.doc.text}before\n`)
+  registry.changed(entry, 1)
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const pull = yield* Stream.toPull(watchDocument(registry, { path, since: 1, text: false }))
+    expect(yield* pull).toEqual([{ _tag: "Watching", version: 2 }])
+    expect(yield* pull).toMatchObject([{ _tag: "Change", from: 1, to: 2 }])
   })))
 })
 

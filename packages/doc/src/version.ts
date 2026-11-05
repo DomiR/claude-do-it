@@ -53,6 +53,10 @@ export class History {
     return null
   }
 
+  list(): ReadonlyArray<Entry> {
+    return Array.from({ length: this.count }, (_, i) => this.entries[(this.start + i) % KEPT]!)
+  }
+
   originsSince(version: Version): Origin[] | null {
     if (!this.find(version)) return null
     const seen = new Set<string>()
