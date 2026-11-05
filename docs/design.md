@@ -422,3 +422,9 @@ browser focus navigation remains available.
 - Blocking waits use `do-it diff PATH --since N --wait 100` in a loop (the Bash
   tool stops a call at 120 s by default).
 - Each worker brief sets `DO_IT_AGENT=tN`, so its edits are attributed.
+- The conductor delegates and monitors. It runs `todo start` on a task as
+  soon as it takes it (before sizing) and `todo check` on delivery; every
+  other piece of work, reading code included, goes to an agent.
+- The optional messenger owns every `**tN**` line once it is on. Its only
+  input is the inbox, in order, with its cursor in `messenger.version`;
+  the conductor posts its decisions there as `conductor tN ...` lines.
