@@ -1,24 +1,24 @@
-import { watch, type FSWatcher } from "node:fs"
-import { basename, dirname } from "node:path"
+import { Deferred, Effect, Fiber, FileSystem, Path, Stream } from "effect"
 
-export class FileWatcher {
-  private watcher: FSWatcher | undefined
-  private debounce: ReturnType<typeof setTimeout> | undefined
-  private readonly poll: ReturnType<typeof setInterval>
-  constructor(path: string, changed: () => void) {
-    const schedule = () => {
-      if (this.debounce) clearTimeout(this.debounce)
-      this.debounce = setTimeout(() => { this.debounce = undefined; changed() }, 50)
-    }
-    try {
-      this.watcher = watch(dirname(path), (_, file) => { if (file === null || String(file) === basename(path)) schedule() })
-      this.watcher.on("error", () => { this.watcher?.close(); this.watcher = undefined })
-    } catch { /* The stamp poll also works on filesystems without fs.watch. */ }
-    this.poll = setInterval(changed, 2000)
-  }
-  close(): void {
-    this.watcher?.close()
-    if (this.debounce) clearTimeout(this.debounce)
-    clearInterval(this.poll)
-  }
-}
+/**
+ * Runs `changed` shortly after the file at `path` changes, and every two
+ * seconds as a fallback for file systems that do not report changes. Both
+ * stop when the enclosing scope closes.
+ */
+export const watchFile = Effect.fn("watchFile")(function* (path: string, changed: Effect.Effect<void>) {
+  const fs = yield* FileSystem.FileSystem
+  const paths = yield* Path.Path
+  const name = paths.basename(path)
+  const ready = yield* Deferred.make<void>()
+  const events = yield* fs.watch(paths.dirname(path), { onReady: () => Deferred.doneUnsafe(ready, Effect.void) }).pipe(
+    Stream.filter(event => paths.basename(event.path) === name),
+    Stream.debounce("50 millis"),
+    Stream.runForEach(() => changed),
+    // The stamp poll below also covers a watcher that fails or cannot start.
+    Effect.ignore,
+    Effect.forkScoped,
+  )
+  yield* changed.pipe(Effect.delay("2 seconds"), Effect.forever, Effect.forkScoped)
+  // Changes made right after opening must not be missed while the watcher starts.
+  yield* Effect.race(Deferred.await(ready), Fiber.await(events))
+})

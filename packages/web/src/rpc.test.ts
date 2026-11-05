@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { Command, given, message, model as assertModel, story } from 'foldkit/story'
 
 import { makeServer } from '../../server/src/http'
+import { ServerServices } from '../../server/src/services'
 import { ApplyRemoteText } from './command'
 import { Message } from './message'
 import { makeInitialModel } from './model'
@@ -25,7 +26,7 @@ test('the browser subscription omits an absent since on the wire and stays live 
       const server = yield* makeServer({ home, port: 0, idleMs: 10000, webDist: join(home, 'dist') })
       const baseUrl = `http://127.0.0.1:${server.port}`
       Object.defineProperty(globalThis, 'location', { configurable: true, value: new URL(baseUrl) })
-      const code = server.auth.mint(path)
+      const code = yield* server.auth.mint(path)
       const auth = yield* Effect.promise(() => fetch(`${baseUrl}/auth?code=${code}&path=${encodeURIComponent(path)}`, { redirect: 'manual' }))
       expect(auth.status).toBe(303)
       const cookie = auth.headers.get('set-cookie')!.split(';')[0]!
@@ -110,7 +111,7 @@ test('the browser subscription omits an absent since on the wire and stays live 
       const deadline = Date.now() + 1000
       while (server.documents.totalWatchers !== 0 && Date.now() < deadline) yield* Effect.sleep(10)
       expect(server.documents.status()).toContainEqual({ path, version: 3, watchers: 0 })
-    })).pipe(Effect.timeout(5000)))
+    })).pipe(Effect.timeout(5000), Effect.provide(ServerServices)))
   } finally {
     if (location) Object.defineProperty(globalThis, 'location', location)
     else Reflect.deleteProperty(globalThis, 'location')
