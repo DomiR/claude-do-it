@@ -12,7 +12,7 @@ import { rebaseRemote } from './changes'
 import type { EditorCommand } from './types'
 import {
   clearRemoteHighlight, deleteBackwardAcrossMarks, deleteEmptyTaskPrefix, deleteForwardAcrossMarks, documentDecorations,
-  editorExtensions, insertNoteLine, moveToTaskLabel, pasteMarkdown, prefixTyping, remoteHighlights, remoteTransaction,
+  continueBlockLine, editorExtensions, insertNoteLine, moveToTaskLabel, pasteMarkdown, prefixTyping, remoteHighlights, remoteTransaction,
   runEditorCommand,
 } from './extensions'
 
@@ -493,15 +493,24 @@ describe('Shift-Enter under a task', () => {
     expect(state.doc.toString()).toBe('  - [ ] \n      Ship')
   })
 
-  test('on a note or a status line in a task fold it keeps that line indentation', () => {
+  test('on a note it keeps the indentation, on a status line it starts where the status text shows', () => {
     let result = shiftEnter(stateFor('- [ ] Task\n    a note\n- [ ] Next', '- [ ] Task\n    a note'.length))
     expect(result.state.doc.toString()).toBe('- [ ] Task\n    a note\n    \n- [ ] Next')
     result = shiftEnter(stateFor('- [ ] Task\n  - **t1** planning', '- [ ] Task\n  - **t1** planning'.length))
     const text = result.state.doc.toString()
-    expect(text).toBe('- [ ] Task\n  - **t1** planning\n  ')
+    // The status bullet renders as a blank gap, so its text shows at column 4, under the task label.
+    expect(text).toBe('- [ ] Task\n  - **t1** planning\n    ')
     const typed = result.state.update({ changes: { from: text.length, insert: 'answer' }, userEvent: 'input.type' }).state
-    expect(folded(typed.doc.toString(), 0)).toEqual(['  - **t1** planning', '  answer'])
+    expect(folded(typed.doc.toString(), 0)).toEqual(['  - **t1** planning', '    answer'])
     expect(typed.field(documentDecorations).classified.lines[2]!.kind).toBe('note')
+  })
+
+  test('within a status line it splits at the caret, the rest a plain note at the status text column', () => {
+    const text = '- [ ] Task\n  - **t1** planning the work\n- [ ] Next'
+    const { state } = shiftEnter(stateFor(text, text.indexOf(' the work')))
+    expect(state.doc.toString()).toBe('- [ ] Task\n  - **t1** planning\n    the work\n- [ ] Next')
+    expect(state.selection.main.head).toBe(state.doc.line(3).from + 4)
+    expect(state.field(documentDecorations).classified.lines[2]!.kind).toBe('note')
   })
 
   test('it is one undoable change and leaves other lines to the ordinary newline', () => {
@@ -512,6 +521,61 @@ describe('Shift-Enter under a task', () => {
     for (const text of ['Plain prose', '# Project', '- bullet', '> quote', '']) {
       expect(shiftEnter(stateFor(text, text.length)).handled).toBe(false)
     }
+  })
+})
+
+describe('Enter below a task', () => {
+  const enter = (state: EditorState) => {
+    let next = state
+    const handled = continueBlockLine({ state, dispatch: transaction => { next = transaction.state } })
+    return { handled, state: next }
+  }
+  const kindOf = (state: EditorState, line: number) => state.field(documentDecorations).classified.lines[line - 1]!
+
+  test('at the end of a status line it starts a plain note at the status text column, inside the task fold', () => {
+    const text = '- [ ] Task\n  - **t1** planning\n- [ ] Next'
+    const { handled, state } = enter(stateFor(text, text.indexOf('\n- [ ] Next')))
+    expect(handled).toBe(true)
+    expect(state.doc.toString()).toBe('- [ ] Task\n  - **t1** planning\n    \n- [ ] Next')
+    expect(state.selection.main.head).toBe(state.doc.line(3).to)
+    const typed = state.update({ changes: { from: state.doc.line(3).to, insert: 'answer' }, userEvent: 'input.type' }).state
+    expect([kindOf(typed, 3).kind, kindOf(typed, 3).owner, kindOf(typed, 3).prefix]).toEqual(['note', 0, undefined])
+    expect(markers(typed).map(marker => marker.source)).toEqual(['- [ ] ', '- [ ] '])
+    expect(typed.doc.line(3).text).toBe('    answer')
+  })
+
+  test('at the end of a note it keeps the note indentation, and under a nested task it follows that task', () => {
+    let text = '- [ ] Task\n    a note'
+    expect(enter(stateFor(text, text.length)).state.doc.toString()).toBe('- [ ] Task\n    a note\n    ')
+    text = '- [ ] Parent\n  - [ ] Child\n    - **t2** waiting'
+    expect(enter(stateFor(text, text.length)).state.doc.toString()).toBe(`${text}\n      `)
+  })
+
+  test('in the middle of a status line it splits like Shift-Enter', () => {
+    const text = '- [ ] Task\n  - **t1** planning the work'
+    expect(enter(stateFor(text, text.indexOf(' the work'))).state.doc.toString())
+      .toBe('- [ ] Task\n  - **t1** planning\n    the work')
+  })
+
+  test('tasks, blank lines, the caret before a status gap, and lines outside a task keep their own Enter', () => {
+    const status = '- [ ] Task\n  - **t1** planning'
+    const cases: Array<[string, number]> = [
+      ['- [ ] Task', 10],
+      ['- [ ] Task\n    ', 15],
+      [status, status.indexOf('- **t1**')],
+      ['Plain prose', 11],
+      ['- bullet', 8],
+      ['# Project', 9],
+    ]
+    for (const [text, at] of cases) expect(enter(stateFor(text, at)).handled).toBe(false)
+  })
+
+  test('it is one undoable change', () => {
+    const text = '- [ ] Task\n  - **t1** planning'
+    let state = enter(stateFor(text, text.length)).state
+    expect(undoDepth(state)).toBe(1)
+    expect(undo({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+    expect(state.doc.toString()).toBe(text)
   })
 })
 

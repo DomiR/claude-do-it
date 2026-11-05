@@ -403,10 +403,11 @@ const NOTE_INDENT = '    '
 
 /**
  * Shift-Enter on a task, or on a line already in a task's block, splits at
- * the caret and starts a plain line inside that block: under a task at the
- * task's text column, under a status line or note at its own indentation.
- * Folding the task hides the new line, because the block is every deeper
- * line below it (`blockEnd`). Elsewhere Shift-Enter stays a plain newline.
+ * the caret and starts a plain line inside that block at the column where
+ * the line's text shows: under a task one box deeper, under a status line
+ * past its blank bullet gap, under a note at its own indentation. Folding
+ * the task hides the new line, because the block is every deeper line below
+ * it (`blockEnd`). Elsewhere Shift-Enter stays a plain newline.
  */
 export const insertNoteLine: StateCommand = ({ state, dispatch }) => {
   const classified = state.field(documentDecorations).classified
@@ -415,9 +416,10 @@ export const insertNoteLine: StateCommand = ({ state, dispatch }) => {
     const line = classified.lines[state.doc.lineAt(range.head).number - 1]
     if (!line || (line.kind !== 'task' && line.owner === undefined)) return false
     const lead = /^[ \t]*/.exec(state.doc.sliceString(line.from, line.to))![0]
-    const indent = line.kind === 'task' ? lead + NOTE_INDENT : lead
     // The line's own prefix stays where it is: the split is never inside it.
     const textStart = line.prefix?.to ?? line.from + lead.length
+    const gap = line.prefix && prefixHasWidth(line.prefix) ? ' '.repeat(Math.max(0, textStart - line.from - lead.length)) : ''
+    const indent = line.kind === 'task' ? lead + NOTE_INDENT : lead + gap
     let from = Math.max(range.from, textStart)
     let to = Math.max(range.to, from)
     while (to < line.to && /[ \t]/.test(state.doc.sliceString(to, to + 1))) to += 1
@@ -431,6 +433,25 @@ export const insertNoteLine: StateCommand = ({ state, dispatch }) => {
     userEvent: 'input', annotations: isolateHistory.of('full'), scrollIntoView: true,
   }))
   return true
+}
+
+/**
+ * Enter after the text start of a status line or note inside a task's block
+ * does what Shift-Enter does there, so the new line is a plain note at the
+ * same visible indentation. Tasks keep continuing as tasks, and blank lines
+ * and every other line keep the ordinary newline.
+ */
+export const continueBlockLine: StateCommand = target => {
+  const { state } = target
+  const classified = state.field(documentDecorations).classified
+  const inBlock = state.selection.ranges.every(range => {
+    const line = classified.lines[state.doc.lineAt(range.head).number - 1]
+    if (!line || line.kind === 'task' || line.owner === undefined) return false
+    const text = state.doc.sliceString(line.from, line.to)
+    const textStart = line.prefix?.to ?? line.from + /^[ \t]*/.exec(text)![0].length
+    return text.trim() !== '' && range.from >= textStart
+  })
+  return inBlock && insertNoteLine(target)
 }
 
 // Home targets the label directly so it cannot be mistaken for a leftward step into the task prefix.
@@ -538,6 +559,9 @@ export const editorExtensions = (platform: Platform, wrap = false): Extension =>
   }, {
     key: 'Shift-Enter',
     run: unlessComposing(insertNoteLine),
+  }, {
+    key: 'Enter',
+    run: unlessComposing(continueBlockLine),
   }])),
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,
