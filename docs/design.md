@@ -338,14 +338,16 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
   source character and the text stays byte exact.
 - Line decorations come from `editor/lines.ts`. On decorated lines, task and
   status bullets, heading and quote markers, Markdown delimiters, and link
-  syntax are hidden while the label remains editable. The active line shows
-  its source markup, except that the task bullet stays hidden. Plain prose
-  bullets become a visible `•`, and task markers are CSS drawings over the
-  three source characters in `[ ]`. Copy, selection, undo, and source offsets
-  still use Markdown. Clicking a marker toggles done; Alt-click toggles
-  cancelled. While the selection touches a marker slot, its literal source is
-  shown. Empty tasks keep their marker but do not count in statistics or
-  archive actions.
+  syntax are hidden while the label remains editable. No line ever shows its
+  source markup, wherever the caret or selection is: Markdown typed into a
+  line renders as soon as the construct is complete. Plain prose bullets
+  become a visible `•`, and a task's whole `- [ ] ` prefix is one marker
+  widget that the caret crosses, and Backspace or Delete removes, as a single
+  character (the line becomes plain text). Copy, selection, undo, and source
+  offsets still use Markdown. Clicking a marker toggles done; Alt-click
+  toggles cancelled. A formatting bar above the editor applies bold, italic,
+  strikethrough, code, links, and task, bullet, and project lines. Empty
+  tasks keep their marker but do not count in statistics or archive actions.
 - The editor uses PlainTasks markers `☐`, `✔`, and `✘` for open, done, and
   cancelled tasks. Tags use PlainTasks colours: generic tags are bold red,
   `@today` is bold black on yellow, `@high` is bold black on orange, `@low` is
