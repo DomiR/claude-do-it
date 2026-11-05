@@ -56,7 +56,7 @@ export const editorView = (model: Model, document: ReadyDocument, h: HtmlBuilder
         ], [h.span([h.Class('pt-header-label')], ['Activity'])]),
       ]),
     ]),
-    toolbarView(model.platform, h),
+    toolbarView(model.platform, model.wrap, h),
     h.main([h.Class(`pt-workspace${model.activityOpen ? ' pt-workspace-with-activity' : ''}`)], [
       // The Mount owns this childless host for the entire document session.
       h.keyed('div')(`editor:${document.session}`, [

@@ -25,8 +25,25 @@ const ariaKeys = (platform: Platform, key: string): string =>
  * runs its editor command, which writes Markdown in one undoable change and
  * puts the focus back in the editor.
  */
-export const toolbarView = (platform: Platform, h: HtmlBuilder<Message>): Html =>
-  h.div([h.Class('pt-toolbar'), h.Role('toolbar'), h.AriaLabel('Formatting')], toolbar.flatMap((group, index) => [
+const wrapIcon = ['M2.5 4h11', 'M2.5 8h8.5a2 2 0 0 1 0 4H8', 'M9.5 10.5 8 12l1.5 1.5', 'M2.5 12h3']
+
+/** The wrap toggle at the right end of the bar. Pressed means long lines wrap; otherwise they scroll. */
+const wrapToggleView = (wrap: boolean, h: HtmlBuilder<Message>): Html =>
+  h.button([
+    h.Class('pt-toolbar-button pt-toolbar-toggle'), h.Type('button'), h.AriaLabel('Wrap lines'),
+    h.AriaPressed(wrap ? 'true' : 'false'), h.OnClick(Message.ClickedWrapToggle()),
+  ], [
+    h.svg([
+      h.Class('pt-toolbar-icon'), h.ViewBox('0 0 16 16'), h.Width('16'), h.Height('16'), h.Fill('none'),
+      h.Stroke('currentColor'), h.StrokeWidth('1.5'), h.StrokeLinecap('round'), h.StrokeLinejoin('round'), h.AriaHidden(true),
+    ], wrapIcon.map(path => h.path([h.D(path)], []))),
+    h.span([h.Class('pt-tooltip pt-tooltip-end'), h.AriaHidden(true)], [
+      h.span([h.Class('pt-tooltip-label')], [wrap ? 'Wrap lines: on' : 'Wrap lines: off, lines scroll']),
+    ]),
+  ])
+
+export const toolbarView = (platform: Platform, wrap: boolean, h: HtmlBuilder<Message>): Html =>
+  h.div([h.Class('pt-toolbar'), h.Role('toolbar'), h.AriaLabel('Formatting')], [...toolbar.flatMap((group, index) => [
     ...(index > 0 ? [h.span([h.Class('pt-toolbar-divider'), h.AriaHidden(true)], [])] : []),
     ...group.map(({ command, label }) => {
       const key = keysFor(platform, command)[0]
@@ -47,4 +64,4 @@ export const toolbarView = (platform: Platform, h: HtmlBuilder<Message>): Html =
         ]),
       ])
     }),
-  ]))
+  ]), h.span([h.Class('pt-toolbar-spacer')], []), wrapToggleView(wrap, h)])

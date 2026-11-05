@@ -251,6 +251,21 @@ button {
   transition: opacity 120ms ease 0ms, visibility 0ms linear 120ms;
 }
 
+.pt-tooltip-end {
+  right: 0;
+  left: auto;
+}
+
+.pt-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.pt-toolbar-toggle[aria-pressed='true'] {
+  border-color: var(--pt-delimiter);
+  background: var(--pt-active-row);
+  color: var(--pt-ink);
+}
+
 .pt-toolbar-button:hover .pt-tooltip,
 .pt-toolbar-button:focus-visible .pt-tooltip {
   opacity: 1;
@@ -594,9 +609,14 @@ button {
   padding-inline: var(--pt-content-inset);
   color: var(--pt-ink);
   line-height: 1.6;
+  /* Long lines scroll horizontally unless wrapping is turned on in the formatting bar. */
+  white-space: pre;
+  caret-color: var(--pt-ink);
+}
+
+.pt-editor-host .cm-content.cm-lineWrapping {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  caret-color: var(--pt-ink);
 }
 
 .pt-editor-host .cm-line {

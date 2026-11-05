@@ -1,5 +1,5 @@
 import {
-  ChangeSet, EditorSelection, EditorState, Prec, RangeSet, StateField, Transaction, findClusterBreak,
+  ChangeSet, Compartment, EditorSelection, EditorState, Prec, RangeSet, StateField, Transaction, findClusterBreak,
   type Extension, type Range, type SelectionRange, type StateCommand, type TransactionSpec,
 } from '@codemirror/state'
 import {
@@ -463,11 +463,19 @@ const inputGuard = ViewPlugin.fromClass(class {
 const unlessComposing = (command: Command): Command => view =>
   view.composing || view.plugin(inputGuard)?.ignoreKey ? false : command(view)
 
-export const editorExtensions = (platform: Platform): Extension => [
+/** Line wrapping, off by default so long lines scroll horizontally; the formatting bar toggles it. */
+const lineWrap = new Compartment()
+const wrapping = (wrap: boolean): Extension => wrap ? EditorView.lineWrapping : []
+
+export const setLineWrap = (view: EditorView, wrap: boolean): void => {
+  view.dispatch({ effects: lineWrap.reconfigure(wrapping(wrap)) })
+}
+
+export const editorExtensions = (platform: Platform, wrap = false): Extension => [
   EditorState.lineSeparator.of('\n'),
   EditorState.tabSize.of(4),
   EditorState.allowMultipleSelections.of(true),
-  history(), drawSelection(), highlightActiveLine(), EditorView.lineWrapping,
+  history(), drawSelection(), highlightActiveLine(), lineWrap.of(wrapping(wrap)),
   EditorView.contentAttributes.of({ 'aria-label': 'Todo document' }),
   Prec.highest(inputGuard),
   Prec.highest(keymap.of([{

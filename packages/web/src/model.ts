@@ -86,10 +86,12 @@ export const Model = Schema.Struct({
   platform: Platform,
   palette: Palette,
   notice: Schema.Option(Schema.String),
+  /** Whether long lines wrap. Off means they scroll horizontally. */
+  wrap: Schema.Boolean,
 })
 export type Model = typeof Model.Type
 
-export const makeInitialModel = (path: string, platform: typeof Platform.Type = 'other'): Model => ({
+export const makeInitialModel = (path: string, platform: typeof Platform.Type = 'other', wrap = false): Model => ({
   document: path.length === 0
     ? DocumentState.NoPath()
     : DocumentState.Connecting({ path, watchKey: 0, resumeFrom: Option.none(), reconnectAttempt: 0 }),
@@ -98,6 +100,7 @@ export const makeInitialModel = (path: string, platform: typeof Platform.Type = 
   platform,
   palette: Palette.Closed(),
   notice: Option.none(),
+  wrap,
 })
 
 export const saveStatus = (document: ReadyDocument): 'Saved' | 'Saving' | 'Reconnecting' =>

@@ -20,6 +20,8 @@ export const Message = defineMessageUnion({
   ClickedCommands: {},
   PressedHelpKey: {},
   ClickedActivity: {},
+  ClickedWrapToggle: {},
+  CompletedSetEditorWrap: {},
   UpdatedPaletteQuery: { query: Schema.String },
   PressedPaletteKey: { key: Schema.Literals(['ArrowUp', 'ArrowDown', 'Enter', 'Escape']) },
   ClickedPaletteItem: { index: Schema.Number },

@@ -5,7 +5,7 @@ import {
   scene, selector, tap, text, type as typeInto,
 } from 'foldkit/scene'
 
-import { FocusEditor, RunEditorAction, WaitBeforeReconnect } from './command'
+import { FocusEditor, RunEditorAction, SetEditorWrap, WaitBeforeReconnect } from './command'
 import { Message } from './message'
 import { makeInitialModel, type Model } from './model'
 import { FocusPaletteInput, MountEditor } from './mount'
@@ -90,9 +90,9 @@ describe('PlainTasks shell', () => {
     scene({ update, view }, given(ready()),
       Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
       expect(selector('.pt-toolbar')).toHaveAttr('role', 'toolbar'),
-      expectAll(all.selector('.pt-toolbar-button')).toHaveCount(8),
+      expectAll(all.selector('.pt-toolbar-button')).toHaveCount(9),
       expectAll(all.selector('.pt-toolbar-divider')).toHaveCount(1),
-      expectAll(all.selector('.pt-toolbar-button .pt-tooltip')).toHaveCount(8),
+      expectAll(all.selector('.pt-toolbar-button .pt-tooltip')).toHaveCount(9),
       expect(selector('[aria-label="Bold"] .pt-tooltip-label')).toHaveText('Bold'),
       expect(selector('[aria-label="Bold"] .pt-visually-hidden')).toHaveText('Command B'),
       expect(selector('[aria-label="Italic"] .pt-visually-hidden')).toHaveText('Shift Command I'),
@@ -114,6 +114,24 @@ describe('PlainTasks shell', () => {
       Command.expectExact(RunEditorAction({ session, action: 'toggleTask' })),
       Command.resolve(RunEditorAction, Message.CompletedRunEditorAction()),
     )
+  })
+
+  test('the wrap toggle at the end of the bar is off by default and turns wrapping on in the editor', () => {
+    scene({ update, view }, given(ready()),
+      Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
+      expect(selector('[aria-label="Wrap lines"]')).toHaveAttr('aria-pressed', 'false'),
+      expect(selector('[aria-label="Wrap lines"] .pt-tooltip-label')).toHaveText('Wrap lines: off, lines scroll'),
+      click(selector('[aria-label="Wrap lines"]')),
+      Command.expectExact(SetEditorWrap({ session, wrap: true })),
+      Command.resolve(SetEditorWrap, Message.CompletedSetEditorWrap()),
+      expect(selector('[aria-label="Wrap lines"]')).toHaveAttr('aria-pressed', 'true'),
+      click(selector('[aria-label="Wrap lines"]')),
+      Command.expectExact(SetEditorWrap({ session, wrap: false })),
+      Command.resolve(SetEditorWrap, Message.CompletedSetEditorWrap()),
+      expect(selector('[aria-label="Wrap lines"]')).toHaveAttr('aria-pressed', 'false'),
+      Mount.expectNone(),
+    )
+    bunExpect(makeInitialModel(path, 'mac', true).wrap).toBe(true)
   })
 
   test('shows shortcuts and keeps the existing empty and terminal pages', () => {

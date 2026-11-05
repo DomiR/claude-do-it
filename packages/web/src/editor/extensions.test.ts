@@ -222,6 +222,13 @@ describe('rendered editor', () => {
     }
   })
 
+  test('long lines scroll by default and wrap only when turned on', () => {
+    const wraps = (state: EditorState) => state.facet(EditorView.contentAttributes)
+      .some(attributes => typeof attributes !== 'function' && attributes.class === 'cm-lineWrapping')
+    expect(wraps(stateFor('- [ ] Ship'))).toBe(false)
+    expect(wraps(EditorState.create({ doc: '- [ ] Ship', extensions: [editorExtensions('mac', true)] }))).toBe(true)
+  })
+
   test('decorates tags with their shared and sanitized name classes', () => {
     const text = '@today @HIGH @waiting\n`@code`\n```\n@fenced\n```'
     const state = stateFor(text, text.length)
