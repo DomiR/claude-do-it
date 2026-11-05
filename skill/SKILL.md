@@ -28,6 +28,7 @@ $D append TODO.md --version 10 --section notes -- "- found: flaky CI"
 $D edit TODO.md --version 10 --old "ship friday" --new "ship monday"
 $D diff TODO.md --since 9 --wait 100      # waits for the next change, exit 4 when none came (keep it under the Bash tool's 120 s default)
 $D watch TODO.md --todos                  # every change, as task lines
+$D doctor                                 # checks Bun, PATH, the daemon build, and this skill; one fix line per problem, exit 1 on any
 ```
 
 - Every reply starts with the document's version; every change by anyone takes the next number. Always pass the version you last saw: the one in the reply to your last change, or `do-it read FILE --json | jq .version`. Two changes in a row to the same section need two versions (the second names the first one's reply).
@@ -38,7 +39,8 @@ $D watch TODO.md --todos                  # every change, as task lines
 - Name yourself: `--as NAME` or `export DO_IT_AGENT=NAME`. The person sees the name next to your changes, and `watch --as NAME` skips your own changes.
 - The do-it Claude Code plugin puts `do-it` on the Bash tool's PATH, so the next bullet applies only without it. When a Monitor command reports `do-it` not found, spell out the `bunx claude-do-it` call there as the next bullet says.
 - When `do-it` is not on PATH, define it as a shell function at the top of every Bash call (functions do not survive between calls, and `D="bun ..."` breaks in zsh because `$D` is not word split): `do-it() { bunx claude-do-it "$@"; }` (from a repo checkout: `do-it() { bun "<repo>/packages/cli/src/bin.ts" "$@"; }`). Monitor commands spell out the `bunx claude-do-it` (or `bun .../bin.ts`) call in full.
-- Exit codes: 0 done, 1 refused or version mismatch, 2 invalid arguments, 3 daemon not running and could not start, 4 nothing yet, 9 the document was deleted.
+- When a do-it command fails in a way the replies above do not explain (exit 3, an unknown command), run `do-it doctor` once. Run its `do-it stop` and plain `do-it skill install` fixes yourself (`do-it stop` restarts the daemon for every agent, so tell the person to reload the editor tab). Show the person every other `fix:` line (`--force`, `ln`, `upgrade`, `add -g`, `npm install`, `export PATH`) and let them run it: those change their machine, and an `export` in your Bash call does not outlast it.
+- Exit codes: 0 done; 1 refused, version mismatch, or a doctor problem; 2 invalid arguments; 3 daemon not running and could not start; 4 nothing yet; 9 the document was deleted.
 
 ## Tags
 
@@ -149,7 +151,7 @@ Use `--quiet` to skip the initial `Watching PATH at version N` line instead of f
 
 ## Step 3. Triage each new task
 
-A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, is not an indented `- [ ]` line under a task whose `state.json` entry is L (those are its subtasks, the person's own additions included), and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone.
+A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, is not an indented `- [ ]` line under a task whose `state.json` entry is L (those are its subtasks, the person's own additions included), and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone. The template's `## Example` samples fall out of these rules (open ones carry a `**t0**` status line, the rest are resolved); real ids start at t1.
 
 **Start it first.** The moment you take a task, before sizing it, run `todo start` on it, queued tasks included, so the person sees at once that it was picked up:
 

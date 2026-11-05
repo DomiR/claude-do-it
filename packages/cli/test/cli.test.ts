@@ -37,6 +37,11 @@ describe("cli argument parsing", () => {
     expect(await parse(["watch", "TODO.md", "--settle", "25", "--settle-line", "0.5"])).toMatchObject({ kind: "watch", settle: 25, settleLine: 0.5 })
   })
 
+  it("parses doctor and its skill directory", async () => {
+    expect(await parse(["doctor"])).toMatchObject({ kind: "doctor", options: { json: false } })
+    expect(await parse(["doctor", "--skill-dir", "x", "--json"])).toMatchObject({ kind: "doctor", skillDir: "x", options: { json: true } })
+  })
+
   it("rejects missing and out of range arguments", async () => {
     await expect(parse(["read"])).rejects.toThrow()
     await expect(parse(["watch", "TODO.md", "--settle", "601"])).rejects.toThrow()

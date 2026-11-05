@@ -1,5 +1,7 @@
 # claude-do-it
 
+[![CI](https://github.com/DomiR/claude-do-it/actions/workflows/ci.yml/badge.svg)](https://github.com/DomiR/claude-do-it/actions/workflows/ci.yml)
+
 **A Markdown todo that you and Claude edit at the same time.**
 
 You type in a browser editor. Claude reads the list, plans each task, hands it
@@ -70,6 +72,7 @@ install the CLI as below.
 ```bash
 bun add -g claude-do-it        # or: npm install -g claude-do-it (Bun still runs it)
 do-it skill install            # the /do-it skill, copied into ~/.claude/skills/do-it
+do-it doctor                   # checks Bun, PATH, the daemon, and the skill
 do-it --help
 ```
 
@@ -79,6 +82,13 @@ replaces a skill directory it did not create unless you pass `--force`.
 package keeps it. To try it without installing, use `bunx claude-do-it open TODO.md`.
 Skip `do-it skill install` when you use the plugin: you would get the skill
 twice, as `/do-it` and `/do-it:do-it`.
+
+`do-it doctor` checks that Bun is 1.3 or newer, which `do-it` your PATH finds (a
+repo checkout, the global bun install, a bunx copy, or a global npm install),
+that a running daemon has this CLI's version and build, and that the installed
+skill matches the one this package ships. It prints one line per check and the
+exact command that fixes each problem, never starts the daemon, and exits 1
+when it finds a problem. `--skill-dir DIR` checks a skill installed elsewhere.
 
 The command is `do-it`, not `do`: `do` is a reserved word in bash and zsh.
 
@@ -151,6 +161,7 @@ do-it diff TODO.md --since 9 --wait 300
 do-it watch TODO.md --todos           # or --settle 25 for one line per pause
 do-it status
 do-it stop
+do-it doctor                          # what is wrong with this install, and how to fix it
 ```
 
 ### How versions work
@@ -179,7 +190,7 @@ agent.
 | Exit code | Meaning |
 | --- | --- |
 | 0 | Done |
-| 1 | Refused, or version mismatch |
+| 1 | Refused, version mismatch, or a problem `do-it doctor` found |
 | 2 | Invalid arguments |
 | 3 | The daemon is not running and could not start |
 | 4 | Nothing changed yet |
@@ -222,7 +233,10 @@ There is one daemon per user. Any command starts it on demand; `do-it stop` or
 record, a per user token (mode 0600), the log, and the last version of each
 file, so version numbers survive restarts. It listens on `127.0.0.1:47100`
 (`DO_IT_PORT`) and only answers requests that carry the token or the browser
-cookie the `open` link sets.
+cookie the `open` link sets. The runtime record and `/health` also carry a
+build id (the npm build's id, or `source:` and the checkout path), which
+`do-it doctor` compares with its own. In a checkout that id names the
+checkout, not the revision, so after a `git pull` run `do-it stop` yourself.
 
 ## How it's built
 
@@ -251,12 +265,26 @@ bun run build:npm                     # the npm package, in dist/npm
 bun --cwd packages/web run dev        # editor with a proxy to the daemon on 47100
 ```
 
-A release changes three versions together: `APP_VERSION` in
-`packages/protocol/src/index.ts`, `version` in `.claude-plugin/plugin.json`, and
-the pinned `claude-do-it@` version in `bin/do-it`. `tests/plugin.test.ts`
-checks that they match. Publish to npm before pushing, because the plugin's
-`do-it` runs that exact npm version. `claude plugin validate . --strict` checks
-the plugin and marketplace manifests.
+CI runs the typecheck, tests, and both builds on every push and pull request.
+`claude plugin validate . --strict` checks the plugin and marketplace manifests.
+
+### Release
+
+Set `APP_VERSION` in `packages/protocol/src/index.ts` (the npm package takes its
+version from it), and the same version in `.claude-plugin/plugin.json` and in
+the pinned `claude-do-it@` version in `bin/do-it` (`tests/plugin.test.ts` checks
+that the three match). Commit to `main`, then tag and push:
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+The Release workflow checks that the tag equals `v` plus `APP_VERSION`, runs the
+CI checks, builds `dist/npm`, and publishes it to npm with provenance. It needs
+a repository secret `NPM_TOKEN`: a granular npm token with publish rights for
+`claude-do-it`. The plugin's `do-it` runs that exact npm version, so a plugin
+installed from `main` fails until the workflow has published it: push the tag
+right after the commit.
 
 ## Acknowledgements
 

@@ -122,6 +122,7 @@ export const StatusSuccess = Schema.Struct({
   appVersion: Text,
   port: Schema.Number,
   startedAt: Schema.Number,
+  build: Schema.optionalKey(Text),
   documents: Schema.Array(StatusDocument),
 })
 

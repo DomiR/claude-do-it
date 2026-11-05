@@ -7,6 +7,8 @@ export interface DaemonInfo {
   port: number
   token: string
   appVersion: string
+  /** The daemon's build id, which daemons older than `do-it doctor` do not record. */
+  build?: string
   startedAt: number
   baseUrl: string
 }
@@ -28,7 +30,8 @@ export function readDaemonInfo(home?: string): Effect.Effect<DaemonInfo | null, 
       || !Number.isFinite(record.startedAt) || !/^[a-f0-9]{64}$/.test(token)) return null
     const port = record.port as number
     return { home: p.home, pid: record.pid as number, port, appVersion: record.appVersion,
-      startedAt: record.startedAt as number, token, baseUrl: `http://127.0.0.1:${port}` }
+      startedAt: record.startedAt as number, token, baseUrl: `http://127.0.0.1:${port}`,
+      ...(typeof record.build === "string" ? { build: record.build } : {}) }
   }).pipe(Effect.catch(() => Effect.succeed(null)))
 }
 
@@ -42,6 +45,7 @@ export interface Health {
   ok: true
   pid: number
   appVersion: string
+  build?: string
 }
 
 /**
@@ -54,9 +58,9 @@ export const checkHealth = (info: DaemonInfo): Effect.Effect<Health | "slow" | n
   try {
     const response = await fetch(`${info.baseUrl}/health`, { signal: AbortSignal.any([signal, timeout]) })
     if (!response.ok) return null
-    const body = await response.json() as { ok?: unknown; pid?: unknown; appVersion?: unknown }
+    const body = await response.json() as { ok?: unknown; pid?: unknown; appVersion?: unknown; build?: unknown }
     return body.ok === true && body.pid === info.pid && typeof body.appVersion === "string"
-      ? { ok: true, pid: info.pid, appVersion: body.appVersion } : null
+      ? { ok: true, pid: info.pid, appVersion: body.appVersion, ...(typeof body.build === "string" ? { build: body.build } : {}) } : null
   } catch {
     return timeout.aborted ? "slow" : null
   }
