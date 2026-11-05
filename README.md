@@ -81,8 +81,8 @@ their branch, and their test result. An optional messenger agent can write
 those lines for the conductor.
 
 Small tasks are planned by Opus and built by a Sonnet worker; medium ones use
-Opus for both. Large tasks use a stronger planner and model when the session
-finds one (an agent type or a CLI on PATH), otherwise Opus, and are always split
+Opus for both. Large tasks use a stronger planner, reviewer, and model when the
+session finds one (an agent type or a CLI on PATH), otherwise Opus, and are always split
 into subtasks written under the task. The first subtask is `Review this task`:
 nothing is built until you check it off, and you can edit the other subtasks
 before you do.

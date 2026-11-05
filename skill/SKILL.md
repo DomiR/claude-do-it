@@ -94,7 +94,7 @@ detect_harness > "$STATE/harness"; cat "$STATE/harness"   # later Bash calls: HA
 
 `herdr`, `orca`, and `t3code` start workers as sessions in that app; `plain` (any other terminal) uses Claude Code subagents, which need nothing beyond Claude Code.
 
-Find out once which models you can reach beyond Claude Code's own `opus` and `sonnet`. L tasks, reviews, and a twice failed M task use them. Look through your agent types for a planner or reviewer that runs a stronger model than Opus (for example one on Fable), and on PATH for the CLI of another strong model (for example `codex`, for GPT Astra). Write what you found to `$STATE/models.json`, for example `{"planner": "agent <type>", "reviewer": null, "hard_parts": "cli codex"}`, with `null` for anything you did not find. Use only what is there; never assume an agent type or CLI exists.
+Find out once which models you can reach beyond Claude Code's own `opus` and `sonnet`. Only L tasks use them (planning, review, and the hard subtasks). Look in two places: the Agent tool's list of agent types and their descriptions, for an agent type whose description names a model stronger than Opus; and PATH, for a CLI that runs another frontier model non interactively. Run `<cli> --help` once for any CLI you find, and store the full non interactive command (read only for planning and review), so later steps and the worker brief's HARD PARTS can paste it. Write what you found to `$STATE/models.json`, for example `{"planner": "agent <type>", "reviewer": null, "hard_parts": "cli <command>"}`, with `null` for anything you did not find. Use only what is there; never assume an agent type or CLI exists. Everything not found falls back to Opus.
 
 Open it for the person. It starts or reuses the daemon, creates the file from a template when missing, opens the browser, and returns at once. Inside Sheprd (Herdr GPUI) the todo opens in a split beside this conversation, so the person sees both:
 
@@ -165,11 +165,11 @@ Then give it the next id `tN` and size it from its text. Do not read the code it
 | L | crosses packages or services, protocol or data migration, concurrency, security, unclear root cause, or the person calls it big | the stronger planner from `models.json`, else Opus; its plan ends in subtasks (below) | one Opus worker, with the stronger model from `models.json` for the hard subtasks when there is one |
 | Q | a question, research, or a decision, no code | none | one `general-purpose` agent in the background with a read only brief (it may write only its answer file) that writes its answer to `$STATE/answers/tN.md` and returns only `ANSWER: <path>`; never answer it yourself. The answer file goes under the task (Step 5) |
 
-Reviews (Step 5) use Opus, or the stronger reviewer from `models.json` when there is one. The tester and the messenger run on Sonnet.
+Reviews (Step 5) use Opus; an L review uses the stronger reviewer from `models.json` when there is one. The tester and the messenger run on Sonnet.
 
 Repo: the one containing the todo, unless the task names another. If you cannot tell, ask under the task instead of guessing.
 
-Then write the status line, and dispatch while fewer than 3 workers are active (otherwise status `queued`, dispatched in the order of the Tags section as workers finish). An L task is planned at once but dispatched only after its review (below). Without a messenger you write it:
+Then write the status line, and dispatch while fewer than 3 workers are active (otherwise status `queued`, dispatched in the order of the Tags section as workers finish). An L task is planned at once but dispatched (or queued) only after its review (below). Without a messenger you write it:
 
 ```bash
 do-it edit "$TODO" --version $V --section tasks \
@@ -203,7 +203,7 @@ The roles are the same in every transport; `HARNESS` from Step 1 picks the trans
 | --- | --- | --- | --- | --- |
 | Conductor | this session: sizes, dispatches, monitors, sets stamps | 1 | no | no |
 | Planner | a read only agent: Opus (S, M), the stronger planner from `models.json` or Opus (L) | per task | no | no |
-| Reviewer | a read only agent: Opus, or the stronger reviewer from `models.json` | per task | no | no |
+| Reviewer | a read only agent: Opus (S, M), the stronger reviewer from `models.json` or Opus (L) | per task | no | no |
 | Worker | one agent per task, in its own worktree, named `tN`: Sonnet (S), Opus (M, L) | at most 3 at once | yes | **no** |
 | Tester | one Sonnet agent | **exactly 1** | no | **yes, the only one** |
 | Messenger | one Sonnet agent, named `messenger` (optional, see below) | 0 or 1 | no | no |
@@ -238,7 +238,7 @@ This needs nothing but Claude Code: `isolation: "worktree"` makes each worker's 
 2. **Build.** `Agent(subagent_type: "general-purpose", model: "sonnet" for S or "opus" for M and L, isolation: "worktree", run_in_background: true)` with the worker brief below. Keep the agent id in `state.json`. A plain worker cannot start agents, so for the hard subtasks of an L task it can use only a stronger model's CLI from `models.json`, named in its brief.
 3. **Test.** When the `tests.md` watch shows an open request and no tester runs, start one: `Agent(subagent_type: "general-purpose", model: "sonnet", run_in_background: true)` with the tester brief. It drains the queue one request at a time, oldest first, and exits; start it again for the next requests.
 4. **Questions.** A worker that needs the person appends a `question` to the inbox and ends its run with `QUESTION: ...`. Write it under the task (`  - **tN question:** ...`, status `waiting for you`; the messenger does both from the worker's inbox line). When the person answers under it, resume that same worker with `SendMessage` to its agent id: `From the TODO: <their answer>`.
-5. **Review.** When a worker ends with `DONE`, verify (below, which also saves the diff to `$STATE/reviews/tN.diff`), then run the reviewer (`Agent(subagent_type: "general-purpose", model: "opus")` with a read only brief, or the stronger reviewer from `models.json`) with the task, `$STATE/plans/tN.md`, that diff file, and `$STATE/tests.md`. Pass paths, not pasted text, and ask for `ship` or `fix-first` with findings. `ship`: delivered. `fix-first`: resume the worker with the findings.
+5. **Review.** When a worker ends with `DONE`, verify (below, which also saves the diff to `$STATE/reviews/tN.diff`), then run the reviewer (`Agent(subagent_type: "general-purpose", model: "opus")` with a read only brief; for L the stronger reviewer from `models.json` when there is one) with the task, `$STATE/plans/tN.md`, that diff file, and `$STATE/tests.md`. Pass paths, not pasted text, and ask for `ship` or `fix-first` with findings. `ship`: delivered. `fix-first`: resume the worker with the findings.
 6. **Messenger.** When it is on and new inbox lines arrive while no messenger runs (the inbox watch skips your own lines, so also right after you append a `conductor` line), start one: `Agent(subagent_type: "general-purpose", model: "sonnet", run_in_background: true)` with the messenger brief. It writes everything since `$STATE/messenger.version` and ends with `INBOX DRAINED`. Lines that arrive while it runs wait for one restart after it ends; never run two.
 
 Worker brief:
@@ -249,7 +249,7 @@ REPO: <repo root>. You run in your own git worktree on your own branch; commit t
 PLAN: <the plan from $STATE/plans/tN.md; for S and M in a session transport: none, plan it yourself>
 SUBTASKS (L only): <the subtask lines as the person left them, without Review this task>. Work them
   in order. When you begin one, append "- tN subtask started: <its text>" to the inbox; when its
-  commits are in, "- tN subtask done: <its text>". HARD PARTS: <the stronger model from models.json, or none>.
+  commits are in, "- tN subtask done: <its text>". HARD PARTS: <the hard_parts command from models.json, or none>.
 NAME: export DO_IT_AGENT=tN before any do-it command.
 COMPUTE RULE: never run builds, tests, linters, type checkers, dev servers, or browsers yourself.
   Formatters are fine. To test, queue one request and wait for the answer:
@@ -296,8 +296,8 @@ inbox line added after the version in CURSOR, in order (do-it diff <INBOX> --sin
   "conductor tN answered"     remove the "**tN question:**" line
   "conductor tN answer: path" status "**tN** answered", the file's lines as sub bullets under it
   "conductor tN delivered: x" status line of tN becomes "**tN** delivered: x"
-  "conductor tN subtasks: path"  only while tN's "Review this task" is unchecked (otherwise skip the
-                              line): replace tN's unchecked subtasks with the file's lines, as indented
+  "conductor tN subtasks: path"  only while tN has no "Review this task" line or it is unchecked
+                              (otherwise skip the line): replace tN's unchecked subtasks with the file's lines, as indented
                               "- [ ] " lines after its status line (the only task lines you write)
 Each task has exactly one "**tN**" status line, an indented sub bullet right under the task (the
 line whose text is the state.json entry for tN), which you add when missing and otherwise replace
@@ -316,7 +316,7 @@ In these apps every worker is a full Claude session in its own worktree, not a s
 ```
 PLAN AND REVIEW: S and M: plan with an Opus planner before you edit. L: the plan and the subtasks are
   given; use the stronger model named in HARD PARTS for the hard subtasks when there is one. Get a
-  review of your branch (Opus, or the stronger reviewer from models.json) before DONE.
+  review of your branch (Opus; for L the stronger reviewer from models.json when there is one) before DONE.
 CONDUCTOR: talk to the conductor only through the inbox. Answers arrive as prompts starting "From the TODO".
   After a question, wait for that prompt instead of ending your session.
 ```
@@ -334,14 +334,14 @@ Run `herdr --help` once for the CLI; never split your own pane.
   ```
   Use the tester brief above, but instead of ending on an empty queue it keeps watching with `do-it watch <TESTS> --todos --as tester` (Monitor tool). Check `herdr agent list` first: reuse a live `do-tester` only when its cwd is this `$STATE`; on `agent_name_taken` pick `do-<SLUG first 4>-tester`.
 - **Messenger**: the same way, a second tab labelled `messenger` with an agent `do-messenger` (`--model sonnet --effort medium`) and the messenger brief, except that instead of ending on a drained inbox it keeps watching with `do-it watch <INBOX> --section messages --as messenger` (Monitor tool). The same reuse and name rules apply.
-- **Worker per task**: a Herdr worktree and space in the background (a branch named after the task, based on the repo's integration branch, under `.claude/worktrees/`), then Claude in its root pane named `do-tN` (`$MODEL`: `sonnet` for S, `opus` for M and L; effort high, xhigh for L) with the session worker brief above. Create, start, and brief it without ever showing it:
+- **Worker per task**: a Herdr worktree and space in the background (a branch named after the task, based on the repo's integration branch, under `.claude/worktrees/`), then Claude in its root pane named `do-tN` (`$MODEL`: `sonnet` for S, `opus` for M and L; `$EFFORT`: `high`, `xhigh` for L) with the session worker brief above. Create, start, and brief it without ever showing it:
   ```bash
   SRC_WS=$HERDR_WORKSPACE_ID; BRANCH=<branch>; BASE=<base>; REPO_ROOT=<repo root>
   WT=$(herdr worktree create --workspace "$SRC_WS" --branch "$BRANCH" --base "$BASE" \
     --path "$REPO_ROOT/.claude/worktrees/$BRANCH" --label "$BRANCH" --no-focus --json)
   herdr workspace focus "$HERDR_WORKSPACE_ID"     # always, at once: create can move focus even with --no-focus
   ROOT_PANE=$(jq -r .result.root_pane.pane_id <<<"$WT")
-  herdr agent start do-tN --kind claude --pane "$ROOT_PANE" -- --model "$MODEL" --effort high --dangerously-skip-permissions
+  herdr agent start do-tN --kind claude --pane "$ROOT_PANE" -- --model "$MODEL" --effort "$EFFORT" --dangerously-skip-permissions
   herdr agent prompt do-tN "$BRIEF" --wait --until working --timeout 20000
   ```
   Never pass `--focus`, never focus, select, or reveal the new space, its tabs, or its panes, and never use `herdr worktree open` for a new worker. When you must reopen an existing worktree with `worktree open` (a resume), pass `--no-focus` and run `herdr workspace focus "$HERDR_WORKSPACE_ID"` right after it too, since `open` focuses its target anyway.
@@ -352,11 +352,11 @@ Run `herdr --help` once for the CLI; never split your own pane.
 
 Each task becomes an Orca workspace with Claude in its first terminal. Read Orca's guide for this CLI version once (`orca skills get orca-cli`), pass `--json`, and read the fields named here from the results.
 
-- **Worker per task**: an independent worktree from the repo's default base, then Claude on the task's tier (`$MODEL`: `sonnet` for S, `opus` for M and L) in a terminal of its own, briefed the same way as the tester below. Use only flags Orca's guide lists for this version:
+- **Worker per task**: an independent worktree from the repo's default base, then Claude on the task's tier (`$MODEL` and `$EFFORT` as in Herdr) in a terminal of its own, briefed the same way as the tester below. Use only flags Orca's guide lists for this version:
   ```bash
   W=$(orca worktree create --name do-tN-<short-slug> --no-parent --comment "tN planning" --json)
   WT=$(jq -r '.result.worktree.id // .worktree.id' <<<"$W")
-  T=$(orca terminal create --worktree "id:$WT" --title do-tN --command "claude --model $MODEL --effort high --dangerously-skip-permissions" --json)
+  T=$(orca terminal create --worktree "id:$WT" --title do-tN --command "claude --model $MODEL --effort $EFFORT --dangerously-skip-permissions" --json)
   orca terminal wait --terminal "$H" --for tui-idle --timeout-ms 60000 --json   # $H: the terminal handle in $T
   orca terminal send --terminal "$H" --text "$BRIEF" --enter --wait-submit 10 --json
   ```
@@ -397,14 +397,14 @@ Each task becomes a T3 Code thread in its own worktree. Flags differ between T3 
 | The person answers a question (an indented line under `**tN question:**`) | forward it the same way, then remove the question line (with a messenger: append `- conductor tN answered`) |
 | The person deletes a task, or writes "stop" under it | tell its worker to stop and commit its work in progress; status `stopped`, keep the worktree. Only "cancel" or "drop it" in words also gets `todo cancel` |
 | The person unchecks a delivered task | their new note under it is a follow up for the same worktree and worker; keep its `@started` |
-| The person checks off `Review this task` under an L task | if a `conductor tN subtasks:` line of yours is not written yet, wait for the messenger to drain it first; then read the task's subtask lines as they are now, save them in `state.json`, and dispatch one worker with them (status `L, building subtask 1 of N`) |
+| The person checks off `Review this task` under an L task | if a `conductor tN subtasks:` line of yours is not written yet, wait for the messenger to drain it first; then read the task's subtask lines as they are now, save them in `state.json`, and dispatch one worker with them (status `L, building subtask 1 of N`), or queue it while 3 workers are active (status `L, reviewed, queued`) |
 | The person adds or edits a `- [ ]` line under an L task still in review | a subtask edit: nothing to do until the review is checked |
 | The person writes a plain note under an L task still in review | a request for a different split: send it to the planner with its plan and write the new subtasks (Step 3) |
 | Inbox `subtask started` or `subtask done` | `todo start` or `todo check` on that subtask line; the status reads `L, building subtask K of N` |
 | A Q agent returns `ANSWER: <path>` | write under the task: without a messenger, the file's lines as sub bullets under `**tN** answered`; with one, `- conductor tN answer: <path>`. Then `todo check` |
 | Inbox `progress` | update the status line only, in a few words (the messenger does this by itself) |
 | Inbox `question` | add `  - **tN question:** <question>` under the task; status `waiting for you` (the messenger does this by itself) |
-| Inbox `blocked` or `failed`, or a worker ended without DONE | read what it said; fix the brief and resume it, or move a twice failed task one tier up (an S task to an Opus worker, an M task to the stronger model from `models.json` when there is one); write under the task only what the person must decide |
+| Inbox `blocked` or `failed`, or a worker ended without DONE | read what it said; fix the brief and resume it, or after a second failure: an S task moves to an Opus worker, an M task gets a new Opus plan and a fresh Opus worker (or a question under the task), an L task may use the stronger model from `models.json`; write under the task only what the person must decide |
 | Worker DONE | verify (below), review, write under the task `delivered`, then run `todo check` for the task |
 | Tester BLOCKED or a long queue | one line under the affected task; never start a second tester |
 
