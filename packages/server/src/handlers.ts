@@ -5,7 +5,7 @@ import { Auth } from "./auth"
 import { APP_VERSION } from "./config"
 import { Documents, DocumentRegistry, rpcTry, type OpenDocument } from "./documents"
 
-export interface RuntimeInfo { port: number; startedAt: number; stop: Effect.Effect<void> }
+export interface RuntimeInfo { port: number; startedAt: number; build: string; stop: Effect.Effect<void> }
 export function author(origin: Origin): Author {
   return origin.kind === "agent" ? { _tag: "Agent", name: origin.name }
     : origin.kind === "user" ? { _tag: "User" } : { _tag: "File" }
@@ -62,7 +62,7 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
     const registry = yield* Documents
     return {
       status: Effect.fn("rpc.status")(function* () {
-        return { pid: process.pid, appVersion: APP_VERSION, port: runtime.port, startedAt: runtime.startedAt, documents: registry.status() }
+        return { pid: process.pid, appVersion: APP_VERSION, port: runtime.port, startedAt: runtime.startedAt, build: runtime.build, documents: registry.status() }
       }),
       stop: Effect.fn("rpc.stop")(function* () { yield* runtime.stop; return {} }),
       open: request => registry.withOpened(request.path, ({ entry, created }) => Effect.gen(function* () {

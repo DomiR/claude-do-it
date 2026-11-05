@@ -28,6 +28,7 @@ $D append TODO.md --version 10 --section notes -- "- found: flaky CI"
 $D edit TODO.md --version 10 --old "ship friday" --new "ship monday"
 $D diff TODO.md --since 9 --wait 100      # waits for the next change, exit 4 when none came (keep it under the Bash tool's 120 s default)
 $D watch TODO.md --todos                  # every change, as task lines
+$D doctor                                 # checks Bun, PATH, the daemon build, and this skill; one fix line per problem, exit 1 on any
 ```
 
 - Every reply starts with the document's version; every change by anyone takes the next number. Always pass the version you last saw: the one in the reply to your last change, or `do-it read FILE --json | jq .version`. Two changes in a row to the same section need two versions (the second names the first one's reply).
@@ -37,7 +38,8 @@ $D watch TODO.md --todos                  # every change, as task lines
 - `edit --old` must match exactly one place; add context until it does.
 - Name yourself: `--as NAME` or `export DO_IT_AGENT=NAME`. The person sees the name next to your changes, and `watch --as NAME` skips your own changes.
 - When `do-it` is not on PATH, define it as a shell function at the top of every Bash call (functions do not survive between calls, and `D="bun ..."` breaks in zsh because `$D` is not word split): `do-it() { bunx claude-do-it "$@"; }` (from a repo checkout: `do-it() { bun "<repo>/packages/cli/src/bin.ts" "$@"; }`). Monitor commands spell out the `bunx claude-do-it` (or `bun .../bin.ts`) call in full.
-- Exit codes: 0 done, 1 refused or version mismatch, 2 invalid arguments, 3 daemon not running and could not start, 4 nothing yet, 9 the document was deleted.
+- When a do-it command fails in a way the replies above do not explain (exit 3, an unknown command), run `do-it doctor` once and run the `fix:` lines it prints. `do-it stop` restarts the daemon for every agent, so tell the person to reload the editor tab. Tell the person about any fix you cannot run.
+- Exit codes: 0 done, 1 refused, version mismatch, or a doctor problem, 2 invalid arguments, 3 daemon not running and could not start, 4 nothing yet, 9 the document was deleted.
 
 ## Tags
 

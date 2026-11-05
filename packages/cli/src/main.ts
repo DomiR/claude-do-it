@@ -4,6 +4,7 @@ import { APP_VERSION, formatVersionHeader, type Author, type EditOp, type WatchE
 import { Cause, Duration, Effect, Exit, FiberHandle, Stdio, Stream } from "effect"
 import { CliConfig, CliOutput, Command } from "effect/cli"
 import { openBrowser } from "./browser"
+import { doctorText, runDoctor } from "./doctor"
 import { changeJson, changeReply, diffText, editReply, errorFields, errorMessage, errorTag, mismatchReply, rpcErrorCode, rpcExitCode, todosText, writeJson, writeLine } from "./output"
 import { cliConfigFor, cliFormatter, cliPresenter, makeCli, normalizeArgv } from "./parser"
 import { installSkill, readSkill, skillSource } from "./skill"
@@ -110,6 +111,14 @@ function stopCommand(command: Extract<ParsedCommand, { kind: "stop" }>) {
     const stopped = yield* stopDaemon()
     yield* outputText(command.options, stopped ? "Stopped" : "Not running", { stopped })
     return 0
+  })
+}
+
+function doctorCommand(command: Extract<ParsedCommand, { kind: "doctor" }>) {
+  return Effect.gen(function* () {
+    const report = yield* runDoctor(command.skillDir === undefined ? {} : { skillDir: command.skillDir })
+    yield* outputText(command.options, doctorText(report), report)
+    return report.ok ? 0 : 1
   })
 }
 
@@ -267,6 +276,7 @@ function commandEffect(command: ParsedCommand) {
     case "watch": return watchCommand(command)
     case "status": return statusCommand(command)
     case "stop": return stopCommand(command)
+    case "doctor": return doctorCommand(command)
     case "skill-install": return skillInstallCommand(command)
     case "skill-path": return skillPathCommand(command)
     case "skill-show": return skillShowCommand(command)
