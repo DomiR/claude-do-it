@@ -38,12 +38,28 @@ export function alive(pid: number): boolean {
   catch (error) { return (error as { code?: unknown }).code === "EPERM" }
 }
 
-export const probeHealth = (info: DaemonInfo) => Effect.tryPromise({
-  try: async (signal) => {
-    const response = await fetch(`${info.baseUrl}/health`, { signal: AbortSignal.any([signal, AbortSignal.timeout(500)]) })
+export interface Health {
+  ok: true
+  pid: number
+  appVersion: string
+}
+
+/**
+ * Asks the daemon for `/health` with a 500 ms timeout. "slow" means no answer
+ * in time, which a busy machine can cause. null means a refused connection
+ * or a wrong answer, so the daemon cannot be used.
+ */
+export const checkHealth = (info: DaemonInfo): Effect.Effect<Health | "slow" | null> => Effect.promise(async (signal) => {
+  const timeout = AbortSignal.timeout(500)
+  try {
+    const response = await fetch(`${info.baseUrl}/health`, { signal: AbortSignal.any([signal, timeout]) })
     if (!response.ok) return null
-    const body = await response.json() as { ok?: boolean; pid?: number; appVersion?: string }
-    return body.ok === true && body.pid === info.pid && typeof body.appVersion === "string" ? body : null
-  },
-  catch: () => new DaemonUnavailable({ message: "The daemon did not answer its health check" }),
-}).pipe(Effect.catch(() => Effect.succeed(null)))
+    const body = await response.json() as { ok?: unknown; pid?: unknown; appVersion?: unknown }
+    return body.ok === true && body.pid === info.pid && typeof body.appVersion === "string"
+      ? { ok: true, pid: info.pid, appVersion: body.appVersion } : null
+  } catch {
+    return timeout.aborted ? "slow" : null
+  }
+})
+
+export const probeHealth = (info: DaemonInfo) => checkHealth(info).pipe(Effect.map(health => health === "slow" ? null : health))

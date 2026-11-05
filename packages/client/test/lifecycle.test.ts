@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test"
+import { APP_VERSION } from "@do-it/protocol"
 import { Effect, Stream } from "effect"
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -140,6 +141,49 @@ test("a mismatched app version is stopped and replaced, preserving its token", a
   expect(second.pid).not.toBe(first.pid)
   expect(second.token).toBe(first.token)
   await runClient(stopDaemon(dir))
+}, 15000)
+
+/** Writes daemon.json and the token for a daemon record the test controls. */
+async function writeRecord(dir: string, record: { pid: number; port: number }) {
+  const p = await pathsOf(dir)
+  writeFileSync(p.daemon, JSON.stringify({ ...record, appVersion: APP_VERSION, startedAt: Date.now() }), { mode: 0o600 })
+  writeFileSync(p.token, "a".repeat(64), { mode: 0o600 })
+  return p
+}
+
+test("a live daemon whose health checks are slow is reused, not replaced", async () => {
+  // The fake daemon is this test process, so it stays out of `homes` and `pids`.
+  const dir = mkdtempSync(join(tmpdir(), "do-it-client-slow-"))
+  let healthChecks = 0
+  const fake = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
+    if (new URL(request.url).pathname !== "/health") return new Response("not found", { status: 404 })
+    // The first two checks answer after the 500 ms probe timeout, as on a busy machine.
+    if (healthChecks++ < 2) await Bun.sleep(800)
+    return Response.json({ ok: true, pid: process.pid, appVersion: APP_VERSION })
+  } })
+  try {
+    const p = await writeRecord(dir, { pid: process.pid, port: fake.port! })
+    const record = readFileSync(p.daemon, "utf8")
+    const reused = await runClient(ensureDaemon({ home: dir, port: 0 }))
+    expect(reused.pid).toBe(process.pid)
+    expect(reused.port).toBe(fake.port!)
+    expect(healthChecks).toBe(3)
+    expect(readFileSync(p.daemon, "utf8")).toBe(record)
+  } finally {
+    fake.stop(true)
+    rmSync(dir, { recursive: true, force: true })
+  }
+}, 10000)
+
+test("a daemon record with a dead pid is replaced", async () => {
+  const dir = home()
+  const p = await writeRecord(dir, { pid: 2147483647, port: 1 })
+  const started = await start(dir)
+  expect(started.pid).not.toBe(2147483647)
+  expect(started.token).toBe("a".repeat(64))
+  expect(await info(dir)).toEqual(started)
+  expect(JSON.parse(readFileSync(p.daemon, "utf8")).pid).toBe(started.pid)
+  expect(await runClient(stopDaemon(dir))).toBe(true)
 }, 15000)
 
 test("port collision falls back to an available loopback port", async () => {

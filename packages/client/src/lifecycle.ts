@@ -1,7 +1,7 @@
 import { APP_VERSION } from "@do-it/protocol"
 import { Effect, FileSystem, Option, Path, PlatformError, Semaphore } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { alive, DaemonUnavailable, probeHealth, readDaemonInfo } from "./info"
+import { alive, checkHealth, DaemonUnavailable, probeHealth, readDaemonInfo, type DaemonInfo } from "./info"
 import { paths } from "./paths"
 import { withClient } from "./rpc"
 
@@ -46,6 +46,11 @@ export const stopDaemon = Effect.fn("stopDaemon")(function* (home?: string) {
   return false
 })
 
+/** Pauses between health probes of a daemon that is slow to answer. */
+const retryDelays = ["500 millis", "1 second", "2 seconds"] as const
+
+const sameDaemon = (a: DaemonInfo, b: DaemonInfo | null) => b !== null && a.pid === b.pid && a.startedAt === b.startedAt
+
 export interface EnsureOptions {
   home?: string
   port?: number
@@ -58,14 +63,26 @@ export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: Ensure
   const path = yield* Path.Path
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const p = yield* paths(options.home ?? options.env?.DO_IT_HOME)
-  const compatible = Effect.gen(function* () {
-    const info = yield* readDaemonInfo(p.home)
-    if (!info || !alive(info.pid)) return null
-    const health = yield* probeHealth(info)
-    return health && health.appVersion === APP_VERSION && info.appVersion === APP_VERSION ? info : null
+  /**
+   * Checks the daemon in daemon.json. A dead pid, another app version in the
+   * record or in the health answer, a refused connection, or a wrong answer
+   * makes it unusable at once. A daemon that is only slow to answer is probed
+   * again after 500 ms, 1 s, and 2 s when `patient`, so a busy machine does
+   * not get a live daemon replaced. `judged` is a daemon already found
+   * unusable, which gets one probe. `info` is the last record read.
+   */
+  const check = (patient: boolean, judged: DaemonInfo | null = null) => Effect.gen(function* () {
+    for (let tries = 0; ; tries++) {
+      const info = yield* readDaemonInfo(p.home)
+      if (!info || !alive(info.pid) || info.appVersion !== APP_VERSION) return { usable: false, info } as const
+      const health = yield* checkHealth(info)
+      if (health !== "slow") return health?.appVersion === APP_VERSION ? { usable: true, info } as const : { usable: false, info } as const
+      if (!patient || tries >= retryDelays.length || sameDaemon(info, judged)) return { usable: false, info } as const
+      yield* Effect.sleep(retryDelays[tries]!)
+    }
   })
-  const existing = yield* compatible
-  if (existing) return existing
+  const first = yield* check(true)
+  if (first.usable) return first.info
   if (options.spawn === false) return yield* Effect.fail(new DaemonUnavailable({ message: "No compatible daemon is running" }))
   yield* fs.makeDirectory(p.home, { recursive: true, mode: 0o700 }).pipe(Effect.andThen(fs.chmod(p.home, 0o700)), Effect.mapError(unavailable))
 
@@ -102,8 +119,8 @@ export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: Ensure
   )
 
   const start = Effect.gen(function* () {
-    const found = yield* compatible
-    if (found) return found
+    const found = yield* check(true, first.info)
+    if (found.usable) return found.info
     const old = yield* readDaemonInfo(p.home)
     if (old && alive(old.pid) && !(yield* stopDaemon(p.home))) {
       return yield* Effect.fail(new DaemonUnavailable({ message: "The previous daemon could not be stopped" }))
@@ -123,8 +140,8 @@ export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: Ensure
     const wait = Effect.gen(function* () {
       const deadline = Date.now() + 5000
       while (Date.now() < deadline) {
-        const info = yield* compatible
-        if (info) return info
+        const found = yield* check(false)
+        if (found.usable) return found.info
         if (!(yield* child.isRunning.pipe(Effect.mapError(unavailable)))) break
         yield* Effect.sleep("50 millis")
       }
