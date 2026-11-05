@@ -95,18 +95,39 @@ export class DocumentRegistry {
   }
 
   open(input: string, create = false): Effect.Effect<{ entry: OpenDocument; created: boolean }, RpcFailure> {
-    return Effect.gen({ self: this }, function* () {
-      const path = yield* this.validate(input)
-      const existing = this.entries.get(path)
-      if (existing) return yield* this.reuse(existing)
-      return yield* this.opening.withPermit(Effect.suspend(() => {
-        const raced = this.entries.get(path)
-        return raced ? this.reuse(raced) : this.create(path, create)
-      }))
-    }).pipe(Effect.mapError(error => rpcError(error)))
+    return this.acquire(input, create, false)
   }
 
   get(path: string): Effect.Effect<OpenDocument, RpcFailure> { return Effect.map(this.open(path), ({ entry }) => entry) }
+
+  /** Runs `use` with the open document, which cannot be evicted until `use` completes. */
+  withEntry<A, E, R>(path: string, use: (entry: OpenDocument) => Effect.Effect<A, E, R>, create = false): Effect.Effect<A, E | RpcFailure, R> {
+    return this.withOpened(path, ({ entry }) => use(entry), create)
+  }
+
+  withOpened<A, E, R>(path: string, use: (opened: { entry: OpenDocument; created: boolean }) => Effect.Effect<A, E, R>, create = false): Effect.Effect<A, E | RpcFailure, R> {
+    return Effect.acquireUseRelease(this.acquire(path, create, true), use,
+      ({ entry }) => Effect.sync(() => { entry.waiters--; entry.lastUsed = Date.now() }))
+  }
+
+  private acquire(input: string, create: boolean, pin: boolean): Effect.Effect<{ entry: OpenDocument; created: boolean }, RpcFailure> {
+    return Effect.gen({ self: this }, function* () {
+      const path = yield* this.validate(input)
+      while (true) {
+        if (this.closing) return yield* Effect.fail(new Refused({ code: "invalid", message: "The daemon is shutting down" }))
+        const existing = this.entries.get(path)
+        const opened = existing ? yield* this.reuse(existing) : yield* this.opening.withPermit(Effect.suspend(() => {
+          const raced = this.entries.get(path)
+          return raced ? this.reuse(raced) : this.create(path, create)
+        }))
+        // An idle entry can be evicted while its file is checked. Open it again.
+        if (opened.entry.closed) continue
+        // Checked and pinned in one step, so an eviction sees the pin or this sees the eviction.
+        if (pin) opened.entry.waiters++
+        return opened
+      }
+    }).pipe(Effect.mapError(error => rpcError(error)))
+  }
   status() { return [...this.entries.values()].map(entry => ({ path: entry.path, version: entry.doc.version, watchers: entry.watchers })) }
 
   private reuse(entry: OpenDocument) {
@@ -117,7 +138,7 @@ export class DocumentRegistry {
   }
 
   private create(path: string, create: boolean) {
-    return Effect.gen({ self: this }, function* () {
+    const prepare = Effect.gen({ self: this }, function* () {
       const missing = (yield* this.disk(stamp(path))) === null
       if (missing && !create) {
         if (this.versions.has(path)) return yield* Effect.fail(new DocumentGone({ path }))
@@ -125,7 +146,11 @@ export class DocumentRegistry {
       }
       yield* this.makeRoom()
       if (missing) yield* this.disk(writeAtomic(path, TEMPLATE, { bom: false, crlf: false }))
-      const file = yield* this.disk(readFile(path))
+      return { missing, file: yield* this.disk(readFile(path)) }
+    })
+    // Once the document exists it must reach the registry, or it would never be freed.
+    return Effect.uninterruptibleMask(restore => Effect.gen({ self: this }, function* () {
+      const { missing, file } = yield* restore(prepare)
       const doc = yield* this.versions.open(path, file.text)
       const entry: OpenDocument = { path, doc, signal: Deferred.makeUnsafe<void>(), format: file.format, stamp: file.stamp,
         watchers: 0, waiters: 0, lastUsed: Date.now(), deleted: false, closed: false, lock: Semaphore.makeUnsafe(1),
@@ -133,7 +158,7 @@ export class DocumentRegistry {
       this.entries.set(path, entry)
       yield* this.disk(watchFile(path, this.poll(entry))).pipe(Scope.provide(entry.scope))
       return { entry, created: missing }
-    }).pipe(Effect.uninterruptible)
+    }))
   }
 
   private makeRoom(): Effect.Effect<void, Refused> {
@@ -142,8 +167,7 @@ export class DocumentRegistry {
       const idle = [...this.entries.values()].filter(entry => entry.watchers === 0 && entry.waiters === 0).sort((a, b) => a.lastUsed - b.lastUsed)
       for (const entry of idle) {
         yield* this.flush(entry)
-        if (entry.closed) return
-        if (entry.deleted || !entry.doc.dirty) { yield* this.closeEntry(entry); return }
+        if (yield* this.evict(entry)) return
       }
       return yield* Effect.fail(new Refused({ code: "too-large", message: "At most 64 documents may be open, all available documents are busy" }))
     })
@@ -279,8 +303,19 @@ export class DocumentRegistry {
     })
   }
 
-  private closeEntry(entry: OpenDocument): Effect.Effect<void> {
+  /** Closes an idle entry with nothing left to write. False when it became busy or still has changes. */
+  private evict(entry: OpenDocument): Effect.Effect<boolean> {
     return entry.lock.withPermit(Effect.suspend(() => {
+      if (entry.closed) return Effect.succeed(true)
+      if (entry.watchers > 0 || entry.waiters > 0 || (!entry.deleted && entry.doc.dirty)) return Effect.succeed(false)
+      return Effect.as(this.closeLocked(entry), true)
+    }))
+  }
+
+  private closeEntry(entry: OpenDocument): Effect.Effect<void> { return entry.lock.withPermit(this.closeLocked(entry)) }
+
+  private closeLocked(entry: OpenDocument): Effect.Effect<void> {
+    return Effect.suspend(() => {
       if (entry.closed) return Effect.void
       entry.closed = true
       // A timer clears its own field before it runs, so this never interrupts the calling fiber.
@@ -289,12 +324,13 @@ export class DocumentRegistry {
       entry.missing = undefined
       if (this.entries.get(entry.path) === entry) { this.entries.delete(entry.path); entry.doc.free() }
       return Effect.andThen(Fiber.interruptAll(timers), Scope.close(entry.scope, Exit.void))
-    }))
+    })
   }
 
-  /** Writes every document and closes it. Watchers see Deleted. */
+  /** Writes every document and closes it. Watchers see Deleted. Only the first call does anything. */
   close(): Effect.Effect<void> {
     return Effect.gen({ self: this }, function* () {
+      if (this.closing) return
       this.closing = true
       for (const entry of [...this.entries.values()]) {
         yield* this.flush(entry)

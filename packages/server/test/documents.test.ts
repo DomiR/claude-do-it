@@ -185,6 +185,34 @@ test("64 open documents evict the oldest idle document, but never one with subsc
   for (const release of releases) release()
 })))
 
+test("a document in use is never evicted, and an evicted one is opened again", () => run(Effect.gen(function* () {
+  const { registry, file } = yield* fixture
+  const firstPath = file()
+  const first = yield* registry.get(firstPath)
+  first.lastUsed = 0
+  for (let i = 1; i < 64; i++) yield* registry.get(file())
+  yield* registry.withEntry(firstPath, entry => Effect.gen(function* () {
+    expect(entry.waiters).toBe(1)
+    yield* registry.get(file())
+    expect(entry.closed).toBe(false)
+  }))
+  expect(first.waiters).toBe(0)
+  expect(registry.status()).toHaveLength(64)
+  expect(registry.status().some(entry => entry.path === firstPath)).toBe(true)
+  first.lastUsed = 0
+  yield* registry.get(file())
+  expect(first.closed).toBe(true)
+  const reopened = yield* registry.get(firstPath)
+  expect(reopened).not.toBe(first)
+  expect(reopened.closed).toBe(false)
+})))
+
+test("a closing registry refuses new opens", () => run(Effect.gen(function* () {
+  const { registry, file } = yield* fixture
+  yield* registry.close()
+  expect(yield* Effect.flip(registry.get(file()))).toMatchObject({ _tag: "Refused", message: "The daemon is shutting down" })
+})))
+
 test("subscriber counts are capped per document and globally, and release restores capacity", () => run(Effect.gen(function* () {
   const { registry, file } = yield* fixture
   const entries = []
