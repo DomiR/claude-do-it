@@ -284,7 +284,7 @@ is written, save that version to CURSOR, then look again. When no line is left, 
 
 ### Session workers (Herdr, Orca, T3 Code)
 
-In these apps every worker is a full Claude session in its own worktree (an architect), not a subagent, so the person sees each task in the app and it can call its own subagents. Its brief is the worker brief above with `CWD: <worktree>   BRANCH: <branch>   BASE: <base branch>   REPO RULES: read CLAUDE.md/AGENTS.md` in place of the REPO line (`CWD: the worktree you start in` when the app makes the worktree), plus:
+In these apps every worker is a full Claude session in its own worktree (an architect), not a subagent, so the person sees each task in the app and it can call its own subagents. Every worker, tester, and messenger starts in the background: the person stays on the todo and the conversation, and opens a task's space only when they choose to. Never activate, focus, or reveal what you create. Its brief is the worker brief above with `CWD: <worktree>   BRANCH: <branch>   BASE: <base branch>   REPO RULES: read CLAUDE.md/AGENTS.md` in place of the REPO line (`CWD: the worktree you start in` when the app makes the worktree), plus:
 
 ```
 PLAN AND REVIEW: plan with fable-advisor (S, M) or Astra (L, else fable-advisor) before you edit, and get a
@@ -306,12 +306,16 @@ The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc`
   ```
   Use the tester brief above, but instead of ending on an empty queue it keeps watching with `do-it watch <TESTS> --todos --as tester` (Monitor tool). Check `herdr agent list` first: reuse a live `do-tester` only when its cwd is this `$STATE`; on `agent_name_taken` pick `do-<SLUG first 4>-tester`.
 - **Messenger**: the same way, a second tab labelled `messenger` with an agent `do-messenger` (`--model claude-sonnet-5 --effort medium`) and the messenger brief, except that instead of ending on a drained inbox it keeps watching with `do-it watch <INBOX> --section messages --as messenger` (Monitor tool). The same reuse and name rules apply.
-- **Worker per task**: a Herdr worktree and space (see [[herdrworktree]], `--no-focus`), then a Claude architect in its root pane named `do-tN` (`claude-opus-5-5[1m]`, effort high, xhigh for L) that follows [[orchestration]]: it plans with `fable-advisor` (S, M) or a read only Astra tab (L), routes the typing to Codex lanes in herdr tabs, and gets a `fable-advisor` review before reporting done. Its brief is the session worker brief above, plus: "Wait for lanes with `herdr agent wait <lane> --timeout 1800000`, never by grepping a screen." Start and brief it as herdrdocwatch does:
+- **Worker per task**: a Herdr worktree and space in the background (branch, base, and path as in [[herdrworktree]] mode A), then a Claude architect in its root pane named `do-tN` (`claude-opus-5-5[1m]`, effort high, xhigh for L) that follows [[orchestration]]: it plans with `fable-advisor` (S, M) or a read only Astra tab (L), routes the typing to Codex lanes in herdr tabs, and gets a `fable-advisor` review before reporting done. Its brief is the session worker brief above, plus: "Wait for lanes with `herdr agent wait <lane> --timeout 1800000`, never by grepping a screen." Create, start, and brief it without ever showing it:
   ```bash
+  WT=$(herdr worktree create --workspace "$HERDR_WORKSPACE_ID" --cwd "<repo>" --branch "<branch>" --base "<base>" \
+    --path "<repo>/.claude/worktrees/<branch>" --label "do-tN" --no-focus --json)
+  herdr workspace focus "$HERDR_WORKSPACE_ID"     # always, at once: create can move focus even with --no-focus
+  ROOT_PANE=$(jq -r '.result.root_pane.pane_id // .root_pane.pane_id' <<<"$WT")
   herdr agent start do-tN --kind claude --pane "$ROOT_PANE" -- --model 'claude-opus-5-5[1m]' --effort high --dangerously-skip-permissions
   herdr agent prompt do-tN "$BRIEF" --wait --until working --timeout 20000
-  herdr workspace focus "$HERDR_WORKSPACE_ID"     # if focus moved
   ```
+  Never pass `--focus`, never focus, select, or reveal the new space, its tabs, or its panes, and never use `herdr worktree open` for a new worker. When you must reopen an existing worktree with `worktree open` (a resume), pass `--no-focus` and run `herdr workspace focus "$HERDR_WORKSPACE_ID"` right after it too, since `open` focuses its target anyway.
 - **Answers** go to the architect as `herdr agent prompt do-tN "From the TODO: <their text>"`; it keeps working while it waits.
 - **Parked architects**: when no inbox message came from a task for 30 minutes, read its screen (`herdr agent read do-tN --source recent-unwrapped --lines 80`) and its lanes'; if a lane finished and the architect still waits, prompt it to continue.
 
@@ -323,7 +327,7 @@ Each task becomes an Orca workspace with Claude in its first terminal. Read Orca
   ```bash
   W=$(orca worktree create --name do-tN-<short-slug> --no-parent --agent claude --prompt "$BRIEF" --comment "tN planning" --json)
   ```
-  Keep `worktree.id` (the whole `<repoId>::<path>`), `worktree.path`, and `startupTerminal.handle` in `state.json`. `--agent claude` uses Orca's Claude launcher, so the model and effort are the ones set in Orca.
+  Keep `worktree.id` (the whole `<repoId>::<path>`), `worktree.path`, and `startupTerminal.handle` in `state.json`. `--agent claude` uses Orca's Claude launcher, so the model and effort are the ones set in Orca. This creates the worktree in the background, without switching Orca's view: never add `--activate` or `--run-hooks` (both reveal the new worktree), and never pass `--focus` to `orca terminal create`.
 - **Tester**: one terminal in your own worktree, started once and watching the queue itself, as in Herdr. Reuse a live `do-tester` from `orca terminal list --json` first:
   ```bash
   T=$(orca terminal create --worktree active --title do-tester --command "claude --model claude-sonnet-5 --effort high --dangerously-skip-permissions" --json)
@@ -343,7 +347,7 @@ Each task becomes a T3 Code thread in its own worktree. Flags differ between T3 
   ```bash
   ID=$(t3 thread start . "$BRIEF" --worktree "$BASE" --title "do-tN <task in a few words>" --json | jq -r '.threadId // .thread.id // .id')
   ```
-  `$BASE` is the repo's integration branch (`origin/main` unless the repo says otherwise). Add `--provider claudeAgent --model claude-opus-5-5` (and `--effort high`) only when `--help` lists them; otherwise the thread uses the project's default model. Keep the thread id in `state.json`.
+  `$BASE` is the repo's integration branch (`origin/main` unless the repo says otherwise). Add `--provider claudeAgent --model claude-opus-5-5` (and `--effort high`) only when `--help` lists them; otherwise the thread uses the project's default model. Keep the thread id in `state.json`. Start threads in the background: never pass a flag that `--help` describes as opening, focusing, or revealing the thread in the app.
 - **Tester**: one thread in the project folder (no `--worktree`), started when the first request is queued: `TID=$(t3 thread start . "$TESTER_BRIEF" --title do-tester --json | jq -r '.threadId // .thread.id // .id')`. It drains the queue and ends its turn with `QUEUE EMPTY`. For later requests, `t3 thread send "$TID" "New test requests are queued: drain the queue"`; never start a second tester.
 - **Messenger**: one thread in the project folder titled `do-messenger` with the messenger brief, started with the first task. It drains the inbox and ends its turn with `INBOX DRAINED`; on new inbox lines, `t3 thread send "$MID" "New inbox lines: drain them"`. Never start a second one.
 - **Answers**: `t3 thread send "$ID" "From the TODO: <their text>"`. A send never interrupts; a busy thread takes it as its next turn.
