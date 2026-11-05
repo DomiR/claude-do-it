@@ -22,6 +22,7 @@
   --pt-tag-high: #ff7f00;
   --pt-tag-low: #222222;
   --pt-tag-critical: #ff0000;
+  --pt-tag-done: #a85000;
   --pt-key-paper: #faf6d8;
   --pt-key-edge: #00000038;
   --pt-key-shade: #0000001f;
@@ -829,10 +830,16 @@ button {
   background: var(--pt-tag-critical);
 }
 
-.pt-editor-host .pt-tag-done,
 .pt-editor-host .pt-tag-cancelled {
   color: var(--pt-tag-resolved);
   font-weight: 400;
+}
+
+/* As in PlainTasks, a done stamp and how long the task lasted stand out in orange. */
+.pt-editor-host .pt-tag-done,
+.pt-editor-host .pt-tag-lasted {
+  color: var(--pt-tag-done);
+  font-weight: 700;
 }
 
 .pt-editor-host .pt-tag-project,

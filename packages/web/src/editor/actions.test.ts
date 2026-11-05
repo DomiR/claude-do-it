@@ -69,6 +69,13 @@ describe('newTask', () => {
 })
 
 describe('toggleDone', () => {
+  test('a started task records how long it lasted when it is done, and unchecking removes both stamps', () => {
+    const text = '- [ ] Ship @started(26-11-04 19:02) @high'
+    const done = `- [x] Ship @started(26-11-04 19:02) @high @done (${STAMP}) @lasted(2:30)`
+    applied(text, action(text, caret(8), 'toggleDone'), done, caret(8))
+    applied(done, action(done, caret(8), 'toggleDone'), text, caret(8))
+  })
+
   test('toggles open, completed, uppercase completed, and cancelled tasks', () => {
     const text = '- [ ] Open\n- [x] Done\n- [X] Upper\n- [-] Cancelled'
     applied(text, action(text, caret(text.indexOf('Open')), 'toggleDone'), `- [x] Open @done (${STAMP})\n- [x] Done\n- [X] Upper\n- [-] Cancelled`, caret(text.indexOf('Open')))

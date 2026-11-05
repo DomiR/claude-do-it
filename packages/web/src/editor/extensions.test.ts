@@ -229,6 +229,13 @@ describe('rendered editor', () => {
     expect(wraps(EditorState.create({ doc: '- [ ] Ship', extensions: [editorExtensions('mac', true)] }))).toBe(true)
   })
 
+  test('done and lasted stamps get their own tag classes, which the stylesheet colours orange', () => {
+    const state = stateFor('- [x] Ship @started(26-11-04 19:02) @done (26-11-04 21:32) @lasted(2:30)')
+    expect(classes(state)).toEqual(expect.arrayContaining(['pt-tag-started', 'pt-tag-done', 'pt-tag-lasted']))
+    const lasted = decorations(state).find(({ decoration }) => decoration.spec.class?.includes('pt-tag-lasted'))!
+    expect(state.doc.sliceString(lasted.from, lasted.to)).toBe('@lasted(2:30)')
+  })
+
   test('decorates tags with their shared and sanitized name classes', () => {
     const text = '@today @HIGH @waiting\n`@code`\n```\n@fenced\n```'
     const state = stateFor(text, text.length)

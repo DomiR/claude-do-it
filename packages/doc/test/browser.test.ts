@@ -13,8 +13,8 @@ test("the text subpath exports pure operations that work without a Document", ()
   expect(text.formatTodoChange(text.todoChanges(original, next)[0]!)).toBe("checked 1. Ship")
   expect(Object.keys(text).sort()).toEqual([
     "COMPACT_KEEP", "DocError", "KEPT", "MAX_BYTES", "MAX_DIFF", "MAX_ITEM", "addTodo", "appendBlock", "applyEdits",
-    "blockEnd", "findSection", "findTodo", "formatStamp", "formatTodoChange", "lines", "replaceUnique", "sectionText", "sections",
-    "setTodoState", "setTodoStateStamped", "stampTodo", "textEdits", "todoChanges", "todos", "unstampTodo", "withoutStamps",
+    "blockEnd", "findSection", "findTodo", "formatLasted", "formatStamp", "formatTodoChange", "lines", "replaceUnique", "sectionText", "sections",
+    "setTodoState", "setTodoStateStamped", "stampTodo", "startedAt", "textEdits", "todoChanges", "todos", "unstampTodo", "withoutStamps",
   ].sort())
 })
 
