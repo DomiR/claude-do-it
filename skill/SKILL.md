@@ -1,11 +1,11 @@
 ---
 name: do-it
-description: "Run a Markdown todo as the user's only interface to a team of agents. `/do-it [file]` opens the todo (default TODO.md, created when missing) in the browser, then this session becomes the conductor: it watches the file, sizes every task line, plans it with Fable or GPT-6 Astra, delivers it through worker agents in their own worktrees and one shared tester, and writes status, questions, and results back under each task. Works anywhere Claude Code runs; inside Herdr (HERDR_ENV=1) the workers run in Herdr worktrees and tabs. Also the reference for reading and changing any do-it document with versioned `do-it` commands. Trigger on '/do-it', 'do-it', 'do it from my todo', 'work through TODO.md', 'conduct this todo'."
+description: "Run a Markdown todo as the user's only interface to a team of agents. `/do-it [file]` opens the todo (default TODO.md, created when missing) in the browser; `/do-it <request>` first runs the request read only and writes its result into the todo as one task per item, which wait until the person writes under them. Then this session becomes the conductor: it watches the file, sizes every task line, plans it with Fable or GPT-6 Astra, delivers it through worker agents in their own worktrees and one shared tester, and writes status, questions, and results back under each task. Works anywhere Claude Code runs; inside Herdr (HERDR_ENV=1) the workers run in Herdr worktrees and tabs. Also the reference for reading and changing any do-it document with versioned `do-it` commands. Trigger on '/do-it', 'do-it', 'do it from my todo', 'work through TODO.md', 'conduct this todo'."
 ---
 
 # do-it
 
-Todo file: the first line of **$ARGUMENTS** (empty means `TODO.md` in the current directory).
+Arguments: **$ARGUMENTS**. When the first line is empty, or names an existing file, or ends in `.md`, it is the todo file (empty means `TODO.md` in the current directory). Anything else is a **seed request** (for example "list the PRs I am tagged in today"): the todo is `TODO.md` in the current directory, and Step 1b turns the request into tasks.
 
 You are the **conductor**. The person only looks at the todo in their browser. Everything they want done arrives as lines in it, and everything they need to know (status, plans, questions, results) goes back into it, under the task it belongs to. Never ask them to relay anything between agents, and do not expect them to read this chat.
 
@@ -14,7 +14,7 @@ You are the **conductor**. The person only looks at the todo in their browser. E
 Every open file is a CRDT document held by the do-it daemon, shared by the person's browser tab and every agent. Change it through these commands, never by writing the file with your own tools while it is open: they merge with the person's typing, never land on a stale copy, and show the person who changed what.
 
 ```bash
-D=do-it                                   # or: bun <repo>/packages/cli/src/bin.ts
+D=do-it                                   # not on PATH: see below
 $D read TODO.md                           # "Version: 7" then the text
 $D read TODO.md --section tasks           # one section; IDs are heading slugs
 $D sections TODO.md
@@ -34,14 +34,15 @@ $D watch TODO.md --todos                  # every change, as task lines
 - Text starting with `-` goes after `--`. `-` alone reads standard input (multi line blocks).
 - `edit --old` must match exactly one place; add context until it does.
 - Name yourself: `--as NAME` or `export DO_IT_AGENT=NAME`. The person sees the name next to your changes, and `watch --as NAME` skips your own changes.
+- When `do-it` is not on PATH, define it as a shell function at the top of every Bash call (functions do not survive between calls, and `D="bun ..."` breaks in zsh because `$D` is not word split): `do-it() { bun "<this skill's base directory>/../packages/cli/src/bin.ts" "$@"; }`. Monitor commands spell out the `bun .../bin.ts` call in full.
 - Exit codes: 0 done, 1 refused or version mismatch, 2 invalid arguments, 3 daemon not running and could not start, 4 nothing yet, 9 the document was deleted.
 
 ## Step 1. Open the todo
 
 ```bash
-command -v do-it >/dev/null || echo "do-it is not on PATH: use bun <repo>/packages/cli/src/bin.ts"
+command -v do-it >/dev/null || echo "do-it is not on PATH: define the do-it function (see above)"
 export DO_IT_AGENT=conductor
-ARG='<the first line of the arguments>'
+ARG='<the todo file from the arguments, empty for a seed request>'
 TODO=$(cd "$(dirname "${ARG:-TODO.md}")" && pwd)/$(basename "${ARG:-TODO.md}")
 SLUG=$(printf '%s' "$TODO" | shasum | cut -c1-10)
 STATE=${DO_IT_HOME:-$HOME/.do-it}/runs/$SLUG   # inbox.md, tests.md, plans/, logs/, state.json
@@ -61,6 +62,25 @@ do-it read "$TODO"
 
 Tell the person in one line that the todo is open and that they can add tasks there. Create the two agent channels with your Write tool if missing (nobody has them open yet): `$STATE/inbox.md` (`# Inbox`, `## Messages`) and `$STATE/tests.md` (`# Tests`, `## Queue`). If `$STATE/state.json` exists, this is a resume: reconcile it with what still runs (Herdr: `herdr agent list`, `herdr worktree list --json`; otherwise the worktrees in `git worktree list`) and only dispatch tasks that have no live worker and are not delivered.
 
+## Step 1b. Seed from a request
+
+Only when the arguments were a seed request. Do the request yourself, read only (or with one read only `Explore` agent): fetch, search, list. Change nothing, message nobody, start no worker. Then write the result into `## Tasks` as one task per item, so the person can act on each one:
+
+```markdown
+- [x] <the request, as they wrote it>
+  - **t1** seeded: 12 PRs below (7 open). Write a note under one to act on it
+- **Ada Lovelace**
+  - [ ] [#101](https://github.com/org/repo/pull/101) Add CSV export to reports (open)
+  - [ ] [#104](https://github.com/org/repo/pull/104) Fix the login redirect loop (merged)
+- **Grace Hopper**
+  - [ ] [#102](https://github.com/org/repo/pull/102) Cache search results (open)
+```
+
+- When the request asks for a grouping ("group by user"), each group is a plain bold bullet (`- **Name**`, no checkbox), with its items as indented `- [ ]` lines under it. Never use headings for groups: they become their own sections and fall out of `--section tasks`.
+- One item per line: link first, a few words, the state that matters in parentheses. Put the item's details in the item line, not in sub bullets.
+- The request line is checked off with `todo check` after the items are written; items stay unchecked.
+- Record every item in `state.json` with status `listed`. Listed items are **not** tasks for Step 3: they wait. They become a task only when the person writes a note under one (or edits its text): then triage that item with their note as the instruction, and give it the next `tN`. A listed item the person checks off is done: do nothing.
+
 ## Step 2. Watch
 
 Start each watch with the Monitor tool; every printed line is an event:
@@ -75,7 +95,7 @@ Use `--quiet` to skip the initial `Watching PATH at version N` line instead of f
 
 ## Step 3. Triage each new task
 
-A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone. Give it the next id `tN` and size it from its text and a quick look at the code it names (delegate a search to `Explore` when unsure, keep only the conclusion):
+A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone. Give it the next id `tN` and size it from its text and a quick look at the code it names (delegate a search to `Explore` when unsure, keep only the conclusion):
 
 | Size | Looks like | Planner | Worker |
 | --- | --- | --- | --- |
@@ -195,6 +215,8 @@ The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc`
 | Event | Do |
 | --- | --- |
 | New task line | Step 3 |
+| The person writes a note under a `listed` item, or edits its text | triage it now (Step 3) with their note as the instruction |
+| The person adds a section whose text is an instruction ("all PRs in this section: ...") | a standing rule: apply it to every item moved or added into that section, as that item's instruction; an empty section waits |
 | The person edits or adds notes under an active task | forward them: `SendMessage` to the worker (outside Herdr, once it has stopped) or `herdr agent prompt do-tN "From the TODO: ..."` |
 | The person answers a question (an indented line under `**tN question:**`) | forward it the same way, then remove your question line |
 | The person deletes a task, or writes "stop" under it | tell its worker to stop and commit its work in progress; status `stopped`, keep the worktree |
