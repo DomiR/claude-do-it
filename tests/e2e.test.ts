@@ -142,6 +142,23 @@ describe("do-it CLI end to end", () => {
     watcher.kill(); settledWatcher.kill(); await stopFixture(fixture)
   }, 30_000)
 
+  it("settles soon after the person ends a line and waits while a line is unfinished", async () => {
+    const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n\n- [ ] first\n")
+    await openFixture(fixture)
+    const info = await runClient(ensureDaemon({ home: fixture.home }))
+    const sync = (base: number, text: string) => Effect.runPromise(withClient(info, client => client.sync({ path: fixture.file, base, text })))
+    const watcher = await startCli(["watch", fixture.file, "--settle", "20", "--settle-line", "1", "--json", "--as", "watcher"], fixture.env)
+    const lines = await readLines(watcher)
+    expect(JSON.parse((await lines.next()).value as string).event).toBe("watching")
+    const typed = await sync(1, "# TODO\n\n- [ ] first\n- [ ] sec")
+    const next = lines.next()
+    expect(await Promise.race([next.then(() => "line"), wait(3000).then(() => "quiet")])).toBe("quiet")
+    const entered = await sync(typed.version, "# TODO\n\n- [ ] first\n- [ ] second\n- [ ] ")
+    const settled = await Promise.race([next, wait(5000).then(() => ({ value: "timeout" }))])
+    expect(JSON.parse(settled.value as string)).toMatchObject({ event: "settled", version: entered.version, reason: "line" })
+    watcher.kill(); await stopFixture(fixture)
+  }, 30_000)
+
   it("resyncs a missed watch before settling and supports quiet startup", async () => {
     const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n\n- [ ] first\n")
     await openFixture(fixture)

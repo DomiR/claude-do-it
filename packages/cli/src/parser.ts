@@ -21,7 +21,7 @@ export const cliPresenter = CliOutput.layerPresenter({
 })
 
 const subcommands = new Set(["open", "read", "sections", "edit", "append", "todo", "diff", "watch", "status", "stop"])
-const valueFlags = new Set(["--old", "--new", "--section", "--version", "--since", "--wait", "--settle", "--as"])
+const valueFlags = new Set(["--old", "--new", "--section", "--version", "--since", "--wait", "--settle", "--settle-line", "--as"])
 
 /** Effect CLI treats a following dash-prefixed token as short flags. Make the
  * values of our string/number flags explicit while preserving `--` text. */
@@ -79,7 +79,10 @@ const version = Flag.Int("version").pipe(Flag.withSchema(PositiveInt))
 const since = Flag.Int("since").pipe(Flag.withSchema(PositiveInt))
 const optionalSince = Flag.Int("since").pipe(Flag.withSchema(PositiveInt), Flag.optional)
 const wait = Flag.Finite("wait").pipe(Flag.withDefault(0), Flag.withSchema(Seconds))
-const settle = Flag.Finite("settle").pipe(Flag.withSchema(Seconds), Flag.optional)
+const settle = Flag.Finite("settle").pipe(Flag.withSchema(Seconds),
+  Flag.withDescription("Print one \"Settled at version N by WHO\" line once nobody changed the document for this many seconds"), Flag.optional)
+const settleLine = Flag.Finite("settle-line").pipe(Flag.withSchema(Seconds), Flag.withDefault(2),
+  Flag.withDescription("With --settle, wait only this many seconds (default 2) when the person's latest change ends a line: Enter after a task or text line, or Enter on an empty task. Typing inside one line keeps the full --settle. Set it to the --settle value to always wait the full period"))
 
 const optionValue = <A>(value: Option.Option<A>): A | undefined => Option.isSome(value) ? value.value : undefined
 /** `path` is relative to the working directory here. `withCommon` resolves it. */
@@ -169,8 +172,10 @@ export function makeCli(run: CommandRunner) {
 
   const watch = Command.make("watch", {
     path: Argument.String("path"), optionalSince, section,
-    todos: Flag.Boolean("todos").pipe(Flag.withDefault(false)), settle, quiet: Flag.Boolean("quiet").pipe(Flag.withDefault(false)),
-  }, input => withCommon(root, input, run, (config, common) => ({ kind: "watch", options: common, ...pathValue(config.path), since: optionValue(config.optionalSince), section: optionValue(config.section), todos: config.todos, settle: optionValue(config.settle), quiet: config.quiet })))
+    todos: Flag.Boolean("todos").pipe(Flag.withDefault(false)), settle, settleLine, quiet: Flag.Boolean("quiet").pipe(Flag.withDefault(false)),
+  }, input => withCommon(root, input, run, (config, common) => ({ kind: "watch", options: common, ...pathValue(config.path), since: optionValue(config.optionalSince), section: optionValue(config.section), todos: config.todos, settle: optionValue(config.settle), settleLine: config.settleLine, quiet: config.quiet }))).pipe(
+    Command.withDescription("Print every change to PATH as it lands, or with --settle one line per pause"),
+  )
 
   const status = Command.make("status", {}, input => withCommon(root, input, run, (_config, common) => ({ kind: "status", options: common })))
   const stop = Command.make("stop", {}, input => withCommon(root, input, run, (_config, common) => ({ kind: "stop", options: common })))

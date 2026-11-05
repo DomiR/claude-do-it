@@ -105,6 +105,14 @@ document has moved on, nothing is applied and the reply is the latest version
 plus a diff (exit 1). With `--section ID` a stale version still applies while
 that section is unchanged.
 
+`do-it watch TODO.md --settle 25` prints one `Settled at version N by WHO`
+line once nobody changed the document for 25 seconds. When the person's latest
+change ends a line (Enter after a task or text line, or Enter on an empty task),
+it settles after `--settle-line` seconds instead (2 by default), so a new todo
+reaches the agents at once. While the person keeps typing in one line, the
+watch waits the full `--settle`. Set `--settle-line` to the `--settle` value to
+always wait the full period.
+
 A resumed watch that missed history prints
 `Missed changes, now at version N: run do-it read`. Use `--quiet` to skip the
 initial `Watching PATH at version N` line.
