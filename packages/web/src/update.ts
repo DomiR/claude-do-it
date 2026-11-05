@@ -3,7 +3,7 @@ import { Update } from 'foldkit'
 import { modifyFields } from 'foldkit/struct'
 
 import {
-  ApplyRemoteText, FocusEditor, OpenEditorLink, RevealEditorPosition, RunEditorAction, SyncDraft,
+  ApplyRemoteText, FocusEditor, OpenEditorLink, RevealEditorPosition, RunEditorAction, SetEditorWrap, SyncDraft,
   WaitBeforeReconnect, WaitBeforeRemoteRetry, WaitBeforeSync, WaitBeforeSyncRetry,
 } from './command'
 import { Message } from './message'
@@ -256,6 +256,13 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
     }) }),
   }, () => ({ model })),
   ClickedActivity: () => ({ model: modifyFields(model, { activityOpen: value => !value }) }),
+  ClickedWrapToggle: () => {
+    const toggled = modifyFields(model, { wrap: value => !value })
+    return whenReady(toggled, document => ({
+      model: toggled, commands: [SetEditorWrap({ session: document.session, wrap: toggled.wrap })],
+    }))
+  },
+  CompletedSetEditorWrap: () => ({ model }),
   ClickedCommands: () => model.palette._tag === 'Open' ? closePalette(model) : openPalette(model, 'Commands'),
   PressedHelpKey: () => model.palette._tag === 'Open' ? closePalette(model) : openPalette(model, 'Shortcuts'),
   UpdatedPaletteQuery: ({ query }) => ({ model: modifyFields(model, {

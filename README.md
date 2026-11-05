@@ -27,9 +27,11 @@ flowchart LR
   on demand and stops after 30 idle minutes.
 - **The browser editor.** Built with Foldkit and CodeMirror 6. It keeps the
   todo as plain Markdown while showing a live PlainTasks preview with markers,
-  tags, actions, stamps, and a command palette. Task lines always stay
-  rendered: markers show as ☐ ✔ ✘ and links as their text, with a popover to
-  edit them.
+  tags, actions, stamps, and a command palette. Every line stays rendered
+  while you edit it: Markdown you type renders as soon as it is complete, a
+  formatting bar on top applies the same formats, task markers show as ☐ ✔ ✘
+  and delete like one character, and links show as their text with a popover
+  to edit them.
 - **The `/do-it` skill for Claude Code.** It turns a session into a conductor
   that sizes, plans, and delivers every task through worker agents and one
   shared tester.
@@ -155,10 +157,18 @@ agent.
 | Move up | `Cmd-Ctrl-Up` or `Alt-Up` | `Ctrl-Shift-Up` or `Alt-Up` |
 | Move down | `Cmd-Ctrl-Down` or `Alt-Down` | `Ctrl-Shift-Down` or `Alt-Down` |
 | Continue task | `Enter` | `Enter` |
+| Note under the task (folds with it) | `Shift-Enter` | `Shift-Enter` |
 | Expand a PlainTasks tag, or indent | `Tab` | `Tab` |
 | Outdent | `Shift-Tab` or `Cmd-[` | `Shift-Tab` or `Ctrl-[` |
 | Open link | `Cmd-Shift-U` or `Alt-Enter` | `Alt-Enter` |
-| Edit link (or click a link on a task line) | `Cmd-K` | `Ctrl-K` |
+| Edit link (or click a link) | `Cmd-K` | `Ctrl-K` |
+| Bold | `Cmd-B` | `Ctrl-B` |
+| Italic | `Cmd-Shift-I` | `Alt-Shift-I` |
+| Strikethrough | `Cmd-Shift-X` | `Ctrl-Shift-X` |
+| Inline code | `Cmd-E` | `Ctrl-E` |
+| Task line on or off | `Cmd-Alt-4` | `Ctrl-Shift-4` |
+| Bulleted line on or off | `Cmd-Alt-5` | `Ctrl-Shift-5` |
+| Project heading on or off | `Cmd-Alt-2` | `Ctrl-Shift-2` |
 | Go to project | `Cmd-P` | `Ctrl-P` |
 | Command palette | `Cmd-Shift-P` or `F1` | `Ctrl-Shift-P` or `F1` |
 | Find | `Cmd-F` | `Ctrl-F` |

@@ -5,6 +5,7 @@ import { Mount } from 'foldkit'
 
 import { editorExtensions, editorFacts, remoteTransaction } from './editor/extensions'
 import { removeEditor, setEditor } from './editor/host'
+import { storedWrap } from './editor/preferences'
 import { Message } from './message'
 import { Platform, Selection } from './model'
 
@@ -34,7 +35,8 @@ export const MountEditor = Mount.defineStream('MountEditor', {
                 doc: text,
                 selection,
                 extensions: [
-                  editorExtensions(platform),
+                  // Read here rather than passed in, so toggling wrap never remounts the editor.
+                  editorExtensions(platform, storedWrap()),
                   editorFacts.of(fact => {
                     if (fact._tag === 'PressedEditorCommand' && fact.command === 'openLink') {
                       emit(fact.link === undefined

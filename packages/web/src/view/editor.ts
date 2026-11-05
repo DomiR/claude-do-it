@@ -2,12 +2,14 @@ import { Option } from 'effect'
 import type { Html, HtmlBuilder } from 'foldkit/html'
 
 import { formatTodoChange, formatVersionHeader } from '@do-it/protocol'
-import { hints, keyLabel, keysFor } from '../editor/keymap'
+import { hints, keysFor } from '../editor/keymap'
 import { classifyDocument, formatStats } from '../editor/lines'
 import { Message } from '../message'
 import { type Model, type ReadyDocument, saveStatus } from '../model'
 import { MountEditor } from '../mount'
+import { keysView } from './keys'
 import { paletteView } from './palette'
+import { toolbarView } from './toolbar'
 
 const fileNameFor = (path: string): string => path.split('/').at(-1) ?? path
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -43,17 +45,18 @@ export const editorView = (model: Model, document: ReadyDocument, h: HtmlBuilder
         h.button([
           h.Class(`pt-header-button${model.palette._tag === 'Open' ? ' pt-header-button-active' : ''}`),
           h.Type('button'), h.OnClick(Message.ClickedCommands()), h.AriaExpanded(model.palette._tag === 'Open'),
-        ], ['Commands', h.kbd([h.Class('pt-header-key')], [keyLabel(model.platform, keysFor(model.platform, 'commandPalette')[0] ?? '')])]),
+        ], [h.span([h.Class('pt-header-label')], ['Commands']), keysView(model.platform, keysFor(model.platform, 'commandPalette')[0] ?? '', h)]),
         h.button([
           h.Class(`pt-header-button${model.palette._tag === 'Open' && model.palette.kind === 'Shortcuts' ? ' pt-header-button-active' : ''}`),
           h.Type('button'), h.OnClick(Message.PressedHelpKey()), h.AriaExpanded(model.palette._tag === 'Open'),
-        ], ['Help', h.kbd([h.Class('pt-header-key')], ['?'])]),
+        ], [h.span([h.Class('pt-header-label')], ['Help']), keysView(model.platform, '?', h)]),
         h.button([
           h.Class(`pt-header-button${model.activityOpen ? ' pt-header-button-active' : ''}`),
           h.Type('button'), h.OnClick(Message.ClickedActivity()), h.AriaExpanded(model.activityOpen),
-        ], ['Activity']),
+        ], [h.span([h.Class('pt-header-label')], ['Activity'])]),
       ]),
     ]),
+    toolbarView(model.platform, model.wrap, h),
     h.main([h.Class(`pt-workspace${model.activityOpen ? ' pt-workspace-with-activity' : ''}`)], [
       // The Mount owns this childless host for the entire document session.
       h.keyed('div')(`editor:${document.session}`, [
@@ -77,7 +80,7 @@ export const editorView = (model: Model, document: ReadyDocument, h: HtmlBuilder
         })),
       ]),
       h.div([h.Class('pt-status-center')], hints.map(hint => h.span([h.Class('pt-hint')], [
-        h.kbd([h.Class('pt-hint-key')], [keyLabel(model.platform, keysFor(model.platform, hint.command)[0] ?? '')]),
+        keysView(model.platform, keysFor(model.platform, hint.command)[0] ?? '', h),
         h.span([h.Class('pt-hint-label')], [hint.label]),
       ]))),
       h.div([h.Class('pt-status-right')], [

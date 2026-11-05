@@ -338,19 +338,26 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
   source character and the text stays byte exact.
 - Line decorations come from `editor/lines.ts`. On decorated lines, task and
   status bullets, heading and quote markers, Markdown delimiters, and link
-  syntax are hidden while the label remains editable. The active line shows
-  its source markup, except that the task bullet stays hidden. Plain prose
-  bullets become a visible `•`, and task markers are CSS drawings over the
-  three source characters in `[ ]`. Copy, selection, undo, and source offsets
-  still use Markdown. Clicking a marker toggles done; Alt-click toggles
-  cancelled. While the selection touches a marker slot, its literal source is
-  shown. Empty tasks keep their marker but do not count in statistics or
-  archive actions.
+  syntax are hidden while the label remains editable. No line ever shows its
+  source markup, wherever the caret or selection is: Markdown typed into a
+  line renders as soon as the construct is complete. Plain prose bullets
+  become a visible `•`, and a task's whole `- [ ] ` prefix is one marker
+  widget that the caret crosses, and Backspace or Delete removes, as a single
+  character (the line becomes plain text). Copy, selection, undo, and source
+  offsets still use Markdown. Clicking a marker toggles done; Alt-click
+  toggles cancelled. A formatting bar above the editor applies bold, italic,
+  strikethrough, code, links, and task, bullet, and project lines. Empty
+  tasks keep their marker but do not count in statistics or archive actions.
 - The editor uses PlainTasks markers `☐`, `✔`, and `✘` for open, done, and
   cancelled tasks. Tags use PlainTasks colours: generic tags are bold red,
   `@today` is bold black on yellow, `@high` is bold black on orange, `@low` is
-  bold white on dark grey, `@critical` is bold black on red, and state or
-  project tags use muted ink. Tag arguments remain part of the tag decoration.
+  bold white on dark grey, `@critical` is bold black on red, `@done` and
+  `@lasted` are bold orange, and the other state and project tags use muted
+  ink. Tag arguments remain part of the tag decoration. Marking a task done
+  that has a `@started(...)` stamp adds `@lasted(...)` with the time between
+  them in PlainTasks' format (`2:30`, `1 day, 0:05`, `3 days`); unchecking or
+  cancelling removes it. Only stamps with parentheses are stamps: a bare
+  `@started` word in the text is never changed.
 
 | Action | Mac | Other | Semantics |
 | --- | --- | --- | --- |
@@ -360,10 +367,18 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
 | Archive | `Cmd-Shift-a`, `Cmd-Alt-a` | `Ctrl-Shift-a`, `Ctrl-Alt-a` | Move resolved task blocks under `## Archive`, newest first, adding ` @project(Section)` to each archived task when needed. Open, empty, or blocked resolved tasks do not move. |
 | Move up or down | `Cmd-Ctrl-ArrowUp`, `Alt-ArrowUp`; `Cmd-Ctrl-ArrowDown`, `Alt-ArrowDown` | `Ctrl-Shift-ArrowUp`, `Alt-ArrowUp`; `Ctrl-Shift-ArrowDown`, `Alt-ArrowDown` | Swap any line with its neighbour using Sublime semantics. A task, or a line owned by a task, moves with its whole block and can cross headings and sections. |
 | Continue task | `Enter` | `Enter` | Split the current task and insert an open sibling with the same prefix. |
+| Note under the task | `Shift-Enter` | `Shift-Enter` | On a task, split at the caret and start a plain note indented to the label (the task's indent plus four spaces), inside the task's block. On a status line or note in a task's block, start the note where that line's text shows (a status line's blank bullet gap counts), and `Enter` there does the same. Elsewhere a plain newline. |
 | Tab, tag completion, or indent | `Tab` | `Tab` | Expand a PlainTasks snippet when the caret follows a completion token, otherwise indent the current line or selected task blocks. `s`, `t`, `c`, `h`, `l`, `cr`, `d`, and `@s` expand to the supported tags; a bare `@started` or `@created` gets a local date. |
 | Outdent | `Shift-Tab`, `Cmd-[` | `Shift-Tab`, `Ctrl-[` | Outdent the current line or selected task blocks. |
 | Open link | `Cmd-Shift-u`, `Alt-Enter` | `Alt-Enter` | Open the link under the caret, or reveal a project anchor. |
-| Edit link | `Cmd-k` | `Ctrl-k` | Edit the text and URL of the link under the caret in a popover, or link the selected text. Clicking a link on a task line opens it too. |
+| Edit link | `Cmd-k` | `Ctrl-k` | Edit the text and URL of the link under the caret in a popover, or link the selected text. Clicking a link opens it too. |
+| Bold | `Cmd-b` | `Ctrl-b` | Wrap the selection, or the word at the caret, in `**`; inside bold text, remove it. One undoable change; the formatting bar runs the same command. |
+| Italic | `Cmd-Shift-i` | `Alt-Shift-i` | The same with `*`. `Cmd-i` stays New task, and `Ctrl-Shift-i` is left to the browser's developer tools. |
+| Strikethrough | `Cmd-Shift-x` | `Ctrl-Shift-x` | The same with `~~`. |
+| Inline code | `Cmd-e` | `Ctrl-e` | The same with a backtick. `Cmd-Shift-c` is left to the element inspector. |
+| Task line | `Cmd-Alt-4` | `Ctrl-Shift-4` | Turn the selected lines into tasks, or back into text when they all are. Indentation and labels stay. |
+| Bulleted line | `Cmd-Alt-5` | `Ctrl-Shift-5` | Turn the selected lines into `- ` bullets, or back into text when they all are. A task becomes a plain bullet. |
+| Project heading | `Cmd-Alt-2` | `Ctrl-Shift-2` | Turn the selected lines into `## ` project headings, or back into text when they all are. |
 | Go to project | `Cmd-p` | `Ctrl-p` | Open the project palette and move to the selected heading. |
 | Command palette | `Cmd-Shift-p`, `F1` | `Ctrl-Shift-p`, `F1` | Search and run editor commands. |
 | Find | `Cmd-f` | `Ctrl-f` | Open CodeMirror Find. |

@@ -5,7 +5,7 @@ import {
   scene, selector, tap, text, type as typeInto,
 } from 'foldkit/scene'
 
-import { FocusEditor, RunEditorAction, WaitBeforeReconnect } from './command'
+import { FocusEditor, RunEditorAction, SetEditorWrap, WaitBeforeReconnect } from './command'
 import { Message } from './message'
 import { makeInitialModel, type Model } from './model'
 import { FocusPaletteInput, MountEditor } from './mount'
@@ -27,9 +27,12 @@ describe('PlainTasks shell', () => {
       expect(selector('.pt-file-name')).toHaveText('DEMO.md'),
       expect(selector('.pt-file-name')).toHaveAttr('title', path),
       expect(text('Commands')).toExist(), expect(text('Help')).toExist(),
-      expectAll(all.selector('.pt-header-key')).toHaveCount(2),
+      expectAll(all.selector('.pt-header-button .pt-keys')).toHaveCount(2),
+      expectAll(all.selector('.pt-header-button .pt-key')).toHaveCount(4),
+      expect(selector('.pt-header-button .pt-visually-hidden')).toHaveText('Shift Command P'),
       expectAll(all.selector('.pt-hint')).toHaveCount(7),
-      expectAll(all.selector('.pt-hint-key')).toHaveCount(7),
+      expectAll(all.selector('.pt-hint .pt-keys')).toHaveCount(7),
+      expect(selector('.pt-hint .pt-visually-hidden')).toHaveText('Command Return'),
       expect(text('New task')).toExist(), expect(text('Done')).toExist(), expect(text('Cancel')).toExist(),
       expect(text('Archive')).toExist(), expect(text('Move')).toExist(),
       expect(text('1/2 done')).toExist(), expect(text('Ln 1, Col 1')).toExist(), expect(text('Version 1')).toExist(),
@@ -72,7 +75,9 @@ describe('PlainTasks shell', () => {
       typeInto(selector('.pt-palette-input'), 'tgdn'),
       expectAll(all.selector('.pt-palette-item')).toHaveCount(1),
       expect(selector('.pt-palette-title')).toHaveText('Toggle done'),
-      expect(selector('.pt-palette-key')).toHaveText('⌘D'),
+      expect(selector('.pt-palette-keys .pt-visually-hidden')).toHaveText('Command D'),
+      expectAll(all.selector('.pt-palette-keys .pt-key')).toHaveCount(2),
+      expectAll(all.selector('.pt-palette-keys .pt-key-svg')).toHaveCount(1),
       keydown(selector('.pt-palette-input'), 'Enter'),
       Mount.expectEnded(FocusPaletteInput),
       Command.expectExact(RunEditorAction({ session, action: 'toggleDone' })),
@@ -81,13 +86,63 @@ describe('PlainTasks shell', () => {
     )
   })
 
+  test('the formatting bar names every button with its shortcut and runs its command in the editor', () => {
+    scene({ update, view }, given(ready()),
+      Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
+      expect(selector('.pt-toolbar')).toHaveAttr('role', 'toolbar'),
+      expectAll(all.selector('.pt-toolbar-button')).toHaveCount(9),
+      expectAll(all.selector('.pt-toolbar-divider')).toHaveCount(1),
+      expectAll(all.selector('.pt-toolbar-button .pt-tooltip')).toHaveCount(9),
+      expect(selector('[aria-label="Bold"] .pt-tooltip-label')).toHaveText('Bold'),
+      expect(selector('[aria-label="Bold"] .pt-visually-hidden')).toHaveText('Command B'),
+      expect(selector('[aria-label="Italic"] .pt-visually-hidden')).toHaveText('Shift Command I'),
+      expect(selector('[aria-label="Strikethrough"] .pt-visually-hidden')).toHaveText('Shift Command X'),
+      expect(selector('[aria-label="Inline code"] .pt-visually-hidden')).toHaveText('Command E'),
+      expect(selector('[aria-label="Link"] .pt-visually-hidden')).toHaveText('Command K'),
+      expect(selector('[aria-label="Task"] .pt-visually-hidden')).toHaveText('Option Command 4'),
+      expect(selector('[aria-label="Bulleted line"] .pt-visually-hidden')).toHaveText('Option Command 5'),
+      expect(selector('[aria-label="Project heading"] .pt-visually-hidden')).toHaveText('Option Command 2'),
+      expect(selector('[aria-label="Bold"] .pt-tooltip')).toHaveAttr('aria-hidden', 'true'),
+      expect(selector('[aria-label="Bold"]')).toHaveAttr('aria-keyshortcuts', 'Meta+B'),
+      click(selector('[aria-label="Bold"]')),
+      Command.expectExact(RunEditorAction({ session, action: 'bold' })),
+      Command.resolve(RunEditorAction, Message.CompletedRunEditorAction()),
+      click(selector('[aria-label="Link"]')),
+      Command.expectExact(RunEditorAction({ session, action: 'editLink' })),
+      Command.resolve(RunEditorAction, Message.CompletedRunEditorAction()),
+      click(selector('[aria-label="Task"]')),
+      Command.expectExact(RunEditorAction({ session, action: 'toggleTask' })),
+      Command.resolve(RunEditorAction, Message.CompletedRunEditorAction()),
+    )
+  })
+
+  test('the wrap toggle at the end of the bar is off by default and turns wrapping on in the editor', () => {
+    scene({ update, view }, given(ready()),
+      Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
+      expect(selector('[aria-label="Wrap lines"]')).toHaveAttr('aria-pressed', 'false'),
+      expect(selector('[aria-label="Wrap lines"] .pt-tooltip-label')).toHaveText('Wrap lines: off, lines scroll'),
+      click(selector('[aria-label="Wrap lines"]')),
+      Command.expectExact(SetEditorWrap({ session, wrap: true })),
+      Command.resolve(SetEditorWrap, Message.CompletedSetEditorWrap()),
+      expect(selector('[aria-label="Wrap lines"]')).toHaveAttr('aria-pressed', 'true'),
+      click(selector('[aria-label="Wrap lines"]')),
+      Command.expectExact(SetEditorWrap({ session, wrap: false })),
+      Command.resolve(SetEditorWrap, Message.CompletedSetEditorWrap()),
+      expect(selector('[aria-label="Wrap lines"]')).toHaveAttr('aria-pressed', 'false'),
+      Mount.expectNone(),
+    )
+    bunExpect(makeInitialModel(path, 'mac', true).wrap).toBe(true)
+  })
+
   test('shows shortcuts and keeps the existing empty and terminal pages', () => {
     const open = update(ready(), Message.PressedEditorCommand({ command: 'showShortcuts' })).model
     scene({ update, view }, given(open),
       Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
       Mount.resolve(FocusPaletteInput, Message.CompletedFocusPaletteInput()),
       expect(text('Browser shortcuts kept: reload, hard reload, tab search')).toExist(),
-      expect(text('Type ? outside the editor, or Cmd / inside it')).toExist(),
+      expectAll(all.selector('.pt-palette-note .pt-keys')).toHaveCount(7),
+      expect(selector('.pt-palette-note .pt-visually-hidden')).toHaveText('Question Mark'),
+      expect(text('Browser shortcuts kept: reload, hard reload, tab search')).toExist(),
       expect(text('Continue task')).toExist(),
     )
     scene({ update, view }, given(makeInitialModel('')), expect(text('Open a todo')).toExist())

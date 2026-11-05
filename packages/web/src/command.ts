@@ -6,8 +6,9 @@ import { Command } from 'foldkit'
 import { sections } from '@do-it/doc/text'
 import type { RpcFailure } from '@do-it/protocol'
 import { rebaseRemote } from './editor/changes'
-import { remoteTransaction, runEditorCommand } from './editor/extensions'
+import { remoteTransaction, runEditorCommand, setLineWrap } from './editor/extensions'
 import { getEditor } from './editor/host'
+import { storeWrap } from './editor/preferences'
 import { Message, type SyncFailureKind } from './message'
 import { EditorCommandName } from './model'
 import { DoItClient, isUnauthorized } from './rpc'
@@ -156,6 +157,21 @@ export const RevealEditorPosition = Command.define('RevealEditorPosition', {
     const maybeView = getEditor(session)
     if (Option.isSome(maybeView)) reveal(maybeView.value, offset)
     return Message.CompletedRevealEditorPosition()
+  }),
+})
+
+/** Turns line wrapping on or off in the open editor, remembers it for this browser, and returns focus to the text. */
+export const SetEditorWrap = Command.define('SetEditorWrap', {
+  args: { session: Schema.String, wrap: Schema.Boolean },
+  messages: [Message.CompletedSetEditorWrap],
+  execute: ({ session, wrap }) => Effect.sync(() => {
+    storeWrap(wrap)
+    const maybeView = getEditor(session)
+    if (Option.isSome(maybeView)) {
+      setLineWrap(maybeView.value, wrap)
+      maybeView.value.focus()
+    }
+    return Message.CompletedSetEditorWrap()
   }),
 })
 

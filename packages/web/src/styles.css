@@ -22,6 +22,60 @@
   --pt-tag-high: #ff7f00;
   --pt-tag-low: #222222;
   --pt-tag-critical: #ff0000;
+  --pt-tag-done: #a85000;
+  --pt-key-paper: #faf6d8;
+  --pt-key-edge: #00000038;
+  --pt-key-shade: #0000001f;
+  --pt-key-ink: #3b392c;
+}
+
+/* Keycaps: one cap per key, wherever a shortcut is shown. */
+.pt-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.pt-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--pt-key-edge);
+  border-radius: 4px;
+  background: var(--pt-key-paper);
+  box-shadow: 0 1px 0 var(--pt-key-shade);
+  color: var(--pt-key-ink);
+  font: 600 11px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.pt-key-icon {
+  padding: 0 4px;
+}
+
+.pt-key-svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+.pt-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 * {
@@ -61,8 +115,10 @@ button {
 
 /* Editor shell */
 .pt-shell {
+  /* The side inset shared by the editor text and the formatting bar. */
+  --pt-content-inset: 24px;
   display: grid;
-  grid-template-rows: 40px minmax(0, 1fr) 28px;
+  grid-template-rows: 40px 36px minmax(0, 1fr) 28px;
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -124,17 +180,10 @@ button {
   line-height: 20px;
 }
 
-.pt-header-key {
-  display: inline-block;
-  min-width: 1.5em;
-  margin-left: 7px;
-  padding: 0 4px;
-  border: 1px solid var(--pt-delimiter);
-  color: var(--pt-prose);
-  font-size: 11px;
-  line-height: 18px;
-  text-align: center;
-  vertical-align: 1px;
+.pt-header-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .pt-header-button:hover,
@@ -144,9 +193,114 @@ button {
 
 .pt-header-button-active {
   background: var(--pt-project-bg);
+}
+
+/* Only the word is underlined, never the keycaps beside it. */
+.pt-header-button-active .pt-header-label {
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
+}
+
+/* Formatting bar */
+/* As wide as the editor, with the first icon on the text's left edge (buttons pad their icons by 6px). */
+.pt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding-inline: calc(var(--pt-content-inset) - 6px);
+  border-bottom: 1px solid var(--pt-delimiter);
+  background: var(--pt-paper);
+}
+
+.pt-toolbar-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--pt-prose);
+  cursor: pointer;
+}
+
+/* A formatting button's name and shortcut, shown after a short hover or on keyboard focus. */
+.pt-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid var(--pt-delimiter);
+  background: var(--pt-paper);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 14%);
+  color: var(--pt-ink);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms ease 0ms, visibility 0ms linear 120ms;
+}
+
+.pt-tooltip-end {
+  right: 0;
+  left: auto;
+}
+
+.pt-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.pt-toolbar-toggle[aria-pressed='true'] {
+  border-color: var(--pt-delimiter);
+  background: var(--pt-active-row);
+  color: var(--pt-ink);
+}
+
+.pt-toolbar-button:hover .pt-tooltip,
+.pt-toolbar-button:focus-visible .pt-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 120ms ease 350ms, visibility 0ms linear 350ms;
+}
+
+.pt-toolbar-button:hover {
+  border-color: var(--pt-delimiter);
+  background: var(--pt-project-bg);
+  color: var(--pt-ink);
+}
+
+.pt-toolbar-button:focus-visible {
+  outline: 2px solid var(--pt-link);
+  outline-offset: -2px;
+  color: var(--pt-ink);
+}
+
+.pt-toolbar-button:active {
+  background: var(--pt-active-row);
+}
+
+.pt-toolbar-icon {
+  display: block;
+  pointer-events: none;
+}
+
+.pt-toolbar-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--pt-delimiter);
 }
 
 .pt-workspace {
@@ -278,14 +432,6 @@ button {
   color: var(--pt-prose);
 }
 
-.pt-hint-key {
-  padding: 0 4px;
-  border: 1px solid var(--pt-delimiter);
-  color: var(--pt-ink);
-  font-size: 11px;
-  line-height: 17px;
-}
-
 .pt-hint-label {
   font-size: 12px;
 }
@@ -404,16 +550,21 @@ button {
   align-items: center;
   justify-content: flex-end;
   align-self: center;
-  gap: 4px;
+  gap: 6px;
   color: var(--pt-prose);
 }
 
-.pt-palette-key {
-  padding: 0 4px;
-  border: 1px solid var(--pt-delimiter);
+.pt-palette-or {
   color: var(--pt-prose);
   font-size: 11px;
-  line-height: 17px;
+}
+
+.pt-palette-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  line-height: 22px;
 }
 
 .pt-palette-empty {
@@ -452,16 +603,21 @@ button {
   line-height: 1.6;
 }
 
+/* The text uses the whole width of the window or split, inside the shared side inset. */
 .pt-editor-host .cm-content {
-  --pt-content-inset: 24px;
   min-height: 100%;
   padding-block: 28px 40px;
-  padding-inline: var(--pt-content-inset) max(24px, calc(100% - 46rem - var(--pt-content-inset)));
+  padding-inline: var(--pt-content-inset);
   color: var(--pt-ink);
   line-height: 1.6;
+  /* Long lines scroll horizontally unless wrapping is turned on in the formatting bar. */
+  white-space: pre;
+  caret-color: var(--pt-ink);
+}
+
+.pt-editor-host .cm-content.cm-lineWrapping {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  caret-color: var(--pt-ink);
 }
 
 .pt-editor-host .cm-line {
@@ -598,14 +754,6 @@ button {
   color: transparent;
 }
 
-.pt-editor-host .pt-line-editing .pt-strong-mark,
-.pt-editor-host .pt-line-editing .pt-em-mark,
-.pt-editor-host .pt-line-editing .pt-strike-mark,
-.pt-editor-host .pt-line-editing .pt-code-mark,
-.pt-editor-host .pt-line-editing .pt-link-mark {
-  color: var(--pt-delimiter);
-}
-
 .pt-editor-host .pt-line-task,
 .pt-editor-host .pt-line-task-open,
 .pt-editor-host .pt-line-task-open .pt-label {
@@ -682,10 +830,16 @@ button {
   background: var(--pt-tag-critical);
 }
 
-.pt-editor-host .pt-tag-done,
 .pt-editor-host .pt-tag-cancelled {
   color: var(--pt-tag-resolved);
   font-weight: 400;
+}
+
+/* As in PlainTasks, a done stamp and how long the task lasted stand out in orange. */
+.pt-editor-host .pt-tag-done,
+.pt-editor-host .pt-tag-lasted {
+  color: var(--pt-tag-done);
+  font-weight: 700;
 }
 
 .pt-editor-host .pt-tag-project,
@@ -694,7 +848,10 @@ button {
   font-weight: 700;
 }
 
-.pt-editor-host .pt-bullet-dot {
+/* A bullet's `- ` and a status line's bullet render in the width of their source. */
+.pt-editor-host .pt-bullet-dot,
+.pt-editor-host .pt-bullet-gap {
+  display: inline-block;
   color: var(--pt-prose);
   text-indent: 0;
   white-space: nowrap;
@@ -710,14 +867,24 @@ button {
 }
 
 /* PlainTasks markers */
-/* The box is as wide as the `[ ]` it replaces, so wrapped lines keep hanging under the label. */
+/* The marker is as wide as the `[ ] ` it replaces, so wrapped lines keep hanging under the label. */
 .pt-editor-host .pt-marker {
   display: inline-block;
-  width: 3ch;
   cursor: pointer;
-  text-align: center;
   text-indent: 0;
   white-space: nowrap;
+}
+
+/*
+ * The slot keeps the width of `[ ] ` so labels, hanging indents, status text
+ * and notes stay on one column. The symbol sits at the right of its box, so
+ * the gap to the label is about one space rather than one and a half.
+ */
+.pt-editor-host .pt-marker-box {
+  display: inline-block;
+  width: 3ch;
+  padding-right: 0.15ch;
+  text-align: right;
 }
 
 .pt-editor-host .pt-marker-symbol {
@@ -926,6 +1093,26 @@ button {
   }
 }
 
+/* A narrow split beside a terminal: less side inset, so the text keeps its width. */
+@media (max-width: 640px) {
+  .pt-shell {
+    --pt-content-inset: 14px;
+  }
+
+  .pt-header {
+    padding: 0 10px;
+  }
+
+  .pt-header-actions {
+    gap: 12px;
+    padding-left: 12px;
+  }
+
+  .pt-status-bar {
+    padding: 0 10px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pt-editor-host .pt-remote-highlight {
     animation: none;
@@ -939,6 +1126,13 @@ button {
   }
 
   .pt-editor-host .pt-marker {
+    color: CanvasText;
+  }
+
+  .pt-key {
+    border-color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
     color: CanvasText;
   }
 }
