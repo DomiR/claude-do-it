@@ -11,7 +11,7 @@ export type ParsedCommand =
   | { kind: "todo-start"; options: GlobalOptions; path: string; version: number; section?: string; target: string }
   | { kind: "todo-list"; options: GlobalOptions; path: string; section?: string }
   | { kind: "diff"; options: GlobalOptions; path: string; since: number; wait: number }
-  | { kind: "watch"; options: GlobalOptions; path: string; displayPath: string; since?: number; section?: string; todos: boolean; settle?: number; quiet: boolean }
+  | { kind: "watch"; options: GlobalOptions; path: string; displayPath: string; since?: number; section?: string; todos: boolean; settle?: number; settleLine: number; quiet: boolean }
   | { kind: "status"; options: GlobalOptions }
   | { kind: "stop"; options: GlobalOptions }
   | { kind: "skill-install"; options: GlobalOptions; dir?: string; force: boolean }

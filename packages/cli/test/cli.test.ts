@@ -32,9 +32,15 @@ describe("cli argument parsing", () => {
     expect(await parse(["watch", "TODO.md", "--quiet"])).toMatchObject({ kind: "watch", quiet: true })
   })
 
+  it("defaults --settle-line to two seconds", async () => {
+    expect(await parse(["watch", "TODO.md", "--settle", "25"])).toMatchObject({ kind: "watch", settle: 25, settleLine: 2 })
+    expect(await parse(["watch", "TODO.md", "--settle", "25", "--settle-line", "0.5"])).toMatchObject({ kind: "watch", settle: 25, settleLine: 0.5 })
+  })
+
   it("rejects missing and out of range arguments", async () => {
     await expect(parse(["read"])).rejects.toThrow()
     await expect(parse(["watch", "TODO.md", "--settle", "601"])).rejects.toThrow()
+    await expect(parse(["watch", "TODO.md", "--settle-line", "-1"])).rejects.toThrow()
   })
 })
 

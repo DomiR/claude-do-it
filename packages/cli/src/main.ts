@@ -7,6 +7,7 @@ import { openBrowser } from "./browser"
 import { changeJson, changeReply, diffText, editReply, errorFields, errorMessage, errorTag, mismatchReply, rpcErrorCode, rpcExitCode, todosText, writeJson, writeLine } from "./output"
 import { cliConfigFor, cliFormatter, cliPresenter, makeCli, normalizeArgv } from "./parser"
 import { installSkill, readSkill, skillSource } from "./skill"
+import { endsLine } from "./settle"
 import { resolveText } from "./stdin"
 import type { GlobalOptions, ParsedCommand } from "./types"
 
@@ -168,19 +169,23 @@ function watchCommand(command: Extract<ParsedCommand, { kind: "watch" }>) {
     let deleted = false
     let lastFailure: string | undefined
     // The settle timer: a quiet period after the last change, then one "settled" line.
+    // When the person's latest change ends a line, the quiet period is --settle-line.
     const timer = yield* FiberHandle.make<void, never>()
     let pending = false
     let settleVersion = 0
     let settleBy: string[] = []
-    const settled = (delay: Duration.Duration) => Effect.sleep(delay).pipe(Effect.andThen(Effect.uninterruptible(Effect.suspend(() => {
+    let lineEnded = false
+    let lastText: string | undefined
+    const settled = (delay: Duration.Duration, reason: "line" | "quiet") => Effect.sleep(delay).pipe(Effect.andThen(Effect.uninterruptible(Effect.suspend(() => {
       // Taking and resetting the state is one synchronous step, so a change
       // that arrives while the line is written starts a fresh settle period.
       const version = settleVersion
       const by = settleBy
       pending = false
       settleBy = []
+      lineEnded = false
       const byText = by.join(", ")
-      return outputText(command.options, `Settled at version ${version}${byText ? ` by ${byText}` : ""}`, { event: "settled", version, by })
+      return outputText(command.options, `Settled at version ${version}${byText ? ` by ${byText}` : ""}`, { event: "settled", version, by, reason })
     }))))
     const schedule = (version: number, by: ReadonlyArray<Author>) => Effect.suspend(() => {
       if (command.settle === undefined) return Effect.void
@@ -188,7 +193,8 @@ function watchCommand(command: Extract<ParsedCommand, { kind: "watch" }>) {
       settleVersion = version
       settleBy = [...new Set(pending ? [...settleBy, ...authors] : authors)]
       pending = true
-      return FiberHandle.run(timer, settled(Duration.millis(command.settle * 1000))).pipe(Effect.asVoid)
+      const short = lineEnded && command.settleLine < command.settle
+      return FiberHandle.run(timer, settled(Duration.millis((short ? command.settleLine : command.settle) * 1000), short ? "line" : "quiet")).pipe(Effect.asVoid)
     })
     while (!deleted) {
       const daemon = yield* Effect.exit(ensureDaemon())
@@ -206,19 +212,25 @@ function watchCommand(command: Extract<ParsedCommand, { kind: "watch" }>) {
       const info = daemon.value
       if (pid !== undefined && pid !== info.pid) announce = true
       pid = info.pid
-      const payload = { path: command.path, ...(since === undefined ? {} : { since }), ...(command.section === undefined ? {} : { section: command.section }), text: false }
+      const payload = { path: command.path, ...(since === undefined ? {} : { since }), ...(command.section === undefined ? {} : { section: command.section }), text: command.settle !== undefined }
       const exit = yield* Effect.exit(rpc(info, client => client.watch(payload).pipe(Stream.runForEach((event: WatchEvent) => Effect.gen(function* () {
         lastFailure = undefined
         if (event._tag === "Watching") {
           backoff = 250
           if (first) { yield* initialWatchOutput(command, event.version); first = false }
           else if (announce) { yield* restartOutput(command, event.version); announce = false }
+          // A resumed watch's Watching can be ahead of the Change that follows it.
+          if (lastText === undefined) lastText = event.text
           since = event.version; return
         }
-        if (event._tag === "Resync") { yield* resyncOutput(command, event.version); if (command.settle !== undefined) yield* schedule(event.version, []); since = event.version; announce = false; return }
+        if (event._tag === "Resync") { lastText = event.text; lineEnded = false; yield* resyncOutput(command, event.version); if (command.settle !== undefined) yield* schedule(event.version, []); since = event.version; announce = false; return }
         if (event._tag === "Deleted") { yield* deletedOutput(command); deleted = true; return }
         since = event.to
+        const before = lastText
+        lastText = event.text
         if (sameAgent(event.by, command.options.as)) return
+        // Agent changes keep the mode of the person's pending change.
+        if (event.by.some(author => author._tag !== "Agent")) lineEnded = before !== undefined && event.text !== undefined && endsLine(before, event.text)
         if (command.settle !== undefined) { yield* schedule(event.to, event.by); return }
         if (command.todos) { if (!event.todos.length) return; if (command.options.json) yield* writeJson(changeJson(event)); else yield* writeLine(todosText(event.todos)) }
         else if (command.options.json) yield* writeJson(changeJson(event))
