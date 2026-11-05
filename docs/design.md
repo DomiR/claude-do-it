@@ -1,9 +1,7 @@
 # claude-do-it design (v1)
 
 The contract every package is built against. [plan.md](plan.md) says what and
-why; this file says exactly how. Sheprd's `sheprd-doc` crate is the
-reference implementation of the document model; where this file is silent,
-copy Sheprd.
+why; this file says exactly how.
 
 ## Names
 
@@ -100,20 +98,20 @@ class Document {
 
   // The person (browser, TUI). Never refused for being stale. When base is the
   // current version, `LoroText.update(text)` runs on the main doc with its own
-  // stable peer, no fork (Herdr Document::edit). When base is older, fork at
+  // stable peer, no fork. When base is older, fork at
   // base's frontiers (fresh peer), `update(text)` there, export, import, free
   // the fork: concurrent agent, file, and other user edits survive.
   // Throws DocError("forgotten") when base is no longer kept.
   userEdit(base: Version, text: string): Applied
 
-  // Another program changed the file (Herdr merge_disk). When the synced
+  // Another program changed the file. When the synced
   // frontiers are the current ones, update the main doc directly; otherwise
   // fork at the synced frontiers (fresh peer), `update(diskText)`, import.
   // Returns false when the disk text is the synced text, the current text, or
   // one of the document's own writes in flight (no version taken).
   mergeFile(diskText: string): boolean
 
-  // Disk write protocol (Herdr to_write / wrote / not_written): at most 8
+  // Disk write protocol (toWrite, wrote, notWritten): at most 8
   // writes in flight are remembered so their echo is recognised.
   get dirty(): boolean
   toWrite(): WriteTicket                    // opaque snapshot: text, frontiers, version
@@ -131,14 +129,14 @@ class Document {
 }
 ```
 
-Rules copied from Herdr:
+Rules:
 
 - Every change by anyone takes exactly the next version and records
   `(version, frontiers, origin)` in a ring of `KEPT`.
 - Forks at an old frontier (`userEdit`, `mergeFile`) always use a fresh random
   peer, never a reused one (a reused peer at an old frontier duplicates op ids);
   the first test asserts `forkAt` gives a new peer. Agent edits fork the
-  current state and may reuse a stable per agent peer (Herdr does).
+  current state and may reuse a stable per agent peer.
 - Every temporary fork (`textAt`, `changes`, merges) is `.free()`d after use:
   wasm memory otherwise shrinks only at GC. `changes` runs per watcher per wake,
   so keep it cheap (one `textAt` per call).
@@ -163,12 +161,12 @@ findTodo(text, query: number | string, section?): Todo   // by number, else exac
 setTodoState(text, todo, state): Edit[]     // empty when already in that state
 addTodo(text, item, section?): Edit[]       // "- [ ] item" after the last task (of the section), matching its
                                             // indent; else at the end of the section or document
-appendBlock(text, block, section?): Edit[]  // block at the end of the document or section, blank line rules as Herdr
+appendBlock(text, block, section?): Edit[]  // block at the end of the document or section, after one blank line (none between list items)
 replaceUnique(text, old, new, section?): Edit[]  // exactly one occurrence, else not-found / ambiguous
 
 type TodoChangeKind = "added" | "removed" | "checked" | "unchecked" | "cancelled" | "uncancelled" | "edited"
 interface TodoChange { kind: TodoChangeKind; number: number; text: string; line: number; oldLine: number }
-todoChanges(old, new): TodoChange[]         // Herdr todo/changes.rs, rendered "checked 3. Ship"
+todoChanges(old, new): TodoChange[]         // rendered "checked 3. Ship"
 formatTodoChange(c): string
 ```
 

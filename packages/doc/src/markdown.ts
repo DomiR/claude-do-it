@@ -1,6 +1,6 @@
 import type { TaskState } from "./todo"
 
-/** The small block parser shared by sections and task operations, as in Herdr. */
+/** The small block parser shared by sections and task operations. */
 export interface Line {
   from: number
   to: number

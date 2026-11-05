@@ -63,7 +63,7 @@ export function applyEdits(text: string, edits: ReadonlyArray<Edit>): string {
   return result
 }
 
-/** Map an offset through ascending, nonoverlapping edits, as in Herdr. */
+/** Map an offset through ascending, nonoverlapping edits. */
 export function mapOffset(offset: number, edits: ReadonlyArray<Edit>): number {
   let shift = 0
   for (const edit of edits) {
