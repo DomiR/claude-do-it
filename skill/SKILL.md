@@ -1,6 +1,6 @@
 ---
 name: do-it
-description: "Run a Markdown todo as the user's only interface to a team of agents. `/do-it [file]` opens the todo (default TODO.md, created when missing) in the browser; `/do-it <request>` first runs the request read only and writes its result into the todo as one task per item, which wait until the person writes under them. Then this session becomes the conductor: it watches the file, sizes every task line, plans it with Fable or GPT-6 Astra, delivers it through worker agents in their own worktrees and one shared tester, and writes status, questions, and results back under each task. Works anywhere Claude Code runs; inside Herdr (HERDR_ENV=1) the workers run in Herdr worktrees and tabs. Also the reference for reading and changing any do-it document with versioned `do-it` commands. Trigger on '/do-it', 'do-it', 'do it from my todo', 'work through TODO.md', 'conduct this todo'."
+description: "Run a Markdown todo as the user's only interface to a team of agents. `/do-it [file]` opens the todo (default TODO.md, created when missing) in the browser; `/do-it <request>` first runs the request read only and writes its result into the todo as one task per item, which wait until the person writes under them. Then this session becomes the conductor: it watches the file, sizes every task line, plans it with Fable or GPT-6 Astra, delivers it through worker agents in their own worktrees and one shared tester, and writes status, questions, and results back under each task. Works anywhere Claude Code runs: inside Herdr, Orca, or T3 Code each worker gets its own worktree and session in that app; in any other terminal the workers are Claude Code subagents in worktrees. Also the reference for reading and changing any do-it document with versioned `do-it` commands. Trigger on '/do-it', 'do-it', 'do it from my todo', 'work through TODO.md', 'conduct this todo'."
 ---
 
 # do-it
@@ -49,6 +49,28 @@ STATE=${DO_IT_HOME:-$HOME/.do-it}/runs/$SLUG   # inbox.md, tests.md, plans/, log
 mkdir -p "$STATE/plans" "$STATE/logs"
 ```
 
+Find out where this session runs, once. It decides how workers start (Step 4) and needs no app to be installed:
+
+```bash
+detect_harness() {
+  if [ "${HERDR_ENV:-}" = 1 ] && command -v herdr >/dev/null; then echo herdr; return; fi
+  if [ -n "${ORCA_TERMINAL_HANDLE:-}${ORCA_WORKTREE_ID:-}" ] && command -v orca >/dev/null; then echo orca; return; fi
+  if command -v t3 >/dev/null; then
+    if [ -n "${T3CODE_PROJECT_ROOT:-}${T3CODE_WORKTREE_PATH:-}" ]; then echo t3code; return; fi
+    pid=$PPID   # T3 Code does not mark its agent sessions yet, so look for it among the parent processes
+    for _ in 1 2 3 4 5 6 7 8; do
+      case "$pid" in ''|0|1) break ;; esac
+      case "$(ps -o comm= -p "$pid" | tr '[:upper:]' '[:lower:]')" in *t3code*|*"t3 code"*) echo t3code; return ;; esac
+      pid=$(ps -o ppid= -p "$pid" | tr -d ' ')
+    done
+  fi
+  echo plain
+}
+detect_harness > "$STATE/harness"; cat "$STATE/harness"   # later Bash calls: HARNESS=$(cat "$STATE/harness")
+```
+
+`herdr`, `orca`, and `t3code` start workers as sessions in that app; `plain` (any other terminal) uses Claude Code subagents, which need nothing beyond Claude Code.
+
 Open it for the person. It starts or reuses the daemon, creates the file from a template when missing, opens the browser, and returns at once:
 
 ```bash
@@ -60,7 +82,7 @@ fi
 do-it read "$TODO"
 ```
 
-Tell the person in one line that the todo is open and that they can add tasks there. Create the two agent channels with your Write tool if missing (nobody has them open yet): `$STATE/inbox.md` (`# Inbox`, `## Messages`) and `$STATE/tests.md` (`# Tests`, `## Queue`). If `$STATE/state.json` exists, this is a resume: reconcile it with what still runs (Herdr: `herdr agent list`, `herdr worktree list --json`; otherwise the worktrees in `git worktree list`) and only dispatch tasks that have no live worker and are not delivered.
+Tell the person in one line that the todo is open and that they can add tasks there. Create the two agent channels with your Write tool if missing (nobody has them open yet): `$STATE/inbox.md` (`# Inbox`, `## Messages`) and `$STATE/tests.md` (`# Tests`, `## Queue`). If `$STATE/state.json` exists, this is a resume: reconcile it with what still runs (Herdr: `herdr agent list`, `herdr worktree list --json`; Orca: `orca worktree list --json`, `orca terminal list --json`; T3 Code: `t3 thread list`; otherwise the worktrees in `git worktree list`) and only dispatch tasks that have no live worker and are not delivered.
 
 ## Step 1b. Seed from a request
 
@@ -88,7 +110,7 @@ Start each watch with the Monitor tool; every printed line is an event:
 ```bash
 do-it watch "$TODO" --as conductor --settle 25          # one line once the person stopped typing for 25 s
 do-it watch "$STATE/inbox.md" --as conductor --section messages
-do-it watch "$STATE/tests.md" --as conductor --todos    # outside Herdr only: when to start the tester
+do-it watch "$STATE/tests.md" --as conductor --todos    # plain and t3code: when to start or wake the tester
 ```
 
 Use `--quiet` to skip the initial `Watching PATH at version N` line instead of filtering it with grep. A filter must be line buffered, or lines arrive late. `Settled at version N by the user` means the person changed the todo and paused. Then `do-it read "$TODO"` once and compare it with your picture of the file. Never act on a half typed line. `Missed changes, now at version N: run do-it read` means the watch history was forgotten, so read the current todo before acting. `Daemon restarted, now version N` needs nothing but a fresh read. When re-arming a watch, pass `--since` the last version you have read, not the original one. Exit 9 means the todo was deleted or moved: stop and report in chat.
@@ -125,7 +147,7 @@ Never rewrite the person's own task text. Your lines are indented sub bullets st
 
 ## Step 4. Deliver
 
-The roles are the same in both transports:
+The roles are the same in every transport; `HARNESS` from Step 1 picks the transport below:
 
 | Role | Who | Count | Writes code | Runs builds or tests |
 | --- | --- | --- | --- | --- |
@@ -142,9 +164,9 @@ do-it todo add "$STATE/tests.md" --version <v> --section queue --as tN \
 do-it diff "$STATE/tests.md" --since <v> --wait 100   # loop on exit 4; read the answer under your request
 ```
 
-### Outside Herdr: Claude Code subagents
+### Any other terminal (`HARNESS=plain`): Claude Code subagents
 
-Subagents cannot start subagents and cannot be prompted while they run, so you call every agent yourself, always with `run_in_background: true` so watch events keep arriving.
+This needs nothing but Claude Code: `isolation: "worktree"` makes each worker's worktree. Subagents cannot start subagents and cannot be prompted while they run, so you call every agent yourself, always with `run_in_background: true` so watch events keep arriving.
 
 1. **Plan.** S and M: `Agent(subagent_type: "fable-advisor")` with the task, the repo, and what triage found; ask for a plan in under 300 words. L: `Agent(subagent_type: "astra-implementer")` with a brief that forbids edits and asks only for a plan at effort `xhigh`, then one `fable-advisor` pass over it (when `astra-implementer` is not among your agent types or reports the codex CLI unavailable, plan L tasks with `fable-advisor` and say so in the status line). Save the plan to `$STATE/plans/tN.md` and set the status line to `**tN** planned by <Fable or Astra>: <summary in a few words>`.
 2. **Build.** `Agent(subagent_type: "general-purpose", isolation: "worktree", run_in_background: true)` with the worker brief below. Keep the agent id in `state.json`.
@@ -189,7 +211,18 @@ If a command would run longer than 30 minutes or needs a desktop you do not have
 with the reason. When no open request is left, end your run with "QUEUE EMPTY".
 ```
 
-### Inside Herdr (`HERDR_ENV=1`): worktrees and tabs
+### Session workers (Herdr, Orca, T3 Code)
+
+In these apps every worker is a full Claude session in its own worktree (an architect), not a subagent, so the person sees each task in the app and it can call its own subagents. Its brief is the worker brief above with `CWD: <worktree>   BRANCH: <branch>   BASE: <base branch>   REPO RULES: read CLAUDE.md/AGENTS.md` in place of the REPO line (`CWD: the worktree you start in` when the app makes the worktree), plus:
+
+```
+PLAN AND REVIEW: plan with fable-advisor (S, M) or Astra (L, else fable-advisor) before you edit, and get a
+  fable-advisor review of your branch before DONE.
+CONDUCTOR: talk to the conductor only through the inbox. Answers arrive as prompts starting "From the TODO".
+  After a question, wait for that prompt instead of ending your session.
+```
+
+### Inside Herdr (`HARNESS=herdr`): worktrees and tabs
 
 The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc` commands. Load the [[herdr]] skill for the CLI; never split your own pane.
 
@@ -201,7 +234,7 @@ The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc`
   herdr agent prompt do-tester "$TESTER_BRIEF"
   ```
   Use the tester brief above, but instead of ending on an empty queue it keeps watching with `do-it watch <TESTS> --todos --as tester` (Monitor tool). Check `herdr agent list` first: reuse a live `do-tester` only when its cwd is this `$STATE`; on `agent_name_taken` pick `do-<SLUG first 4>-tester`.
-- **Worker per task**: a Herdr worktree and space (see [[herdrworktree]], `--no-focus`), then a Claude architect in its root pane named `do-tN` (`claude-opus-5-5[1m]`, effort high, xhigh for L) that follows [[orchestration]]: it plans with `fable-advisor` (S, M) or a read only Astra tab (L), routes the typing to Codex lanes in herdr tabs, and gets a `fable-advisor` review before reporting done. Its brief is the worker brief above with `CWD: <worktree>   BRANCH: <branch>   BASE: <base branch>   REPO RULES: read CLAUDE.md/AGENTS.md` in place of the REPO line, plus: "Talk to the conductor only through the inbox; answers arrive as prompts starting From the TODO. Wait for lanes with `herdr agent wait <lane> --timeout 1800000`, never by grepping a screen." Start and brief it as herdrdocwatch does:
+- **Worker per task**: a Herdr worktree and space (see [[herdrworktree]], `--no-focus`), then a Claude architect in its root pane named `do-tN` (`claude-opus-5-5[1m]`, effort high, xhigh for L) that follows [[orchestration]]: it plans with `fable-advisor` (S, M) or a read only Astra tab (L), routes the typing to Codex lanes in herdr tabs, and gets a `fable-advisor` review before reporting done. Its brief is the session worker brief above, plus: "Wait for lanes with `herdr agent wait <lane> --timeout 1800000`, never by grepping a screen." Start and brief it as herdrdocwatch does:
   ```bash
   herdr agent start do-tN --kind claude --pane "$ROOT_PANE" -- --model 'claude-opus-5-5[1m]' --effort high --dangerously-skip-permissions
   herdr agent prompt do-tN "$BRIEF" --wait --until working --timeout 20000
@@ -210,6 +243,38 @@ The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc`
 - **Answers** go to the architect as `herdr agent prompt do-tN "From the TODO: <their text>"`; it keeps working while it waits.
 - **Parked architects**: when no inbox message came from a task for 30 minutes, read its screen (`herdr agent read do-tN --source recent-unwrapped --lines 80`) and its lanes'; if a lane finished and the architect still waits, prompt it to continue.
 
+### Inside Orca (`HARNESS=orca`): worktrees and terminals
+
+Each task becomes an Orca workspace with Claude in its first terminal. Read Orca's guide for this CLI version once (`orca skills get orca-cli`), pass `--json`, and read the fields named here from the results.
+
+- **Worker per task**: an independent worktree from the repo's default base, with the brief as Claude's first prompt:
+  ```bash
+  W=$(orca worktree create --name do-tN-<short-slug> --no-parent --agent claude --prompt "$BRIEF" --comment "tN planning" --json)
+  ```
+  Keep `worktree.id` (the whole `<repoId>::<path>`), `worktree.path`, and `startupTerminal.handle` in `state.json`. `--agent claude` uses Orca's Claude launcher, so the model and effort are the ones set in Orca.
+- **Tester**: one terminal in your own worktree, started once and watching the queue itself, as in Herdr. Reuse a live `do-tester` from `orca terminal list --json` first:
+  ```bash
+  T=$(orca terminal create --worktree active --title do-tester --command "claude --model claude-sonnet-5 --effort high --dangerously-skip-permissions" --json)
+  orca terminal wait --terminal "$H" --for tui-idle --timeout-ms 60000 --json   # $H: the handle in $T; send only when wait.satisfied is true
+  orca terminal send --terminal "$H" --text "$TESTER_BRIEF" --enter --wait-submit 10 --json
+  ```
+- **The card mirrors the status line**: `orca worktree set --worktree "id:$WT" --comment "<status in a few words>" --workspace-status in-progress --json` (`in-review` while Fable reviews, `completed` once delivered), and `--unread` while a question waits for the person.
+- **Answers**: `orca terminal send --terminal "$H" --text "From the TODO: <their text>" --enter --wait-submit 10 --json`. `accepted: true` is enough; never resend on silence.
+- **Parked workers**: after 30 quiet minutes, `orca terminal read --terminal "$H" --json`, and prompt it to continue if it waits. After an Orca restart or a `terminal_handle_stale` error, take the new handle from `orca terminal list --worktree "id:$WT" --json` and use only that one.
+
+### Inside T3 Code (`HARNESS=t3code`): threads in worktrees
+
+Each task becomes a T3 Code thread in its own worktree. Flags differ between T3 Code versions: run `t3 thread start --help` once and use only flags it lists.
+
+- **Worker per task**:
+  ```bash
+  ID=$(t3 thread start . "$BRIEF" --worktree "$BASE" --title "do-tN <task in a few words>" --json | jq -r '.threadId // .thread.id // .id')
+  ```
+  `$BASE` is the repo's integration branch (`origin/main` unless the repo says otherwise). Add `--provider claudeAgent --model claude-opus-5-5` (and `--effort high`) only when `--help` lists them; otherwise the thread uses the project's default model. Keep the thread id in `state.json`.
+- **Tester**: one thread in the project folder (no `--worktree`), started when the first request is queued: `TID=$(t3 thread start . "$TESTER_BRIEF" --title do-tester --json | jq -r '.threadId // .thread.id // .id')`. It drains the queue and ends its turn with `QUEUE EMPTY`. For later requests, `t3 thread send "$TID" "New test requests are queued: drain the queue"`; never start a second tester.
+- **Answers**: `t3 thread send "$ID" "From the TODO: <their text>"`. A send never interrupts; a busy thread takes it as its next turn.
+- **Parked workers**: after 30 quiet minutes, `t3 thread show "$ID"`, and nudge it when it waits. A thread that waits for an answer inside the app (exit code 2 from a `--wait` send) gets a question line under its task.
+
 ## Step 5. React to events
 
 | Event | Do |
@@ -217,7 +282,7 @@ The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc`
 | New task line | Step 3 |
 | The person writes a note under a `listed` item, or edits its text | triage it now (Step 3) with their note as the instruction |
 | The person adds a section whose text is an instruction ("all PRs in this section: ...") | a standing rule: apply it to every item moved or added into that section, as that item's instruction; an empty section waits |
-| The person edits or adds notes under an active task | forward them: `SendMessage` to the worker (outside Herdr, once it has stopped) or `herdr agent prompt do-tN "From the TODO: ..."` |
+| The person edits or adds notes under an active task | forward them as `From the TODO: ...` through the worker's transport: `SendMessage` (plain, once it has stopped), `herdr agent prompt do-tN`, `orca terminal send`, or `t3 thread send` |
 | The person answers a question (an indented line under `**tN question:**`) | forward it the same way, then remove your question line |
 | The person deletes a task, or writes "stop" under it | tell its worker to stop and commit its work in progress; status `stopped`, keep the worktree |
 | The person unchecks a delivered task | their new note under it is a follow up for the same worktree and worker |

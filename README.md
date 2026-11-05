@@ -74,8 +74,14 @@ The browser opens on the todo. Add one task per line. The session sizes each
 task, plans it, starts a worker in its own worktree, and writes one status line
 under it, plus any question it needs you to answer (answer by writing under the
 question). Delivered tasks are checked off with their branch and test result.
-Inside Herdr (`HERDR_ENV=1`) the workers are Claude architects in Herdr
-worktrees and tabs with Codex lanes; elsewhere they are Claude Code subagents.
+The skill checks where it runs and starts workers there:
+
+| Where | Workers |
+| --- | --- |
+| Herdr (`HERDR_ENV=1`) | Claude architects in Herdr worktrees and tabs, with Codex lanes |
+| [Orca](https://www.onorca.dev) | one Orca worktree per task, with Claude in its first terminal (`orca worktree create --agent claude`) |
+| [T3 Code](https://github.com/pingdotgg/t3code), with its `t3` CLI | one T3 Code thread per task, in its own worktree (`t3 thread start --worktree`) |
+| Any other terminal | Claude Code subagents in worktrees, which need nothing beyond Claude Code |
 
 Set `DO_IT_BROWSER` to the command that should open links, or to `true` to
 open nothing.
