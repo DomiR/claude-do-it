@@ -1,5 +1,5 @@
 import { APP_VERSION } from "@do-it/protocol"
-import { Effect, FileSystem, Option, Path, PlatformError } from "effect"
+import { Effect, FileSystem, Option, Path, PlatformError, Semaphore } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { alive, DaemonUnavailable, probeHealth, readDaemonInfo } from "./info"
 import { paths } from "./paths"
@@ -14,6 +14,12 @@ function unless<B>(reason: PlatformError.SystemErrorTag, fallback: B) {
   return <A, R>(effect: Effect.Effect<A, PlatformError.PlatformError, R>): Effect.Effect<A | B, PlatformError.PlatformError, R> =>
     Effect.catch(effect, error => error.reason._tag === reason ? Effect.succeed(fallback) : Effect.fail(error))
 }
+
+/**
+ * Each lock attempt checks and then acts on the lock directory. Callers in one
+ * process take turns, so one never removes a lock another has just created.
+ */
+const lockTurn = Semaphore.makeUnsafe(1)
 
 /** `exec` keeps the shell's pid for the daemon, and the redirection sends its output to the log. */
 const daemonScript = 'exec "$0" "$1" >>"$2" 2>&1'
@@ -75,7 +81,7 @@ export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: Ensure
     const abandoned = pid !== undefined && Number.isSafeInteger(pid) && pid > 0 ? !alive(pid) : Date.now() - modified > 10_000
     if (abandoned) yield* fs.remove(p.lock, { recursive: true, force: true })
     return undefined
-  }).pipe(Effect.mapError(unavailable))
+  }).pipe(lockTurn.withPermit, Effect.mapError(unavailable))
   let inode: bigint | null | undefined
   const lockDeadline = Date.now() + 12_000
   while (inode === undefined) {
@@ -87,6 +93,7 @@ export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: Ensure
   const held = inode
   const release = fs.stat(p.lock).pipe(
     Effect.flatMap(stat => Option.getOrNull(stat.ino) === held ? fs.remove(p.lock, { recursive: true, force: true }) : Effect.void),
+    lockTurn.withPermit,
     Effect.ignore,
   )
 
