@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { existsSync, unlinkSync } from "node:fs"
 import { join } from "node:path"
 import { ensureDaemon, withClient } from "@do-it/client"
+import { runClient } from "../packages/client/test/environment"
 import { diskText, jsonLine, makeFixture, readLines, runCli, startCli, wait, writeDocument } from "./helpers"
 
 // Every test spawns the daemon and several CLI processes; give each the same budget under load.
@@ -21,7 +22,7 @@ describe("do-it CLI end to end", () => {
   it("merges concurrent CLI agents and stale browser syncs", async () => {
     const fixture = makeFixture()
     await openFixture(fixture)
-    const info = await Effect.runPromise(ensureDaemon({ home: fixture.home }))
+    const info = await runClient(ensureDaemon({ home: fixture.home }))
     const browserReads = await Promise.all(Array.from({ length: 10 }, () => Effect.runPromise(withClient(info, client => client.read({ path: fixture.file })))))
     const browserWrites = browserReads.map((read, index) => Effect.runPromise(withClient(info, client => client.sync({ path: fixture.file, base: read.version, text: `${read.text.trimEnd()}\n- [ ] browser-${index}\n` }))))
     const agentWrites = Array.from({ length: 10 }, async (_, index) => {
