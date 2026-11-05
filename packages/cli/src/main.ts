@@ -6,6 +6,7 @@ import { CliConfig, CliOutput, Command } from "effect/cli"
 import { openBrowser } from "./browser"
 import { changeJson, changeReply, diffText, editReply, errorFields, errorMessage, errorTag, mismatchReply, rpcErrorCode, rpcExitCode, todosText, writeJson, writeLine } from "./output"
 import { cliConfigFor, cliFormatter, cliPresenter, makeCli, normalizeArgv } from "./parser"
+import { installSkill, readSkill, skillSource } from "./skill"
 import { resolveText } from "./stdin"
 import type { GlobalOptions, ParsedCommand } from "./types"
 
@@ -107,6 +108,38 @@ function stopCommand(command: Extract<ParsedCommand, { kind: "stop" }>) {
   return Effect.gen(function* () {
     const stopped = yield* stopDaemon()
     yield* outputText(command.options, stopped ? "Stopped" : "Not running", { stopped })
+    return 0
+  })
+}
+
+function skillInstallCommand(command: Extract<ParsedCommand, { kind: "skill-install" }>) {
+  return Effect.gen(function* () {
+    const result = yield* installSkill(command.dir, command.force)
+    if (result.kind === "occupied") {
+      yield* outputText(command.options, `${result.path} already exists and was not installed by do-it. Pass --force to replace it.`,
+        { error: { code: "Refused", message: "The skill directory already exists", path: result.path } })
+      return 1
+    }
+    const text = result.kind === "linked"
+      ? `${result.path} already links to this skill.`
+      : `${result.replaced ? "Updated" : "Installed"} the do-it skill in ${result.path}. In Claude Code, run /do-it to start.`
+    yield* outputText(command.options, text, { kind: result.kind, path: result.path })
+    return 0
+  })
+}
+
+function skillPathCommand(command: Extract<ParsedCommand, { kind: "skill-path" }>) {
+  return Effect.gen(function* () {
+    const path = yield* skillSource
+    yield* outputText(command.options, path, { path })
+    return 0
+  })
+}
+
+function skillShowCommand(command: Extract<ParsedCommand, { kind: "skill-show" }>) {
+  return Effect.gen(function* () {
+    const skill = yield* readSkill
+    yield* outputText(command.options, skill.content, skill)
     return 0
   })
 }
@@ -222,6 +255,9 @@ function commandEffect(command: ParsedCommand) {
     case "watch": return watchCommand(command)
     case "status": return statusCommand(command)
     case "stop": return stopCommand(command)
+    case "skill-install": return skillInstallCommand(command)
+    case "skill-path": return skillPathCommand(command)
+    case "skill-show": return skillShowCommand(command)
   }
 }
 
