@@ -4,6 +4,7 @@ import { APP_VERSION, formatVersionHeader, type Author, type EditOp, type WatchE
 import { Cause, Duration, Effect, Exit, FiberHandle, Stdio, Stream } from "effect"
 import { CliConfig, CliOutput, Command } from "effect/cli"
 import { openBrowser } from "./browser"
+import { doctorText, runDoctor } from "./doctor"
 import { changeJson, changeReply, diffText, editReply, errorFields, errorMessage, errorTag, mismatchReply, rpcErrorCode, rpcExitCode, todosText, writeJson, writeLine } from "./output"
 import { cliConfigFor, cliFormatter, cliPresenter, makeCli, normalizeArgv } from "./parser"
 import { installSkill, readSkill, skillSource } from "./skill"
@@ -99,7 +100,7 @@ function statusCommand(command: Extract<ParsedCommand, { kind: "status" }>) {
     const result = yield* rpc(info, client => client.status({}))
     const upSeconds = Math.floor(Math.max(0, Date.now() - result.startedAt) / 1000)
     const minutes = Math.floor(upSeconds / 60)
-    if (command.options.json) yield* writeJson({ pid: result.pid, port: result.port, startedAt: result.startedAt, appVersion: result.appVersion, documents: result.documents, upSeconds })
+    if (command.options.json) yield* writeJson({ pid: result.pid, port: result.port, startedAt: result.startedAt, appVersion: result.appVersion, ...(result.build === undefined ? {} : { build: result.build }), documents: result.documents, upSeconds })
     else yield* writeLine(`Daemon pid ${result.pid} on 127.0.0.1:${result.port}, up ${minutes}m\n${result.documents.map(document => `  ${document.path}  version ${document.version}  ${document.watchers} watchers`).join("\n")}`)
     return 0
   })
@@ -110,6 +111,14 @@ function stopCommand(command: Extract<ParsedCommand, { kind: "stop" }>) {
     const stopped = yield* stopDaemon()
     yield* outputText(command.options, stopped ? "Stopped" : "Not running", { stopped })
     return 0
+  })
+}
+
+function doctorCommand(command: Extract<ParsedCommand, { kind: "doctor" }>) {
+  return Effect.gen(function* () {
+    const report = yield* runDoctor(command.skillDir === undefined ? {} : { skillDir: command.skillDir })
+    yield* outputText(command.options, doctorText(report), report)
+    return report.ok ? 0 : 1
   })
 }
 
@@ -267,6 +276,7 @@ function commandEffect(command: ParsedCommand) {
     case "watch": return watchCommand(command)
     case "status": return statusCommand(command)
     case "stop": return stopCommand(command)
+    case "doctor": return doctorCommand(command)
     case "skill-install": return skillInstallCommand(command)
     case "skill-path": return skillPathCommand(command)
     case "skill-show": return skillShowCommand(command)

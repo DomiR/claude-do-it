@@ -193,7 +193,7 @@ TaskState, Todo, TodoChange, Section: as in doc, as Schemas
 Others   = { since: Version, diff: string | null }
 
 Rpcs (all payloads carry `path` unless noted):
-  status   {}                                → { pid, appVersion, port, startedAt, documents: [{ path, version, watchers }] }
+  status   {}                                → { pid, appVersion, port, startedAt, build?, documents: [{ path, version, watchers }] }
   stop     {}                                → {}                     // replies, then shuts down
   open     { path, create: boolean }         → { path, version, url, created: boolean }
   read     { path, section? }                → { version, text }
@@ -234,7 +234,7 @@ that event. `text: true` adds the full current text (the web uses it).
 
 - One per user. Listens on `127.0.0.1`, port `$DO_IT_PORT` or 47100, falling
   back to a free port when taken. `daemon.json` (mode 0600) records
-  `{ pid, port, appVersion, startedAt }`. The token lives in `token` (mode
+  `{ pid, port, appVersion, build, startedAt }`. The token lives in `token` (mode
   0600, 32 random bytes hex), created once and reused across restarts.
 - Auth: `POST /rpc` needs `Authorization: Bearer <token>` or the `do_it`
   cookie, whose value is `HMAC-SHA256(token, "web cookie")`, so open tabs stay
@@ -244,7 +244,11 @@ that event. `text: true` adds the full current text (the web uses it).
   `/?path=...`, so the token itself never appears in a URL. Every request must
   have `Host` equal to `127.0.0.1:<port>` or `localhost:<port>`; a present
   `Origin` must match it. `GET /health` is open and returns
-  `{ ok, pid, appVersion }` only.
+  `{ ok, pid, appVersion, build }` only. `build` is the npm build's id, or
+  `source:` and the real path of the checkout; it is reported, never used to
+  reuse or replace a daemon. A source build id tells checkouts apart, not
+  revisions: a daemon started before a `git pull` or an edit in the same
+  checkout still matches.
 - Static: everything else serves `packages/web/dist` (SPA fallback to
   `index.html`); when dist is missing, a one line page saying to build it.
 - Caps: request body 4 MiB, 64 open documents (idle ones without watchers
@@ -284,7 +288,8 @@ RpcClientLayer(info: DaemonInfo)            // RpcClient.layerProtocolHttp + ndj
 
 Global flags: `--json`, `--as NAME` (default `$DO_IT_AGENT`, else `agent`).
 Text after `--` may start with `-`; a TEXT of `-` reads stdin. Every command
-ensures the daemon first (exit 3 when it cannot start).
+but `doctor`, `stop`, `status` (which never starts one), and `skill` ensures the
+daemon first (exit 3 when it cannot start).
 
 | Command | Text reply |
 | --- | --- |
@@ -301,6 +306,7 @@ ensures the daemon first (exit 3 when it cannot start).
 | `watch PATH [--since N] [--section ID] [--todos] [--settle S [--settle-line L]] [--quiet]` | `Watching PATH at version N`, then per change `Version N by WHO` (or `Versions A-N by WHO, WHO`) and the diff, or with `--todos` lines like `checked 3. Ship`. `--quiet` omits the initial Watching line. A forgotten or future `--since` prints `Missed changes, now at version N: run do-it read`. Changes made only by `--as NAME` are skipped. `--settle S` prints `Settled at version N by WHO` after S quiet seconds, or after L seconds (`--settle-line`, default 2, never longer than S) when the latest change by the person or the file ends a line: it leaves the caret on an empty line or bare list marker under a written line (Enter after a task or text line, or Enter on an empty task). Agent changes keep the pending mode. With `--settle` the watch asks for the text with each change to tell. The JSON event carries `reason`: `line` or `quiet`. Reconnects with backoff; a daemon restart prints `Daemon restarted, now version N` when the resumed watch is still kept. Exit 9 when the document is deleted |
 | `status` | daemon pid, port, uptime, open documents |
 | `stop` | `Stopped` or `Not running` |
+| `doctor [--skill-dir DIR]` | one line per check (Bun version, the `do-it` PATH runs, the daemon's version and build, the installed skill against the shipped one), each problem followed by `fix: COMMAND` lines; exit 1 on any problem. Never starts the daemon |
 
 Replies (exact):
 
