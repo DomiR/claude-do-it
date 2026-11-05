@@ -45,7 +45,7 @@ The editor understands PlainTasks `@` tags on task lines and colours them. There
 
 | Tag | Who sets it | How |
 | --- | --- | --- |
-| `@started(26-11-05 14:02)` | the conductor | `do-it todo start`, the moment it takes a task (Step 3) |
+| `@started(26-11-05 14:02)` | the conductor | `do-it todo start`, the moment it takes a task (Step 3). The editor also completes `s` and `@s` to it; a stamp the person typed is replaced by `todo start` |
 | `@done (26-11-05 15:40)` | the conductor | `do-it todo check`, once the task is delivered (Step 5) |
 | `@cancelled (26-11-05 15:40)` | the person (`[-]` or Alt-click in the editor), or the conductor only when the person asks in words to cancel or drop the task | `do-it todo cancel` |
 | `@today`, `@high`, `@low`, `@critical` | the person | typed (Tab after `t`, `h`, `l`, `c`) |
@@ -146,7 +146,7 @@ Use `--quiet` to skip the initial `Watching PATH at version N` line instead of f
 
 ## Step 3. Triage each new task
 
-A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone.
+A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone.
 
 **Start it first.** The moment you take a task, before sizing it, run `todo start` on it, queued tasks included, so the person sees at once that it was picked up:
 
@@ -309,10 +309,11 @@ The same roles as herdrdocwatch, with `do-it` commands in place of Herdr's `doc`
 - **Messenger**: the same way, a second tab labelled `messenger` with an agent `do-messenger` (`--model claude-sonnet-5 --effort medium`) and the messenger brief, except that instead of ending on a drained inbox it keeps watching with `do-it watch <INBOX> --section messages --as messenger` (Monitor tool). The same reuse and name rules apply.
 - **Worker per task**: a Herdr worktree and space in the background (branch, base, and path as in [[herdrworktree]] mode A), then a Claude architect in its root pane named `do-tN` (`claude-opus-5-5[1m]`, effort high, xhigh for L) that follows [[orchestration]]: it plans with `fable-advisor` (S, M) or a read only Astra tab (L), routes the typing to Codex lanes in herdr tabs, and gets a `fable-advisor` review before reporting done. Its brief is the session worker brief above, plus: "Wait for lanes with `herdr agent wait <lane> --timeout 1800000`, never by grepping a screen." Create, start, and brief it without ever showing it:
   ```bash
-  WT=$(herdr worktree create --workspace "$HERDR_WORKSPACE_ID" --cwd "<repo>" --branch "<branch>" --base "<base>" \
-    --path "<repo>/.claude/worktrees/<branch>" --label "do-tN" --no-focus --json)
+  SRC_WS=$HERDR_WORKSPACE_ID; BRANCH=<branch>; BASE=<base>; REPO_ROOT=<repo root>
+  WT=$(herdr worktree create --workspace "$SRC_WS" --branch "$BRANCH" --base "$BASE" \
+    --path "$REPO_ROOT/.claude/worktrees/$BRANCH" --label "$BRANCH" --no-focus --json)
   herdr workspace focus "$HERDR_WORKSPACE_ID"     # always, at once: create can move focus even with --no-focus
-  ROOT_PANE=$(jq -r '.result.root_pane.pane_id // .root_pane.pane_id' <<<"$WT")
+  ROOT_PANE=$(jq -r .result.root_pane.pane_id <<<"$WT")
   herdr agent start do-tN --kind claude --pane "$ROOT_PANE" -- --model 'claude-opus-5-5[1m]' --effort high --dangerously-skip-permissions
   herdr agent prompt do-tN "$BRIEF" --wait --until working --timeout 20000
   ```
@@ -328,7 +329,7 @@ Each task becomes an Orca workspace with Claude in its first terminal. Read Orca
   ```bash
   W=$(orca worktree create --name do-tN-<short-slug> --no-parent --agent claude --prompt "$BRIEF" --comment "tN planning" --json)
   ```
-  Keep `worktree.id` (the whole `<repoId>::<path>`), `worktree.path`, and `startupTerminal.handle` in `state.json`. `--agent claude` uses Orca's Claude launcher, so the model and effort are the ones set in Orca. This creates the worktree in the background, without switching Orca's view: never add `--activate` or `--run-hooks` (both reveal the new worktree), and never pass `--focus` to `orca terminal create`.
+  Keep `worktree.id` (the whole `<repoId>::<path>`), `worktree.path`, and `startupTerminal.handle` in `state.json`. `--agent claude` uses Orca's Claude launcher, so the model and effort are the ones set in Orca. This creates the worktree in the background, without switching Orca's view (`--agent` alone stays in the background): never add `--activate` or `--run-hooks` (both reveal the new worktree), and never pass `--focus` to `orca terminal create`.
 - **Tester**: one terminal in your own worktree, started once and watching the queue itself, as in Herdr. Reuse a live `do-tester` from `orca terminal list --json` first:
   ```bash
   T=$(orca terminal create --worktree active --title do-tester --command "claude --model claude-sonnet-5 --effort high --dangerously-skip-permissions" --json)
