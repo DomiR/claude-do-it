@@ -29,7 +29,7 @@ function replacements(parts: ReadonlyArray<Change>, offset = 0): Edit[] {
   return result
 }
 
-/** Herdr's line-first diff, refined within small changed runs of lines.
+/** A line-first diff, refined within small changed runs of lines.
  * All ranges are UTF-16 offsets in old; jsdiff's character tokens are Unicode
  * code points, so offsets use value.length rather than its token count.
  */
@@ -52,7 +52,7 @@ export function edits(old: string, next: string): Edit[] {
       result.push(hunk)
       continue
     }
-    // Herdr gives each character refinement a quarter of the overall budget.
+    // Each character refinement gets a quarter of the overall budget.
     // Also respect the original deadline when several hunks need refinement.
     const refined = diffChars(before, hunk.insert, { timeout: Math.min(DEADLINE_MS / 4, remaining) })
     if (refined) result.push(...replacements(refined, hunk.from))

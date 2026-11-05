@@ -32,4 +32,4 @@ Effect v4 is GA (`effect` 4.1.2; 4.0.0 shipped 2026-10-01). kitlangton/effect-so
 
 ## Merging concurrent edits
 
-No kitlangton repo uses a CRDT. Use `loro-crdt` 1.17.1: the same engine as Herdr's `herdr-doc` (Rust `loro` 1.17). Herdr's model to copy (`herdr-gpui/crates/herdr-doc/src/version.rs`): a version counter mapped to Loro `Frontiers`, an edit applied on a fork at the named version then merged, stale versions answered with a diff capped at 64 KiB. The JS API has `forkAt(frontiers)`, `LoroText.update(newText)`, `import`/`export`, `subscribe`. `yjs` 13.6.33 is the fallback.
+No kitlangton repo uses a CRDT. Use `loro-crdt` 1.17.1. The model: a version counter mapped to Loro `Frontiers`, an edit applied on a fork at the named version then merged, stale versions answered with a diff capped at 64 KiB. The JS API has `forkAt(frontiers)`, `LoroText.update(newText)`, `import`/`export`, `subscribe`. `yjs` 13.6.33 is the fallback.

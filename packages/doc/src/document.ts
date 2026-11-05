@@ -159,7 +159,7 @@ export class Document {
       this.checkNextVersion()
       splice(this.body, edits(this.disk.text, diskText))
       this.doc.commit()
-      // synced.version is the last version known written, as in Herdr.
+      // synced.version is the last version known written.
       this.disk = { text: diskText, version: this.disk.version, frontiers: this.doc.frontiers() }
       return this.refresh({ kind: "file" })
     }

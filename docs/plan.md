@@ -32,7 +32,7 @@ Phase 4 (the TUI) is not started; `packages/tui` holds a README only.
 The binary is `do-it`, not `do`: `do` is a reserved word in bash and zsh, so
 `do read x` cannot run.
 
-## Version semantics (as Herdr's doc commands)
+## Version semantics
 
 - Every reply starts with the document's version; every change by anyone takes the next number.
 - An agent's change names the version it was based on. If the document changed since, nothing is applied and the reply is the latest version plus a diff since the caller's version (exit 1). With `--section ID`, a stale version still applies when that section is unchanged, and the reply carries the diff of the other sections.

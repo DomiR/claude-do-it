@@ -9,7 +9,7 @@ function roundTrip(old: string, next: string): Edit[] {
   return changes
 }
 
-// Ported from herdr-doc/src/diff/tests.rs, with offsets expressed in UTF-16.
+// Offsets are UTF-16 code units, as in JavaScript strings.
 test("identical texts need no edits", () => {
   expect(edits("a\nb\n", "a\nb\n")).toEqual([])
 })

@@ -112,7 +112,7 @@ describe("todo operations", () => {
     code(() => addTodo("", "a".repeat(MAX_ITEM + 1)), "too-large")
     for (const item of ["  ", "two\nlines", "two\rlines"]) code(() => addTodo("", item), "invalid")
   })
-  test("append block uses Herdr blank lines and preserves the section's final gap", () => {
+  test("append block adds one blank line, none between list items, and preserves the section's final gap", () => {
     expect(applyEdits("text", appendBlock("text", "more"))).toBe("text\n\nmore\n")
     expect(applyEdits("text\n\n\n", appendBlock("text\n\n\n", "more\r\n"))).toBe("text\n\nmore\n")
     expect(applyEdits("- a\n", appendBlock("- a\n", "- b"))).toBe("- a\n- b\n")
@@ -135,7 +135,7 @@ describe("todo operations", () => {
 })
 
 describe("todoChanges", () => {
-  test("Herdr replacement case reports checks, edits, additions, then removals", () => {
+  test("a replacement reports checks, edits, additions, then removals", () => {
     const old = "- [ ] warn when low\n- [ ] ship\n- [x] old idea\n- [ ] typo here\n"
     const next = "- [x] warn when low\n- [ ] ship\n- [ ] typo fixed\n- [ ] new one\n"
     expect(todoChanges(old, next).map(formatTodoChange)).toEqual([

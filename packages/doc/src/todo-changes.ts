@@ -29,7 +29,7 @@ function similarity(a: string, b: string): number {
   return 2 * equal / length
 }
 
-/** Port of Herdr's ordered task matching and best similar replacement pairing. */
+/** Ordered task matching, pairing each replacement with its most similar task. */
 export function todoChanges(old: string, next: string): TodoChange[] {
   const before = todos(old)
   const after = todos(next)
