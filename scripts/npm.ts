@@ -1,5 +1,5 @@
 /**
- * Builds the npm package in dist/npm: the CLI and the daemon bundled for Bun,
+ * Builds the npm package in dist/npm: the CLI and the daemon bundled and minified for Bun,
  * the built web app, and the Claude Code skill. Third party packages stay
  * external and become the package's dependencies (loro-crdt loads its wasm
  * from its own directory, so it cannot be bundled).
@@ -37,7 +37,7 @@ const bundles = [
 ]
 for (const bundle of bundles) {
   const result = await Bun.build({ entrypoints: [join(root, bundle.entry)], outdir: join(out, "bin"), naming: bundle.name,
-    target: "bun", external, define: bundle.define })
+    target: "bun", external, minify: true, define: { "process.env.NODE_ENV": JSON.stringify("production"), ...bundle.define } })
   if (!result.success) { for (const log of result.logs) console.error(log); process.exit(1) }
 }
 const cli = join(out, "bin", "do-it.js")
