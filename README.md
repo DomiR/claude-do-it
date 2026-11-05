@@ -71,10 +71,19 @@ ln -s "$PWD/skill" ~/.claude/skills/do-it                  # the skill, always c
 ```
 
 The browser opens on the todo (inside Sheprd, in a split beside the
-conversation). Add one task per line. The session sizes each
-task, plans it, starts a worker in its own worktree, and writes one status line
-under it, plus any question it needs you to answer (answer by writing under the
-question). Delivered tasks are checked off with their branch and test result.
+conversation). Add one task per line. The session is a conductor: it marks each
+task `@started` as soon as it picks it up, sizes it, and delegates the rest
+(planning, building, the single test queue, review, and answers to questions)
+to agents, watching them instead of doing the work itself. Each task gets one
+status line under it, plus any question it needs you to answer (answer by
+writing under the question). Delivered tasks are checked off with `@done`,
+their branch, and their test result. Once several tasks run, an optional
+messenger agent writes those lines for the conductor.
+
+PlainTasks tags steer the work: `@critical`, `@high`, and `@today` go first,
+`@low` last, and `@due(date)` reaches the worker as a deadline. Agents never
+change your tags; `@started`, `@done`, and `@cancelled` come only from the
+`do-it todo` commands.
 The skill checks where it runs and starts workers there:
 
 | Where | Workers |
