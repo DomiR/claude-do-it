@@ -34,7 +34,7 @@ Conductor 2 passed the reconciliation because it read the todo, the inbox, and `
 - **Orphaned watches.** `kill -9` on a conductor leaves its `do-it watch ... --as conductor` Monitor processes running. Conductor 1 also had two inbox watches at once, because it re-armed without stopping the first.
 - **Conductor 1 never watched the todo.** It armed only the inbox watch, filtered by grep to one task's `done` line, and noted that the Monitor expires after 5 minutes. A person's edit would have gone unseen until its next full read.
 - **Session workers had no delivery signal in the skill.** The session worker brief ended with "End with DONE" only, which stays in the worker's own session. Conductor 1 improvised a `tN done` inbox line in its brief; that line is what made both resumes work.
-- **`state.json` was too thin.** It held text, size, branch, status, and agent name, but no worktree path, pane, tester or messenger names, or last read versions, and conductors edited it with `sed`. Conductor 3 added `versions` but still left out the agent names and did not update the versions after later events.
+- **`state.json` was too thin.** It held text, size, branch, status, and agent name, but no worktree path, pane, tester or messenger names, or last read versions, and conductors edited it with `sed`. Conductor 3 ran with the rule asking for both: it saved `versions` but left out the tester and messenger names, and did not update the versions after later events.
 - **A non default `DO_IT_HOME` or `DO_IT_PORT` does not reach workers.** `herdr worktree create` has no `--env`, so a worker started there talks to the default daemon about the same files. The scratch run passed the export line in every brief by hand.
 - Conductors defined `do-it() { bunx claude-do-it "$@"; }` even with `do-it` on PATH, which runs the published npm build instead of the installed one. Harmless here.
 
@@ -45,6 +45,15 @@ Conductor 2 passed the reconciliation because it read the todo, the inbox, and `
 - **Step 3:** `state.json` also keeps the worktree path, pane or handle, the tester and messenger names and panes, and the last read `versions` of the todo, inbox, and tests, and is written whole with the Write tool.
 - **Session worker brief:** DONE appends `- tN done: ...` to the inbox.
 - **Step 1:** when `DO_IT_HOME` or `DO_IT_PORT` is set, every brief starts with the export line and every `herdr tab create` gets `--env`.
+
+After conductor 3's run, a review tightened Step 1a; these parts are not live tested yet:
+
+- The orphan check comes first: a watch is killed only when no live `claude` process is among its parents, and a live one means another conductor still runs, so the new session does not resume.
+- Workers are matched by the worktree path and branch in `state.json`, the agent name only as a cross check.
+- A gone worker restarts in its saved worktree in every transport (plain: `Agent` without `isolation`, with `CWD` in the brief).
+- Statuses other than delivered, building, and queued follow the Step 5 rows for what changed.
+- The `ENV:` brief line asks for the export in the same Bash call as every do-it command, since variables do not survive between calls.
+- The `tests.md` watch stays limited to plain and t3code.
 
 No CLI change was needed: `do-it read`, `watch --since`, and `diff --since` cover the catch up.
 
