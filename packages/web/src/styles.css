@@ -875,10 +875,16 @@ button {
   white-space: nowrap;
 }
 
+/*
+ * The slot keeps the width of `[ ] ` so labels, hanging indents, status text
+ * and notes stay on one column. The symbol sits at the right of its box, so
+ * the gap to the label is about one space rather than one and a half.
+ */
 .pt-editor-host .pt-marker-box {
   display: inline-block;
   width: 3ch;
-  text-align: center;
+  padding-right: 0.15ch;
+  text-align: right;
 }
 
 .pt-editor-host .pt-marker-symbol {
