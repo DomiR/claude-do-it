@@ -2,7 +2,30 @@ import { APP_VERSION } from "@do-it/protocol"
 import { Config, Data, Effect, Option, Path } from "effect"
 
 export const MAX_BODY = 4 * 1024 * 1024
-export const TEMPLATE = "# TODO\n\nAdd one task per line. Agents pick up new lines, plan them, and write their status underneath.\n\n## Tasks\n\n- [ ] \n"
+export const TEMPLATE = [
+  "# TODO",
+  "",
+  "Write one task per line under Tasks. Agents pick up each new line, plan it, and write their status under it. Keys say Cmd and Alt: on Windows and Linux use Ctrl for Cmd, and Alt is Option on a Mac. Delete the Example section once you know your way around.",
+  "",
+  "## Example",
+  "",
+  "- [ ] Fix the login redirect @high @today",
+  "  - **t0** M, building with Opus",
+  "- [ ] Pick a chart library for the stats page @due(friday)",
+  "  - **t0** waiting for you",
+  "  - **t0 question:** Recharts or Visx? You answer by typing under a question like this",
+  "- [x] Cmd-Enter starts a task, and Cmd-D or a click on its box marks it done",
+  "    Shift-Enter adds a note like this one, which moves and archives with its task",
+  "- [-] Cmd-Alt-Enter or Alt-click cancels a task",
+  "- [x] Cmd-Shift-A moves done and cancelled tasks to Archive",
+  "- [x] Type t, h, or d then Tab for the today, high, or due tag; s then Tab twice stamps a start time",
+  "- [x] Cmd-/ lists every key",
+  "",
+  "## Tasks",
+  "",
+  "- [ ] ",
+  "",
+].join("\n")
 
 export class InvalidConfig extends Data.TaggedError("InvalidConfig")<{ readonly message: string }> {}
 

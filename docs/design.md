@@ -313,12 +313,30 @@ Replies (exact):
 `--json` prints one JSON object per reply (one per line for `watch`); errors
 are `{"error":{"code","message",...}}` on stdout with the same exit code.
 
-New documents get this template:
+New documents get this template. The `## Example` section teaches the editor
+keys, the tags, and an agent reply by example, and the person deletes it when
+done. Its open tasks carry a `**t0**` status line (real ids start at t1) and the
+rest are resolved, so the conductor never takes them as work. `## Tasks` stays last, with the empty
+typing spot.
 
 ```markdown
 # TODO
 
-Add one task per line. Agents pick up new lines, plan them, and write their status underneath.
+Write one task per line under Tasks. Agents pick up each new line, plan it, and write their status under it. Keys say Cmd and Alt: on Windows and Linux use Ctrl for Cmd, and Alt is Option on a Mac. Delete the Example section once you know your way around.
+
+## Example
+
+- [ ] Fix the login redirect @high @today
+  - **t0** M, building with Opus
+- [ ] Pick a chart library for the stats page @due(friday)
+  - **t0** waiting for you
+  - **t0 question:** Recharts or Visx? You answer by typing under a question like this
+- [x] Cmd-Enter starts a task, and Cmd-D or a click on its box marks it done
+    Shift-Enter adds a note like this one, which moves and archives with its task
+- [-] Cmd-Alt-Enter or Alt-click cancels a task
+- [x] Cmd-Shift-A moves done and cancelled tasks to Archive
+- [x] Type t, h, or d then Tab for the today, high, or due tag; s then Tab twice stamps a start time
+- [x] Cmd-/ lists every key
 
 ## Tasks
 
