@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { EditorCommand } from './types'
-import { bindings, commands, detectPlatform, hints, keyLabel, keysFor, toolbar } from './keymap'
+import { bindings, commands, detectPlatform, hints, keyCaps, keysFor, spokenKeys, toolbar } from './keymap'
 
 const allCommands: ReadonlyArray<EditorCommand> = [
   'newTask',
@@ -140,13 +140,30 @@ describe('editor keymap', () => {
     expect(hints.every(hint => keysFor('mac', hint.command).length > 0)).toBe(true)
   })
 
-  test('formats key labels for both platforms and detects Apple platforms', () => {
-    expect(keyLabel('mac', 'Cmd-Shift-a')).toBe('⇧⌘A')
-    expect(keyLabel('mac', 'Cmd-Ctrl-ArrowUp')).toBe('⌃⌘↑')
-    expect(keyLabel('mac', 'Enter')).toBe('↩')
-    expect(keyLabel('other', 'Ctrl-Shift-a')).toBe('Ctrl+Shift+A')
-    expect(keyLabel('other', 'Alt-ArrowDown')).toBe('Alt+Down')
-    expect(keyLabel('other', 'Enter')).toBe('Enter')
+  test('turns key names into one cap per key, icons on Macs and words elsewhere, in platform order', () => {
+    expect(keyCaps('mac', 'Cmd-Shift-p')).toEqual([
+      { icon: 'shift', spoken: 'Shift' }, { icon: 'command', spoken: 'Command' }, { text: 'P', spoken: 'P' },
+    ])
+    expect(keyCaps('mac', 'Cmd-Ctrl-ArrowUp').map(cap => cap.icon)).toEqual(['control', 'command', 'up'])
+    expect(keyCaps('mac', 'Cmd-Alt-Enter').map(cap => cap.icon)).toEqual(['option', 'command', 'enter'])
+    expect(keyCaps('mac', 'Shift-Tab').map(cap => cap.icon)).toEqual(['shift', 'tab'])
+    expect(keyCaps('mac', 'Escape')).toEqual([{ text: 'esc', spoken: 'Escape' }])
+    expect(keyCaps('other', 'Ctrl-Shift-p').map(cap => cap.text)).toEqual(['Ctrl', 'Shift', 'P'])
+    expect(keyCaps('other', 'Alt-ArrowDown')).toEqual([{ text: 'Alt', spoken: 'Alt' }, { icon: 'down', spoken: 'Down Arrow' }])
+    expect(keyCaps('other', 'Enter')).toEqual([{ text: 'Enter', spoken: 'Enter' }])
+    expect(spokenKeys('mac', 'Cmd-Shift-p')).toBe('Shift Command P')
+    expect(spokenKeys('mac', 'Cmd-/')).toBe('Command Slash')
+    expect(spokenKeys('other', 'Ctrl-[')).toBe('Control Left Bracket')
+    for (const platform of ['mac', 'other'] as const) {
+      for (const binding of bindings) {
+        for (const key of binding[platform]) {
+          for (const cap of keyCaps(platform, key)) expect(Boolean(cap.icon || cap.text) && cap.spoken.length > 0).toBe(true)
+        }
+      }
+    }
+  })
+
+  test('detects Apple platforms', () => {
     expect(detectPlatform('MacIntel', 'Mozilla/5.0')).toBe('mac')
     expect(detectPlatform('Win32', 'iPhone')).toBe('mac')
     expect(detectPlatform('Linux x86_64', 'Mozilla/5.0')).toBe('other')

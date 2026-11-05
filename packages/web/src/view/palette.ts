@@ -1,12 +1,13 @@
 import { Option } from 'effect'
 import type { Html, HtmlBuilder } from 'foldkit/html'
 
-import { commands, keyLabel, keysFor } from '../editor/keymap'
+import { commands, keysFor } from '../editor/keymap'
 import { classifyDocument } from '../editor/lines'
 import type { EditorCommand } from '../editor/types'
 import { Message } from '../message'
 import type { Model } from '../model'
 import { FocusPaletteInput } from '../mount'
+import { keysView } from './keys'
 
 type PaletteItem =
   | { readonly kind: 'Command'; readonly title: string; readonly detail: string; readonly keys: ReadonlyArray<string>; readonly command: EditorCommand }
@@ -33,7 +34,7 @@ export const paletteItems = (model: Model, draft: string): ReadonlyArray<Palette
       }))
     : commands.filter(command => palette.kind === 'Shortcuts' || command.inPalette).map(command => ({
         kind: 'Command', title: command.title, detail: command.description, command: command.command,
-        keys: keysFor(model.platform, command.command).map(key => keyLabel(model.platform, key)),
+        keys: keysFor(model.platform, command.command),
       }))
   return items.filter(item => matchesSubsequence(item.title, palette.query))
 }
@@ -65,21 +66,30 @@ export const paletteView = (model: Model, draft: string, h: HtmlBuilder<Message>
             h.OnClick(Message.ClickedPaletteItem({ index })),
           ], [
             h.span([], [h.span([h.Class('pt-palette-title')], [item.title]), h.span([h.Class('pt-palette-detail')], [item.detail])]),
+            // Alternatives get an "or" between them, so two shortcuts never read as one longer chord.
             h.span([h.Class('pt-palette-keys')], (palette.kind === 'Shortcuts' ? item.keys : item.keys.slice(0, 1))
-              .map(key => h.kbd([h.Class('pt-palette-key')], [key]))),
+              .flatMap((key, index) => [
+                ...(index > 0 ? [h.span([h.Class('pt-palette-or')], ['or'])] : []),
+                keysView(model.platform, key, h),
+              ])),
           ]),
         ])) : [h.li([h.Class('pt-palette-empty')], ['No matches'])]),
       ...(palette.kind === 'Shortcuts'
         ? [
-            h.p([h.Class('pt-palette-detail')], [model.platform === 'mac'
-              ? 'Type ? outside the editor, or Cmd / inside it'
-              : 'Type ? outside the editor, or Ctrl / inside it']),
-            h.p([h.Class('pt-palette-detail')], ['Esc then Tab leaves the editor']),
-            h.p([h.Class('pt-palette-detail')], ['Tab indents or adds a tag, Shift-Tab outdents']),
-            h.p([h.Class('pt-palette-detail')], [model.platform === 'mac'
-              ? 'Toggle Tab focus mode: Alt Shift M'
-              : 'Toggle Tab focus mode: Ctrl M']),
-            h.p([h.Class('pt-palette-detail')], ['Browser shortcuts kept: reload, hard reload, tab search']),
+            h.p([h.Class('pt-palette-detail pt-palette-note')], [
+              'Type ', keysView(model.platform, '?', h), ' outside the editor, or ',
+              keysView(model.platform, model.platform === 'mac' ? 'Cmd-/' : 'Ctrl-/', h), ' inside it',
+            ]),
+            h.p([h.Class('pt-palette-detail pt-palette-note')], [
+              keysView(model.platform, 'Escape', h), ' then ', keysView(model.platform, 'Tab', h), ' leaves the editor',
+            ]),
+            h.p([h.Class('pt-palette-detail pt-palette-note')], [
+              keysView(model.platform, 'Tab', h), ' indents or adds a tag, ', keysView(model.platform, 'Shift-Tab', h), ' outdents',
+            ]),
+            h.p([h.Class('pt-palette-detail pt-palette-note')], [
+              'Toggle Tab focus mode: ', keysView(model.platform, model.platform === 'mac' ? 'Alt-Shift-m' : 'Ctrl-m', h),
+            ]),
+            h.p([h.Class('pt-palette-detail pt-palette-note')], ['Browser shortcuts kept: reload, hard reload, tab search']),
           ] : []),
     ]),
   ])

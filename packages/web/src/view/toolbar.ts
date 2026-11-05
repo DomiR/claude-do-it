@@ -1,8 +1,9 @@
 import type { Html, HtmlBuilder } from 'foldkit/html'
 
-import { keyLabel, keysFor, toolbar, type Platform } from '../editor/keymap'
+import { keysFor, toolbar, type Platform } from '../editor/keymap'
 import type { EditorCommand } from '../editor/types'
 import { Message } from '../message'
+import { keysView } from './keys'
 
 /** Stroke paths on a 16 by 16 grid, drawn in the current text colour. */
 const icons: Partial<Record<EditorCommand, ReadonlyArray<string>>> = {
@@ -31,7 +32,6 @@ export const toolbarView = (platform: Platform, h: HtmlBuilder<Message>): Html =
       const key = keysFor(platform, command)[0]
       return h.button([
         h.Class('pt-toolbar-button'), h.Type('button'), h.AriaLabel(label),
-        h.Title(key ? `${label} (${keyLabel(platform, key)})` : label),
         ...(key ? [h.AriaKeyshortcuts(ariaKeys(platform, key))] : []),
         h.OnClick(Message.PressedEditorCommand({ command })),
       ], [
@@ -40,6 +40,11 @@ export const toolbarView = (platform: Platform, h: HtmlBuilder<Message>): Html =
           h.Stroke('currentColor'), h.StrokeWidth(command === 'bold' ? '1.9' : '1.5'), h.StrokeLinecap('round'),
           h.StrokeLinejoin('round'), h.AriaHidden(true),
         ], (icons[command] ?? []).map(path => h.path([h.D(path)], []))),
+        // The button's label and aria-keyshortcuts already name it, so the tooltip is for sight only.
+        h.span([h.Class('pt-tooltip'), h.AriaHidden(true)], [
+          h.span([h.Class('pt-tooltip-label')], [label]),
+          ...(key ? [keysView(platform, key, h)] : []),
+        ]),
       ])
     }),
   ]))
