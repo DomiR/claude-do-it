@@ -223,7 +223,7 @@ button {
 /* Status bar */
 .pt-status-bar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
   height: 28px;
   min-width: 0;
@@ -248,10 +248,14 @@ button {
 
 .pt-status-right {
   justify-content: flex-end;
+  grid-column: 3;
+  font-variant-numeric: tabular-nums;
 }
 
 .pt-status-center {
   display: none;
+  grid-column: 2;
+  justify-self: center;
   align-items: center;
   justify-content: center;
   flex-shrink: 1;
@@ -259,6 +263,10 @@ button {
   min-width: 0;
   padding: 0 16px;
   overflow: hidden;
+}
+
+.pt-status-left {
+  grid-column: 1;
 }
 
 .pt-hint {
@@ -445,10 +453,10 @@ button {
 }
 
 .pt-editor-host .cm-content {
-  --pt-content-inset: max(24px, calc(50% - 23rem));
+  --pt-content-inset: 24px;
   min-height: 100%;
   padding-block: 28px 40px;
-  padding-inline: max(24px, calc(50% - 23rem));
+  padding-inline: var(--pt-content-inset) max(24px, calc(100% - 46rem - var(--pt-content-inset)));
   color: var(--pt-ink);
   line-height: 1.6;
   white-space: pre-wrap;
