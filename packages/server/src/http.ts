@@ -16,6 +16,14 @@ import { Versions } from "./versions"
 
 const encoder = new TextEncoder()
 
+/** The contents of daemon.json. */
+interface RuntimeRecord {
+  pid: number
+  port: number
+  appVersion: string
+  startedAt: number
+}
+
 export const makeServer = Effect.fn("makeServer")(function* (options?: ServerConfig) {
   const settings = options ?? (yield* config)
   const fs = yield* FileSystem.FileSystem
@@ -37,6 +45,25 @@ export const makeServer = Effect.fn("makeServer")(function* (options?: ServerCon
   }) }
   const serverOptions = { hostname: "127.0.0.1", port: settings.port, maxRequestBodySize: MAX_BODY,
     disablePreemptiveShutdown: true }
+  const recordPath = path.join(settings.home, "daemon.json")
+  let published: RuntimeRecord | undefined
+  // Registered before the server, so it runs after the server has stopped
+  // listening: once daemon.json is gone, no request reaches this daemon.
+  yield* Effect.addFinalizer(() => Effect.suspend(() => {
+    const record = published
+    if (record === undefined) return Effect.void
+    return Effect.gen(function* () {
+      yield* readJson(recordPath, 4096).pipe(
+        Effect.flatMap(value => {
+          const current = value as RuntimeRecord
+          return current.pid === record.pid && current.startedAt === record.startedAt && current.port === record.port ? fs.remove(recordPath) : Effect.void
+        }),
+        // The record has already been removed.
+        Effect.ignore,
+      )
+      yield* log.write("Daemon stopped")
+    })
+  }))
   const server = yield* BunHttpServer.make(serverOptions).pipe(Effect.catchCause(cause => settings.port === 0
     ? Effect.failCause(cause) : BunHttpServer.make({ ...serverOptions, port: 0 })))
   if (!("port" in server.address)) return yield* Effect.die(new Error("Expected an IP listening address"))
@@ -107,8 +134,7 @@ export const makeServer = Effect.fn("makeServer")(function* (options?: ServerCon
       signal: AbortSignal.any([BunHttpServerRequest.toBunServerRequest(request).signal, shutdown.signal]),
     }))
   }))))
-  const record = { pid: process.pid, port: runtime.port, appVersion: APP_VERSION, startedAt: runtime.startedAt }
-  const recordPath = path.join(settings.home, "daemon.json")
+  const record: RuntimeRecord = { pid: process.pid, port: runtime.port, appVersion: APP_VERSION, startedAt: runtime.startedAt }
   // Exclusive publication also rejects concurrent manual starts. A dead
   // process's record may be removed; a live daemon's record is never replaced.
   const prior = yield* readJson(recordPath, 4096).pipe(Effect.map(value => value as { pid?: number } | null),
@@ -118,6 +144,7 @@ export const makeServer = Effect.fn("makeServer")(function* (options?: ServerCon
   }
   yield* fs.remove(recordPath).pipe(Effect.catchIf(isNotFound, () => Effect.void))
   yield* fs.writeFileString(recordPath, JSON.stringify(record), { mode: 0o600, flag: "wx" })
+  published = record
   const tick = Effect.gen(function* () {
     // Logging cannot prevent idle shutdown.
     yield* Effect.ignore(log.rotate())
@@ -127,15 +154,6 @@ export const makeServer = Effect.fn("makeServer")(function* (options?: ServerCon
   yield* Effect.addFinalizer(() => Effect.gen(function* () {
     shutdown.abort()
     yield* registry.close()
-    yield* readJson(recordPath, 4096).pipe(
-      Effect.flatMap(value => {
-        const current = value as typeof record
-        return current.pid === record.pid && current.startedAt === record.startedAt && current.port === record.port ? fs.remove(recordPath) : Effect.void
-      }),
-      // The record has already been removed.
-      Effect.ignore,
-    )
-    yield* log.write("Daemon stopped")
   }))
   yield* log.write(`Daemon listening on 127.0.0.1:${runtime.port}`)
   return { ...record, home: settings.home, auth, documents: registry, stopped: Deferred.await(stop), stop: runtime.stop }
