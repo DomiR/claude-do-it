@@ -14,8 +14,8 @@ const temp = () => { const dir = mkdtempSync(join(tmpdir(), "do-it-doctor-")); d
 afterAll(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }) })
 
 const dash = /[\u2013\u2014]| - /
-const messages: string[] = []
-const seen = (item: Check) => { messages.push(item.message, ...item.fix); return item }
+/** Every message and fix a test sees must keep the copy rule: no dashes as separators. */
+const seen = (item: Check) => { for (const text of [item.message, ...item.fix]) expect(text).not.toMatch(dash); return item }
 
 const install = (kind: Install["kind"], realEntry: string, root: string | null, version: string | null = "0.1.1"): Install =>
   ({ kind, entry: realEntry, realEntry, root, version })
@@ -86,10 +86,18 @@ describe("checkPath", () => {
   })
   it("updates another install of an older version", () => {
     const old = { ...install("bun-global", "/h/.bun/install/global/node_modules/claude-do-it/bin/do-it.js", "/h/.bun/install/global/node_modules/claude-do-it", "0.1.0"), path: "/h/.bun/bin/do-it" }
-    expect(seen(checkPath({ ...base, onPath: old }))).toMatchObject({ status: "problem", fix: ["bun add -g claude-do-it@0.1.1"] })
-    expect(checkPath({ ...base, onPath: { ...old, kind: "npm-global" } }).fix).toEqual(["npm install -g claude-do-it@0.1.1"])
+    expect(seen(checkPath({ ...base, self: bunx, onPath: old }))).toMatchObject({ status: "problem", fix: ["bun add -g claude-do-it@0.1.1"] })
+    // A checkout's version may be unpublished, so the global install takes the latest release.
+    expect(seen(checkPath({ ...base, onPath: old }))).toMatchObject({ status: "problem", fix: ["bun add -g claude-do-it@latest"] })
+    expect(checkPath({ ...base, onPath: { ...old, kind: "npm-global" } }).fix).toEqual(["npm install -g claude-do-it@latest"])
     expect(checkPath({ ...base, onPath: { ...old, kind: "checkout", path: "/h/.local/bin/do-it" } }).fix).toEqual(["ln -sf /r/packages/cli/src/bin.ts /h/.local/bin/do-it"])
-    expect(checkPath({ ...base, self: bunx, onPath: { ...old, kind: "checkout" } }).fix).toEqual(["bun add -g claude-do-it@0.1.1"])
+  })
+  it("only warns when it cannot safely replace the other copy, or when that copy is newer", () => {
+    const old = { ...install("checkout", "/o/packages/cli/src/bin.ts", "/o", "0.1.0"), path: "/h/.local/bin/do-it" }
+    expect(seen(checkPath({ ...base, self: bunx, onPath: old }))).toMatchObject({ status: "warn", fix: [] })
+    expect(seen(checkPath({ ...base, onPath: { ...old, kind: "package", realEntry: "/p/node_modules/claude-do-it/bin/do-it.js", root: "/p/node_modules/claude-do-it" } }))).toMatchObject({ status: "warn", fix: [] })
+    const newer = { ...install("bun-global", "/h/.bun/install/global/node_modules/claude-do-it/bin/do-it.js", "/h/.bun/install/global/node_modules/claude-do-it", "0.2.0"), path: "/h/.bun/bin/do-it" }
+    expect(seen(checkPath({ ...base, onPath: newer }))).toMatchObject({ status: "warn", fix: [] })
   })
 })
 
@@ -196,9 +204,5 @@ describe("doctorText", () => {
     expect(text).toContain("\nproblem a problem\n        fix: do-it stop\n")
     expect(text).toEndWith("2 problems found. Run the fixes, then run do-it doctor again.")
     expect(doctorText(report([item("problem", ["x"])]))).toEndWith("1 problem found. Run the fix, then run do-it doctor again.")
-  })
-  it("uses no dashes as separators in any message", () => {
-    expect(messages.length).toBeGreaterThan(20)
-    for (const message of messages) expect(message).not.toMatch(dash)
   })
 })

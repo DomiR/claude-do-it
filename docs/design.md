@@ -246,7 +246,9 @@ that event. `text: true` adds the full current text (the web uses it).
   `Origin` must match it. `GET /health` is open and returns
   `{ ok, pid, appVersion, build }` only. `build` is the npm build's id, or
   `source:` and the real path of the checkout; it is reported, never used to
-  reuse or replace a daemon.
+  reuse or replace a daemon. A source build id tells checkouts apart, not
+  revisions: a daemon started before a `git pull` or an edit in the same
+  checkout still matches.
 - Static: everything else serves `packages/web/dist` (SPA fallback to
   `index.html`); when dist is missing, a one line page saying to build it.
 - Caps: request body 4 MiB, 64 open documents (idle ones without watchers
@@ -286,7 +288,8 @@ RpcClientLayer(info: DaemonInfo)            // RpcClient.layerProtocolHttp + ndj
 
 Global flags: `--json`, `--as NAME` (default `$DO_IT_AGENT`, else `agent`).
 Text after `--` may start with `-`; a TEXT of `-` reads stdin. Every command
-but `doctor`, `stop`, and `skill` ensures the daemon first (exit 3 when it cannot start).
+but `doctor`, `stop`, `status` (which never starts one), and `skill` ensures the
+daemon first (exit 3 when it cannot start).
 
 | Command | Text reply |
 | --- | --- |

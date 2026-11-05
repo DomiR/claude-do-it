@@ -139,11 +139,18 @@ export function checkPath(i: PathInput): Check {
   if (onPath.version === i.appVersion) {
     return check("path", "warn", `${other}, not this CLI (${installLabel(i.self)}). Run do-it doctor to check that one too.`, [], details)
   }
-  const fix = onPath.kind === "bun-global" ? `bun add -g claude-do-it@${i.appVersion}`
-    : onPath.kind === "npm-global" ? `npm install -g claude-do-it@${i.appVersion}`
-    : i.self.kind !== "bunx" ? `ln -sf ${shellArg(i.self.realEntry)} ${shellArg(onPath.path)}`
-    : `bun add -g claude-do-it@${i.appVersion}`
-  return check("path", "problem", `${other} at version ${onPath.version}, but this CLI is ${i.appVersion}.`, [fix], details)
+  if (Bun.semver.order(core(onPath.version), core(i.appVersion)) > 0) {
+    return check("path", "warn", `${other} at version ${onPath.version}, newer than this CLI (${i.appVersion}). Run do-it doctor to check that one.`, [], details)
+  }
+  // A checkout's version may not be published yet, so a global install then takes the latest release.
+  const release = i.self.kind === "checkout" ? "latest" : i.appVersion
+  const fix = onPath.kind === "bun-global" ? `bun add -g claude-do-it@${release}`
+    : onPath.kind === "npm-global" ? `npm install -g claude-do-it@${release}`
+    : onPath.kind === "checkout" && i.self.kind === "checkout" ? `ln -sf ${shellArg(i.self.realEntry)} ${shellArg(onPath.path)}`
+    : null
+  const older = `${other} at version ${onPath.version}, but this CLI is ${i.appVersion}.`
+  if (fix === null) return check("path", "warn", `${older} Update or remove that copy.`, [], details)
+  return check("path", "problem", older, [fix], details)
 }
 
 export interface DaemonInput {
@@ -162,7 +169,7 @@ export function checkDaemon(i: DaemonInput): Check {
   if (!i.alive) return check("daemon", "ok", `No daemon runs for ${i.home} (daemon.json names pid ${info.pid}, which has exited).`, [], { running: false, pid: info.pid })
   const where = `The daemon (pid ${info.pid}, 127.0.0.1:${info.port})`
   const stop = [`${i.self} stop`]
-  const restart = `Stop it and the next do-it command starts this CLI's build; open editor tabs need a reload after that.`
+  const restart = `Stop it and the next ${i.self} command starts this CLI's build; open editor tabs need a reload after that.`
   if (i.health === "slow") return check("daemon", "warn", `${where} did not answer /health within 500 ms.`, [], { running: true, pid: info.pid, port: info.port })
   if (i.health === null) return check("daemon", "problem", `${where} does not answer /health.`, stop, { running: true, pid: info.pid, port: info.port })
   const details = { running: true, pid: info.pid, port: info.port, appVersion: i.health.appVersion, build: i.health.build ?? null }

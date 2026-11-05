@@ -100,7 +100,7 @@ function statusCommand(command: Extract<ParsedCommand, { kind: "status" }>) {
     const result = yield* rpc(info, client => client.status({}))
     const upSeconds = Math.floor(Math.max(0, Date.now() - result.startedAt) / 1000)
     const minutes = Math.floor(upSeconds / 60)
-    if (command.options.json) yield* writeJson({ pid: result.pid, port: result.port, startedAt: result.startedAt, appVersion: result.appVersion, documents: result.documents, upSeconds })
+    if (command.options.json) yield* writeJson({ pid: result.pid, port: result.port, startedAt: result.startedAt, appVersion: result.appVersion, ...(result.build === undefined ? {} : { build: result.build }), documents: result.documents, upSeconds })
     else yield* writeLine(`Daemon pid ${result.pid} on 127.0.0.1:${result.port}, up ${minutes}m\n${result.documents.map(document => `  ${document.path}  version ${document.version}  ${document.watchers} watchers`).join("\n")}`)
     return 0
   })

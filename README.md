@@ -202,7 +202,8 @@ file, so version numbers survive restarts. It listens on `127.0.0.1:47100`
 (`DO_IT_PORT`) and only answers requests that carry the token or the browser
 cookie the `open` link sets. The runtime record and `/health` also carry a
 build id (the npm build's id, or `source:` and the checkout path), which
-`do-it doctor` compares with its own.
+`do-it doctor` compares with its own. In a checkout that id names the
+checkout, not the revision, so after a `git pull` run `do-it stop` yourself.
 
 ## How it's built
 
