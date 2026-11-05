@@ -8,6 +8,7 @@ import { Message } from '../message'
 import { type Model, type ReadyDocument, saveStatus } from '../model'
 import { MountEditor } from '../mount'
 import { paletteView } from './palette'
+import { toolbarView } from './toolbar'
 
 const fileNameFor = (path: string): string => path.split('/').at(-1) ?? path
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -54,6 +55,7 @@ export const editorView = (model: Model, document: ReadyDocument, h: HtmlBuilder
         ], ['Activity']),
       ]),
     ]),
+    toolbarView(model.platform, h),
     h.main([h.Class(`pt-workspace${model.activityOpen ? ' pt-workspace-with-activity' : ''}`)], [
       // The Mount owns this childless host for the entire document session.
       h.keyed('div')(`editor:${document.session}`, [

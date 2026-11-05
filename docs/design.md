@@ -363,7 +363,14 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
 | Tab, tag completion, or indent | `Tab` | `Tab` | Expand a PlainTasks snippet when the caret follows a completion token, otherwise indent the current line or selected task blocks. `s`, `t`, `c`, `h`, `l`, `cr`, `d`, and `@s` expand to the supported tags; a bare `@started` or `@created` gets a local date. |
 | Outdent | `Shift-Tab`, `Cmd-[` | `Shift-Tab`, `Ctrl-[` | Outdent the current line or selected task blocks. |
 | Open link | `Cmd-Shift-u`, `Alt-Enter` | `Alt-Enter` | Open the link under the caret, or reveal a project anchor. |
-| Edit link | `Cmd-k` | `Ctrl-k` | Edit the text and URL of the link under the caret in a popover, or link the selected text. Clicking a link on a task line opens it too. |
+| Edit link | `Cmd-k` | `Ctrl-k` | Edit the text and URL of the link under the caret in a popover, or link the selected text. Clicking a link opens it too. |
+| Bold | `Cmd-b` | `Ctrl-b` | Wrap the selection, or the word at the caret, in `**`; inside bold text, remove it. One undoable change; the formatting bar runs the same command. |
+| Italic | `Cmd-Shift-i` | `Alt-Shift-i` | The same with `*`. `Cmd-i` stays New task, and `Ctrl-Shift-i` is left to the browser's developer tools. |
+| Strikethrough | `Cmd-Shift-x` | `Ctrl-Shift-x` | The same with `~~`. |
+| Inline code | `Cmd-e` | `Ctrl-e` | The same with a backtick. `Cmd-Shift-c` is left to the element inspector. |
+| Task line | `Cmd-Alt-4` | `Ctrl-Shift-4` | Turn the selected lines into tasks, or back into text when they all are. Indentation and labels stay. |
+| Bulleted line | `Cmd-Alt-5` | `Ctrl-Shift-5` | Turn the selected lines into `- ` bullets, or back into text when they all are. A task becomes a plain bullet. |
+| Project heading | `Cmd-Alt-2` | `Ctrl-Shift-2` | Turn the selected lines into `## ` project headings, or back into text when they all are. |
 | Go to project | `Cmd-p` | `Ctrl-p` | Open the project palette and move to the selected heading. |
 | Command palette | `Cmd-Shift-p`, `F1` | `Ctrl-Shift-p`, `F1` | Search and run editor commands. |
 | Find | `Cmd-f` | `Ctrl-f` | Open CodeMirror Find. |

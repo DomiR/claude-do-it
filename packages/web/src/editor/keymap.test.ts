@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { EditorCommand } from './types'
-import { bindings, commands, detectPlatform, hints, keyLabel, keysFor } from './keymap'
+import { bindings, commands, detectPlatform, hints, keyLabel, keysFor, toolbar } from './keymap'
 
 const allCommands: ReadonlyArray<EditorCommand> = [
   'newTask',
@@ -14,6 +14,13 @@ const allCommands: ReadonlyArray<EditorCommand> = [
   'indent',
   'outdent',
   'tab',
+  'bold',
+  'italic',
+  'strike',
+  'code',
+  'toggleTask',
+  'toggleBullet',
+  'toggleHeading',
   'openLink',
   'editLink',
   'gotoProject',
@@ -33,6 +40,13 @@ describe('editor keymap', () => {
       { command: 'moveDown', mac: ['Cmd-Ctrl-ArrowDown', 'Alt-ArrowDown'], other: ['Ctrl-Shift-ArrowDown', 'Alt-ArrowDown'] },
       { command: 'openLink', mac: ['Cmd-Shift-u', 'Alt-Enter'], other: ['Alt-Enter'] },
       { command: 'editLink', mac: ['Cmd-k'], other: ['Ctrl-k'] },
+      { command: 'bold', mac: ['Cmd-b'], other: ['Ctrl-b'] },
+      { command: 'italic', mac: ['Cmd-Shift-i'], other: ['Alt-Shift-i'] },
+      { command: 'strike', mac: ['Cmd-Shift-x'], other: ['Ctrl-Shift-x'] },
+      { command: 'code', mac: ['Cmd-e'], other: ['Ctrl-e'] },
+      { command: 'toggleTask', mac: ['Cmd-Alt-4'], other: ['Ctrl-Shift-4'] },
+      { command: 'toggleBullet', mac: ['Cmd-Alt-5'], other: ['Ctrl-Shift-5'] },
+      { command: 'toggleHeading', mac: ['Cmd-Alt-2'], other: ['Ctrl-Shift-2'] },
       { command: 'gotoProject', mac: ['Cmd-p'], other: ['Ctrl-p'] },
       { command: 'commandPalette', mac: ['Cmd-Shift-p', 'F1'], other: ['Ctrl-Shift-p', 'F1'] },
       { command: 'find', mac: ['Cmd-f'], other: ['Ctrl-f'] },
@@ -69,6 +83,15 @@ describe('editor keymap', () => {
       expect(otherKeys).not.toContain(key)
     }
     for (const key of ['Ctrl-c', 'Ctrl-Shift-u']) expect(otherKeys).not.toContain(key)
+    // Developer tools, the element inspector and macOS screenshots take these before the page can.
+    for (const key of ['Cmd-Alt-i', 'Cmd-Shift-c', 'Cmd-Shift-3', 'Cmd-Shift-4', 'Cmd-Shift-5']) expect(macKeys).not.toContain(key)
+    for (const key of ['Ctrl-Shift-i', 'Ctrl-Shift-c', 'Ctrl-Shift-j']) expect(otherKeys).not.toContain(key)
+    for (const group of toolbar) {
+      for (const { command } of group) {
+        expect(keysFor('mac', command).length).toBeGreaterThan(0)
+        expect(keysFor('other', command).length).toBeGreaterThan(0)
+      }
+    }
   })
 
   test('provides palette metadata for every editor command', () => {
@@ -81,6 +104,13 @@ describe('editor keymap', () => {
       'Move task down',
       'Open link',
       'Edit link',
+      'Bold',
+      'Italic',
+      'Strikethrough',
+      'Inline code',
+      'Task line',
+      'Bulleted line',
+      'Project heading',
       'Go to project',
       'Command palette',
       'Find',

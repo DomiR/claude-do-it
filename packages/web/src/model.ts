@@ -7,6 +7,7 @@ export const Platform = Schema.Literals(['mac', 'other'])
 export const EditorAction = Schema.Literals([
   'newTask', 'toggleDone', 'toggleCancelled', 'archive', 'moveUp', 'moveDown',
   'continueTask', 'indent', 'outdent', 'tab',
+  'bold', 'italic', 'strike', 'code', 'toggleTask', 'toggleBullet', 'toggleHeading',
 ])
 export const EditorCommandName = Schema.Union([
   EditorAction,

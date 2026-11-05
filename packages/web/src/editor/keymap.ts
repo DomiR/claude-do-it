@@ -17,6 +17,16 @@ export const bindings: ReadonlyArray<Binding> = [
   { command: 'moveDown', mac: ['Cmd-Ctrl-ArrowDown', 'Alt-ArrowDown'], other: ['Ctrl-Shift-ArrowDown', 'Alt-ArrowDown'] },
   { command: 'openLink', mac: ['Cmd-Shift-u', 'Alt-Enter'], other: ['Alt-Enter'] },
   { command: 'editLink', mac: ['Cmd-k'], other: ['Ctrl-k'] },
+  { command: 'bold', mac: ['Cmd-b'], other: ['Ctrl-b'] },
+  // Cmd-I is New task, and Ctrl-Shift-I opens the developer tools on Windows and Linux.
+  { command: 'italic', mac: ['Cmd-Shift-i'], other: ['Alt-Shift-i'] },
+  { command: 'strike', mac: ['Cmd-Shift-x'], other: ['Ctrl-Shift-x'] },
+  // Cmd-Shift-C opens the element inspector, so code takes E as in most editors.
+  { command: 'code', mac: ['Cmd-e'], other: ['Ctrl-e'] },
+  // Cmd-Shift-3, 4 and 5 are macOS screenshots, and Ctrl-Alt chords type characters on Windows.
+  { command: 'toggleTask', mac: ['Cmd-Alt-4'], other: ['Ctrl-Shift-4'] },
+  { command: 'toggleBullet', mac: ['Cmd-Alt-5'], other: ['Ctrl-Shift-5'] },
+  { command: 'toggleHeading', mac: ['Cmd-Alt-2'], other: ['Ctrl-Shift-2'] },
   { command: 'gotoProject', mac: ['Cmd-p'], other: ['Ctrl-p'] },
   { command: 'commandPalette', mac: ['Cmd-Shift-p', 'F1'], other: ['Ctrl-Shift-p', 'F1'] },
   { command: 'find', mac: ['Cmd-f'], other: ['Ctrl-f'] },
@@ -43,6 +53,13 @@ export const commands: ReadonlyArray<CommandInfo> = [
   { command: 'moveDown', title: 'Move task down', description: 'Move the task down', inPalette: true },
   { command: 'openLink', title: 'Open link', description: 'Open the link under the caret', inPalette: true },
   { command: 'editLink', title: 'Edit link', description: 'Edit the link under the caret, or link the selected text', inPalette: true },
+  { command: 'bold', title: 'Bold', description: 'Bold the selection or the word at the caret', inPalette: true },
+  { command: 'italic', title: 'Italic', description: 'Italicize the selection or the word at the caret', inPalette: true },
+  { command: 'strike', title: 'Strikethrough', description: 'Strike through the selection or the word at the caret', inPalette: true },
+  { command: 'code', title: 'Inline code', description: 'Format the selection or the word at the caret as code', inPalette: true },
+  { command: 'toggleTask', title: 'Task line', description: 'Turn the line into a task, or back into text', inPalette: true },
+  { command: 'toggleBullet', title: 'Bulleted line', description: 'Turn the line into a bullet, or back into text', inPalette: true },
+  { command: 'toggleHeading', title: 'Project heading', description: 'Turn the line into a project heading, or back into text', inPalette: true },
   { command: 'gotoProject', title: 'Go to project', description: 'Jump to a project', inPalette: true },
   { command: 'commandPalette', title: 'Command palette', description: 'Open the command palette', inPalette: false },
   { command: 'find', title: 'Find', description: 'Find text in the document', inPalette: true },
@@ -51,6 +68,22 @@ export const commands: ReadonlyArray<CommandInfo> = [
   { command: 'tab', title: 'Tag or indent', description: 'Add a tag or indent the current task', inPalette: false },
   { command: 'continueTask', title: 'Continue task', description: 'Continue the current task', inPalette: false },
   { command: 'showShortcuts', title: 'Keyboard shortcuts', description: 'Show keyboard shortcuts', inPalette: true },
+]
+
+/** The formatting bar, left to right. Groups are separated by a divider. */
+export const toolbar: ReadonlyArray<ReadonlyArray<{ readonly command: EditorCommand; readonly label: string }>> = [
+  [
+    { command: 'bold', label: 'Bold' },
+    { command: 'italic', label: 'Italic' },
+    { command: 'strike', label: 'Strikethrough' },
+    { command: 'code', label: 'Inline code' },
+    { command: 'editLink', label: 'Link' },
+  ],
+  [
+    { command: 'toggleTask', label: 'Task' },
+    { command: 'toggleBullet', label: 'Bulleted line' },
+    { command: 'toggleHeading', label: 'Project heading' },
+  ],
 ]
 
 export const hints: ReadonlyArray<{ readonly command: EditorCommand; readonly label: string }> = [

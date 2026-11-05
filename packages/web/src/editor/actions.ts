@@ -1,5 +1,6 @@
 import { blockEnd, formatStamp, lines, setTodoStateStamped, todos, type Line } from '@do-it/doc/text'
 
+import { runFormat } from './format'
 import type { ActionId, ActionResult, Range, TextSelection } from './types'
 import type { Edit } from '@do-it/doc/text'
 
@@ -79,6 +80,14 @@ export const runAction: (text: string, selection: TextSelection, action: ActionI
         return indent(view, normalized, true)
       case 'tab':
         return tab(view, normalized, effectiveNow)
+      case 'bold':
+      case 'italic':
+      case 'strike':
+      case 'code':
+      case 'toggleTask':
+      case 'toggleBullet':
+      case 'toggleHeading':
+        return runFormat(text, normalized, action)
       default:
         return unavailable('Unknown action')
     }

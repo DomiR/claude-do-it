@@ -212,10 +212,11 @@ describe('PlainTasks line classification', () => {
     expect(slices(text, quote.previewHidden)).toEqual(['>'])
   })
 
-  test('recognizes flanking single stars, strong, strike, code and link delimiters', () => {
+  test('recognizes flanking single stars and underscores, strong, strike, code and link delimiters', () => {
     const text = 'snake_case _literal_ 2*3*4 a*b*c *a* **b** ~~c~~ __d__ `e` [guide](#tasks) <https://example.com> https://bare.example'
     const line = classifyDocument(text).lines[0]!
     expect(line.inline.map(span => [span.kind, text.slice(span.from, span.to)])).toEqual([
+      ['emMark', '_'], ['em', 'literal'], ['emMark', '_'],
       ['emMark', '*'], ['em', 'a'], ['emMark', '*'],
       ['strongMark', '**'], ['strong', 'b'], ['strongMark', '**'],
       ['strikeMark', '~~'], ['strike', 'c'], ['strikeMark', '~~'],
@@ -226,10 +227,10 @@ describe('PlainTasks line classification', () => {
       ['link', 'https://bare.example'],
     ])
     expect(line.inline.every((span, index) => span.from < span.to && (index === 0 || span.from >= line.inline[index - 1]!.to))).toBe(true)
-    for (const literal of ['* a*', '*a *', 'a*b*c', '2*3*4', 'é*a*é', '_a_', 'snake_case']) {
+    for (const literal of ['* a*', '*a *', 'a*b*c', '2*3*4', 'é*a*é', 'snake_case', 'a_b_c', '_ a_']) {
       expect(classifyDocument(literal).lines[0]!.inline).toEqual([])
     }
-    for (const emphasized of ['*a*', '(*a*)', '*two words*', '*é*']) {
+    for (const emphasized of ['*a*', '(*a*)', '*two words*', '*é*', '_a_', '(_two words_)']) {
       expect(classifyDocument(emphasized).lines[0]!.inline.map(span => span.kind)).toEqual(['emMark', 'em', 'emMark'])
     }
   })

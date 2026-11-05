@@ -24,6 +24,13 @@ export type ActionId =
   | 'indent'
   | 'outdent'
   | 'tab'
+  | 'bold'
+  | 'italic'
+  | 'strike'
+  | 'code'
+  | 'toggleTask'
+  | 'toggleBullet'
+  | 'toggleHeading'
 
 /** Everything the keymap and the command palette can invoke. */
 export type EditorCommand =

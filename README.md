@@ -135,7 +135,14 @@ agent.
 | Expand a PlainTasks tag, or indent | `Tab` | `Tab` |
 | Outdent | `Shift-Tab` or `Cmd-[` | `Shift-Tab` or `Ctrl-[` |
 | Open link | `Cmd-Shift-U` or `Alt-Enter` | `Alt-Enter` |
-| Edit link (or click a link on a task line) | `Cmd-K` | `Ctrl-K` |
+| Edit link (or click a link) | `Cmd-K` | `Ctrl-K` |
+| Bold | `Cmd-B` | `Ctrl-B` |
+| Italic | `Cmd-Shift-I` | `Alt-Shift-I` |
+| Strikethrough | `Cmd-Shift-X` | `Ctrl-Shift-X` |
+| Inline code | `Cmd-E` | `Ctrl-E` |
+| Task line on or off | `Cmd-Alt-4` | `Ctrl-Shift-4` |
+| Bulleted line on or off | `Cmd-Alt-5` | `Ctrl-Shift-5` |
+| Project heading on or off | `Cmd-Alt-2` | `Ctrl-Shift-2` |
 | Go to project | `Cmd-P` | `Ctrl-P` |
 | Command palette | `Cmd-Shift-P` or `F1` | `Ctrl-Shift-P` or `F1` |
 | Find | `Cmd-F` | `Ctrl-F` |

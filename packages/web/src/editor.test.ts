@@ -81,6 +81,33 @@ describe('PlainTasks shell', () => {
     )
   })
 
+  test('the formatting bar names every button with its shortcut and runs its command in the editor', () => {
+    scene({ update, view }, given(ready()),
+      Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
+      expect(selector('.pt-toolbar')).toHaveAttr('role', 'toolbar'),
+      expectAll(all.selector('.pt-toolbar-button')).toHaveCount(8),
+      expectAll(all.selector('.pt-toolbar-divider')).toHaveCount(1),
+      expect(selector('[aria-label="Bold"]')).toHaveAttr('title', 'Bold (⌘B)'),
+      expect(selector('[aria-label="Italic"]')).toHaveAttr('title', 'Italic (⇧⌘I)'),
+      expect(selector('[aria-label="Strikethrough"]')).toHaveAttr('title', 'Strikethrough (⇧⌘X)'),
+      expect(selector('[aria-label="Inline code"]')).toHaveAttr('title', 'Inline code (⌘E)'),
+      expect(selector('[aria-label="Link"]')).toHaveAttr('title', 'Link (⌘K)'),
+      expect(selector('[aria-label="Task"]')).toHaveAttr('title', 'Task (⌥⌘4)'),
+      expect(selector('[aria-label="Bulleted line"]')).toHaveAttr('title', 'Bulleted line (⌥⌘5)'),
+      expect(selector('[aria-label="Project heading"]')).toHaveAttr('title', 'Project heading (⌥⌘2)'),
+      expect(selector('[aria-label="Bold"]')).toHaveAttr('aria-keyshortcuts', 'Meta+B'),
+      click(selector('[aria-label="Bold"]')),
+      Command.expectExact(RunEditorAction({ session, action: 'bold' })),
+      Command.resolve(RunEditorAction, Message.CompletedRunEditorAction()),
+      click(selector('[aria-label="Link"]')),
+      Command.expectExact(RunEditorAction({ session, action: 'editLink' })),
+      Command.resolve(RunEditorAction, Message.CompletedRunEditorAction()),
+      click(selector('[aria-label="Task"]')),
+      Command.expectExact(RunEditorAction({ session, action: 'toggleTask' })),
+      Command.resolve(RunEditorAction, Message.CompletedRunEditorAction()),
+    )
+  })
+
   test('shows shortcuts and keeps the existing empty and terminal pages', () => {
     const open = update(ready(), Message.PressedEditorCommand({ command: 'showShortcuts' })).model
     scene({ update, view }, given(open),

@@ -46,9 +46,26 @@ export interface ClassifiedLine {
   readonly previewHidden: ReadonlyArray<Span>
   readonly dot?: Span
   readonly inline: ReadonlyArray<InlineSpan>
+  /** Inline styles whose delimiters are hidden, in line order. */
+  readonly constructs: ReadonlyArray<InlineConstruct>
+  /** The Markdown that starts the line and renders as one unit: a box, a bullet, a heading or quote mark. */
+  readonly prefix?: LinePrefix
   readonly archived: boolean
   readonly owner?: number
 }
+
+export type PrefixKind = 'task' | 'status' | 'bullet' | 'heading' | 'quote'
+
+/**
+ * A line's rendered prefix. Task, status and bullet prefixes take visible
+ * space (a box, a hanging gap, a dot); heading and quote marks take none.
+ */
+export interface LinePrefix extends Span {
+  readonly kind: PrefixKind
+}
+
+export const prefixHasWidth = (prefix: LinePrefix): boolean =>
+  prefix.kind === 'task' || prefix.kind === 'status' || prefix.kind === 'bullet'
 
 export interface Project {
   readonly title: string
@@ -216,22 +233,54 @@ const inlineCandidates = (text: string, from: number, to: number): InlineCandida
     } else if (opens) opener = index
   }
 
+  // `_em_` only flanks words from outside, so snake_case and __strong__ never count.
+  let underscore: number | undefined
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] !== '_' || source[index - 1] === '_' || source[index + 1] === '_') continue
+    const before = source[index - 1] ?? ''
+    const after = source[index + 1] ?? ''
+    const wordBefore = /[\p{L}\p{N}]/u.test(before)
+    const wordAfter = /[\p{L}\p{N}]/u.test(after)
+    const opens = !wordBefore && !!after && !/\s/.test(after)
+    const closes = !wordAfter && !!before && !/\s/.test(before)
+    if (closes && underscore !== undefined) {
+      delimited(from + underscore, from + index + 1, 1, 'em', 'emMark')
+      underscore = undefined
+    } else if (opens) underscore = index
+  }
+
   return result
 }
 
-const inlineSpans = (text: string, line: ClassifiedLine): ReadonlyArray<InlineSpan> => {
+const acceptedCandidates = (text: string, line: ClassifiedLine): InlineCandidate[] => {
   if (!inlineKinds.has(line.kind)) return []
   const candidates = inlineCandidates(text, line.label?.from ?? line.quoteMark?.to ?? line.from, line.to)
     .sort((left, right) => left.from - right.from || right.to - right.from - (left.to - left.from))
-  const accepted: InlineSpan[] = []
+  const accepted: InlineCandidate[] = []
   let end = line.from
   for (const candidate of candidates) {
     if (candidate.from < end) continue
-    accepted.push(...candidate.spans)
+    accepted.push(candidate)
     end = candidate.to
   }
   return accepted
 }
+
+/** A styled run with hidden syntax: its delimiters and the text they style. */
+export interface InlineConstruct extends Span {
+  readonly kind: 'strong' | 'em' | 'strike' | 'code' | 'link'
+  readonly marks: ReadonlyArray<Span>
+  readonly content: Span
+}
+
+const constructsOf = (candidates: ReadonlyArray<InlineCandidate>): InlineConstruct[] => candidates.flatMap(candidate => {
+  const marks = candidate.spans.filter(span => span.kind.endsWith('Mark')).map(({ from, to }) => ({ from, to }))
+  if (!marks.length) return []
+  const kind = candidate.spans[0]!.kind.replace(/Mark$/, '') as InlineConstruct['kind']
+  const open = marks[0]!.to
+  const close = marks.length > 1 ? marks[marks.length - 1]!.from : candidate.to
+  return [{ from: candidate.from, to: candidate.to, kind, marks, content: { from: open, to: Math.max(open, close) } }]
+})
 
 const headingTitleRange = (text: string, line: Line): Span => trimRange(text, line.content, line.to)
 
@@ -306,6 +355,7 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
       alwaysHidden: [],
       previewHidden: [],
       inline: [],
+      constructs: [],
       archived: archived.has(index),
     }
     if (line.level !== undefined) result.level = line.level
@@ -350,7 +400,21 @@ export const classifyDocument = (text: string): ClassifiedDocument => {
       }
     }
 
-    result.inline = inlineSpans(text, result)
+    const candidates = acceptedCandidates(text, result)
+    result.inline = candidates.flatMap(candidate => candidate.spans)
+    result.constructs = constructsOf(candidates)
+    // A prefix renders once it is complete: `# `, `- ` and `> ` need their space, as typed.
+    if (kind === 'task' && result.bullet && result.label) {
+      result.prefix = { from: result.bullet.from, to: result.label.from, kind: 'task' }
+    } else if (kind === 'status' && result.bullet) {
+      result.prefix = { from: result.bullet.from, to: result.bullet.to, kind: 'status' }
+    } else if (result.dot && result.bullet && result.bullet.to > result.dot.to) {
+      result.prefix = { from: result.bullet.from, to: result.bullet.to, kind: 'bullet' }
+    } else if (kind === 'project' && result.marks && /\s$/.test(text.slice(result.marks.from, result.marks.to))) {
+      result.prefix = { ...result.marks, kind: 'heading' }
+    } else if (kind === 'quote' && result.quoteMark && (result.quoteMark.to - result.quoteMark.from > 1 || result.quoteMark.to < line.to)) {
+      result.prefix = { ...result.quoteMark, kind: 'quote' }
+    }
     if (kind === 'task' && result.bullet && result.bullet.from < result.bullet.to) {
       result.alwaysHidden = [result.bullet]
     }

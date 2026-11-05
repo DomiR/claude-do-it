@@ -62,7 +62,7 @@ button {
 /* Editor shell */
 .pt-shell {
   display: grid;
-  grid-template-rows: 40px minmax(0, 1fr) 28px;
+  grid-template-rows: 40px 36px minmax(0, 1fr) 28px;
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -147,6 +147,61 @@ button {
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
+}
+
+/* Formatting bar */
+.pt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--pt-delimiter);
+  background: var(--pt-paper);
+}
+
+.pt-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--pt-prose);
+  cursor: pointer;
+}
+
+.pt-toolbar-button:hover {
+  border-color: var(--pt-delimiter);
+  background: var(--pt-project-bg);
+  color: var(--pt-ink);
+}
+
+.pt-toolbar-button:focus-visible {
+  outline: 2px solid var(--pt-link);
+  outline-offset: -2px;
+  color: var(--pt-ink);
+}
+
+.pt-toolbar-button:active {
+  background: var(--pt-active-row);
+}
+
+.pt-toolbar-icon {
+  display: block;
+  pointer-events: none;
+}
+
+.pt-toolbar-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--pt-delimiter);
 }
 
 .pt-workspace {
@@ -598,14 +653,6 @@ button {
   color: transparent;
 }
 
-.pt-editor-host .pt-line-editing .pt-strong-mark,
-.pt-editor-host .pt-line-editing .pt-em-mark,
-.pt-editor-host .pt-line-editing .pt-strike-mark,
-.pt-editor-host .pt-line-editing .pt-code-mark,
-.pt-editor-host .pt-line-editing .pt-link-mark {
-  color: var(--pt-delimiter);
-}
-
 .pt-editor-host .pt-line-task,
 .pt-editor-host .pt-line-task-open,
 .pt-editor-host .pt-line-task-open .pt-label {
@@ -694,7 +741,10 @@ button {
   font-weight: 700;
 }
 
-.pt-editor-host .pt-bullet-dot {
+/* A bullet's `- ` and a status line's bullet render in the width of their source. */
+.pt-editor-host .pt-bullet-dot,
+.pt-editor-host .pt-bullet-gap {
+  display: inline-block;
   color: var(--pt-prose);
   text-indent: 0;
   white-space: nowrap;
@@ -710,14 +760,18 @@ button {
 }
 
 /* PlainTasks markers */
-/* The box is as wide as the `[ ]` it replaces, so wrapped lines keep hanging under the label. */
+/* The marker is as wide as the `[ ] ` it replaces, so wrapped lines keep hanging under the label. */
 .pt-editor-host .pt-marker {
   display: inline-block;
-  width: 3ch;
   cursor: pointer;
-  text-align: center;
   text-indent: 0;
   white-space: nowrap;
+}
+
+.pt-editor-host .pt-marker-box {
+  display: inline-block;
+  width: 3ch;
+  text-align: center;
 }
 
 .pt-editor-host .pt-marker-symbol {

@@ -1,19 +1,20 @@
 import { describe, expect, test } from 'bun:test'
-import { EditorSelection, EditorState, Transaction } from '@codemirror/state'
+import { EditorSelection, EditorState, Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, type Decoration } from '@codemirror/view'
 import {
-  cursorCharBackwardLogical, cursorCharForwardLogical, redo, selectCharBackwardLogical, undo, undoDepth,
+  cursorCharBackwardLogical, cursorCharForwardLogical, deleteCharBackward, deleteCharForward, redo,
+  selectCharBackwardLogical, undo, undoDepth,
 } from '@codemirror/commands'
 
 import { rebaseRemote } from './changes'
 import type { EditorCommand } from './types'
 import {
-  clearRemoteHighlight, deleteEmptyTaskPrefix, documentDecorations, editorExtensions, moveToTaskLabel, runEditorCommand,
-  remoteHighlights, remoteTransaction,
+  clearRemoteHighlight, deleteBackwardAcrossMarks, deleteEmptyTaskPrefix, deleteForwardAcrossMarks, documentDecorations,
+  editorExtensions, moveToTaskLabel, prefixTyping, remoteHighlights, remoteTransaction, runEditorCommand,
 } from './extensions'
 
-const stateFor = (text: string, anchor = 0) => EditorState.create({
-  doc: text, selection: { anchor }, extensions: [editorExtensions('other')],
+const stateFor = (text: string, anchor = 0, head = anchor) => EditorState.create({
+  doc: text, selection: { anchor, head }, extensions: [editorExtensions('other')],
 })
 const decorations = (state: EditorState) => {
   const result: Array<{ from: number; to: number; decoration: Decoration }> = []
@@ -28,11 +29,13 @@ const replacements = (state: EditorState) => decorations(state).filter(({ from, 
 const hiddenText = (state: EditorState) => replacements(state)
   .filter(({ decoration }) => !decoration.spec.widget)
   .map(({ from, to }) => state.doc.sliceString(from, to))
+const widgetTexts = (state: EditorState) => replacements(state).filter(({ decoration }) => decoration.spec.widget)
+  .map(({ from, to }) => state.doc.sliceString(from, to))
 const classes = (state: EditorState): string[] => {
   const result: string[] = []
-  for (const decorations of state.facet(EditorView.decorations)) {
-    if (typeof decorations === 'function') continue
-    decorations.between(0, state.doc.length, (_from, _to, decoration) => {
+  for (const set of state.facet(EditorView.decorations)) {
+    if (typeof set === 'function') continue
+    set.between(0, state.doc.length, (_from, _to, decoration) => {
       if (typeof decoration.spec.class === 'string') result.push(...decoration.spec.class.split(' '))
     })
   }
@@ -43,6 +46,7 @@ interface FakeElement {
   tagName: string
   className: string
   textContent: string
+  style: Record<string, string>
   attributes: Record<string, string>
   children: FakeElement[]
   setAttribute(name: string, value: string): void
@@ -52,130 +56,183 @@ const fakeView = {
   dom: {
     ownerDocument: {
       createElement: (tagName: string): FakeElement => ({
-        tagName, className: '', textContent: '', attributes: {}, children: [],
+        tagName, className: '', textContent: '', style: {}, attributes: {}, children: [],
         setAttribute(name, value) { this.attributes[name] = value },
         append(...children) { this.children.push(...children) },
       }),
     },
   },
 } as unknown as EditorView
-const widgetTexts = (state: EditorState) => replacements(state).filter(({ decoration }) => decoration.spec.widget)
-  .map(({ from, to }) => state.doc.sliceString(from, to))
-/** Each rendered marker as its source text, box classes, symbol, and label. */
+const render = (decoration: Decoration) => decoration.spec.widget.toDOM(fakeView) as unknown as FakeElement
+/** Each rendered task marker as its source text, classes, width, symbol and label. */
 const markers = (state: EditorState) => replacements(state).flatMap(({ from, to, decoration }) => {
-  const source = state.doc.sliceString(from, to)
-  if (!decoration.spec.widget || !/^\[.\]$/.test(source)) return []
-  const element = decoration.spec.widget.toDOM(fakeView) as unknown as FakeElement
-  return [{ source, className: element.className, symbol: element.children[0]?.textContent, label: element.attributes['aria-label'] }]
+  if (!decoration.spec.widget) return []
+  const element = render(decoration)
+  if (!element.className.startsWith('pt-marker')) return []
+  return [{
+    source: state.doc.sliceString(from, to), className: element.className, width: element.style.width,
+    symbol: element.children[0]?.children[0]?.textContent, label: element.attributes['aria-label'],
+  }]
 })
-
-describe('editor extensions', () => {
-  test('markers are always rendered, with the caret or a selection on them, and follow a changed checkbox', () => {
-    let state = stateFor('- [ ] Ship\n')
-    expect(markers(state)).toEqual([{ source: '[ ]', className: 'pt-marker pt-marker-open', symbol: '☐', label: 'Open' }])
-    state = state.update({
-      selection: EditorSelection.create([EditorSelection.cursor(0), EditorSelection.range(2, 5)], 0), userEvent: 'select.pointer',
+/** Enough of a view for commands that read the state and dispatch. */
+const viewFor = (initial: EditorState) => {
+  let state = initial
+  return {
+    get state() { return state },
+    dispatch(spec: TransactionSpec | Transaction) { state = spec instanceof Transaction ? spec.state : state.update(spec).state },
+  } as unknown as EditorView & { state: EditorState }
+}
+const run = (state: EditorState, command: (target: EditorView) => boolean) => {
+  const view = viewFor(state)
+  const handled = command(view)
+  return { handled, state: view.state }
+}
+/** Types each character at the caret the way the editor's input handler does. */
+const typeText = (initial: EditorState, text: string) => {
+  let state = initial
+  for (const character of text) {
+    const head = state.selection.main.head
+    state = state.update(prefixTyping(state, head, head, character) ?? {
+      changes: { from: head, insert: character }, selection: { anchor: head + character.length }, userEvent: 'input.type',
     }).state
-    expect(markers(state)).toEqual([{ source: '[ ]', className: 'pt-marker pt-marker-open', symbol: '☐', label: 'Open' }])
-    expect(classes(state)).not.toContain('pt-marker-source')
-    expect(classes(state)).not.toContain('pt-line-editing')
-    state = state.update({ changes: { from: 3, to: 4, insert: 'x' }, selection: { anchor: 3 } }).state
-    expect(classes(state)).toContain('pt-line-task-done')
-    expect(markers(state)).toEqual([{ source: '[x]', className: 'pt-marker pt-marker-done', symbol: '✔', label: 'Done' }])
-    state = state.update({ changes: { from: 3, to: 4, insert: '-' } }).state
-    expect(markers(state)).toEqual([{ source: '[-]', className: 'pt-marker pt-marker-cancelled', symbol: '✘', label: 'Cancelled' }])
-    expect(markers(stateFor('- [ ] \n'))).toEqual([{ source: '[ ]', className: 'pt-marker pt-marker-open pt-marker-empty', symbol: '☐', label: 'Open' }])
-  })
+  }
+  return state
+}
 
-  test('decorated lines hide syntax and prose bullets while preserving styled text and marker slots', () => {
-    const text = '# Project\n- [ ] **bold** *em* ~~strike~~ `code` [guide](#project)\n  - **agent** planning\n  note\n> quote\n- plain bullet\n- [ ] \n'
-    const state = stateFor(text, text.length)
+const everyKind = [
+  '# Project',
+  '- [ ] Task with **bold** and [a link](https://example.com)',
+  '  - **t1** planning',
+  '  a note with *em*',
+  'Some _prose_ text',
+  '- plain bullet with `code`',
+  '1. numbered ~~gone~~',
+  '> quote with **bold**',
+  '```',
+  '**fenced**',
+  '```',
+].join('\n')
+
+describe('rendered editor', () => {
+  test('every line kind shows its rendered form, wherever the caret or selection is', () => {
+    let state = stateFor(everyKind)
+    const preview = state.field(documentDecorations)
     expect(hiddenText(state)).toEqual([
-      '# ', '- ', '**', '**', '*', '*', '~~', '~~', '`', '`', '[', '](#project)', '**', '**', '> ', '- ',
+      '# ', '**', '**', '[', '](https://example.com)', '**', '**', '*', '*', '_', '_', '`', '`', '~~', '~~', '> ', '**', '**',
     ])
+    expect(widgetTexts(state)).toEqual(['- [ ] ', '- ', '- '])
     expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-level-1', 'pt-strong', 'pt-em', 'pt-strike', 'pt-code', 'pt-link', 'pt-bullet-hidden',
+      'pt-level-1', 'pt-heading-title', 'pt-strong', 'pt-link', 'pt-em', 'pt-code', 'pt-strike', 'pt-bullet', 'pt-line-quote', 'pt-line-code',
     ]))
-    for (const className of ['pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark', 'pt-marker-source']) {
+    for (const className of ['pt-line-editing', 'pt-heading-marks', 'pt-strong-mark', 'pt-em-mark', 'pt-link-mark', 'pt-marker-source']) {
       expect(classes(state)).not.toContain(className)
     }
-    expect(widgetTexts(state)).toEqual(['[ ]', '-', '[ ]'])
-    const dot = replacements(state).find(({ from, to }) => text.slice(from, to) === '-')!
-    const element = dot.decoration.spec.widget.toDOM(fakeView) as unknown as FakeElement
-    expect([element.tagName, element.className, element.textContent]).toEqual(['span', 'pt-bullet-dot', '•'])
-    expect(markers(state).map(({ className }) => className)).toEqual(['pt-marker pt-marker-open', 'pt-marker pt-marker-open pt-marker-empty'])
-    expect(decorations(state).filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-hang'))
-      .map(({ decoration }) => decoration.spec.attributes.style)).toEqual([
-      '--pt-hang: 4', '--pt-hang: 4', '--pt-hang: 2', '--pt-hang: 4',
+    for (let line = 1; line <= state.doc.lines; line += 1) {
+      const { from, to } = state.doc.line(line)
+      for (const selection of [{ anchor: from }, { anchor: to }, { anchor: from, head: to }, { anchor: Math.floor((from + to) / 2) }]) {
+        state = state.update({ selection, userEvent: 'select.pointer' }).state
+        expect(state.field(documentDecorations)).toBe(preview)
+      }
+    }
+    state = state.update({ selection: { anchor: 0, head: state.doc.length } }).state
+    expect(state.field(documentDecorations)).toBe(preview)
+  })
+
+  test('the task, status and bullet prefixes render as one box, gap or dot in the width of their source', () => {
+    const state = stateFor('- [ ] Open\n- [x] Done\n  - [-] Cancelled\n- [ ] \n- [ ]\n  - status\n- dot\n-   wide')
+    expect(markers(state)).toEqual([
+      { source: '- [ ] ', className: 'pt-marker pt-marker-open', width: '4ch', symbol: '☐', label: 'Open' },
+      { source: '- [x] ', className: 'pt-marker pt-marker-done', width: '4ch', symbol: '✔', label: 'Done' },
+      { source: '- [-] ', className: 'pt-marker pt-marker-cancelled', width: '4ch', symbol: '✘', label: 'Cancelled' },
+      { source: '- [ ] ', className: 'pt-marker pt-marker-open pt-marker-empty', width: '4ch', symbol: '☐', label: 'Open' },
+      { source: '- [ ]', className: 'pt-marker pt-marker-open pt-marker-empty', width: '3ch', symbol: '☐', label: 'Open' },
+    ])
+    const others = replacements(state).filter(({ decoration }) => decoration.spec.widget && !render(decoration).className.startsWith('pt-marker'))
+    expect(others.map(({ from, to, decoration }) => {
+      const element = render(decoration)
+      return [state.doc.sliceString(from, to), element.className, element.textContent, element.style.width]
+    })).toEqual([
+      ['- ', 'pt-bullet-gap', '', '2ch'],
+      ['- ', 'pt-bullet-dot', '•', '2ch'],
+      ['- ', 'pt-bullet-dot', '•', '2ch'],
     ])
   })
 
-  test('decorates tags with their shared and sanitized name classes', () => {
-    const text = '@today @HIGH @waiting\n`@code`\n```\n@fenced\n```'
-    const state = stateFor(text, text.length)
-    expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-tag', 'pt-tag-today', 'pt-tag-high', 'pt-tag-waiting',
-    ]))
-    expect(classes(state)).not.toContain('pt-tag-code')
-    expect(classes(state)).not.toContain('pt-tag-fenced')
-    expect(hiddenText(state)).not.toContain('@today')
-    expect(hiddenText(state)).not.toContain('@HIGH')
+  test('unfinished Markdown shows as typed until it is complete', () => {
+    for (const typed of ['#', '-', '>', '**bol', '*em', '~~gone', '`code', '[text](url', '##', '1.']) {
+      const state = stateFor(typed)
+      expect(hiddenText(state)).toEqual([])
+      expect(widgetTexts(state)).toEqual([])
+    }
+    expect(classes(stateFor('#'))).toContain('pt-heading-marks')
   })
 
-  test('returns false for unavailable Tab and Shift-Tab actions so the browser can handle them', () => {
-    const view = { state: stateFor('```\ncode\n```') } as unknown as EditorView
-    expect(runEditorCommand(view, 'tab' as EditorCommand)).toBe(false)
-    expect(runEditorCommand(view, 'outdent', true)).toBe(false)
+  test('Markdown typed character by character renders as soon as each construct is complete', () => {
+    let state = typeText(stateFor(''), '**bol')
+    expect(hiddenText(state)).toEqual([])
+    state = typeText(state, 'd** and _em_ with ~~x~~ `y` [z](#tasks)')
+    expect(state.doc.toString()).toBe('**bold** and _em_ with ~~x~~ `y` [z](#tasks)')
+    expect(hiddenText(state)).toEqual(['**', '**', '_', '_', '~~', '~~', '`', '`', '[', '](#tasks)'])
+    state = typeText(stateFor(''), '#')
+    expect(hiddenText(state)).toEqual([])
+    state = typeText(state, ' Project')
+    expect(hiddenText(state)).toEqual(['# '])
+    expect(classes(state)).toContain('pt-level-1')
+    state = typeText(stateFor(''), '- [ ] Ship')
+    expect(state.doc.toString()).toBe('- [ ] Ship')
+    expect(widgetTexts(state)).toEqual(['- [ ] '])
   })
 
-  test('other edited lines reveal delimiters, even in selections spanning task and status lines, which stay rendered', () => {
-    const text = '# Project\n- [ ] **bold** *em* ~~strike~~ `code` [guide](#project)\n  - **agent** planning\n> quote\n- plain **bullet**\n'
-    let state = stateFor(text, text.length)
-    state = state.update({
-      selection: EditorSelection.create([
-        EditorSelection.range(state.doc.line(3).to, 0),
-        EditorSelection.range(state.doc.line(4).from, state.doc.line(5).from),
-      ]),
-      userEvent: 'select.pointer',
-    }).state
-    expect(state.field(documentDecorations).editing).toEqual([1, 4, 5])
-    expect(hiddenText(state)).toEqual(['- ', '**', '**', '*', '*', '~~', '~~', '`', '`', '[', '](#project)', '**', '**'])
-    expect(widgetTexts(state)).toEqual(['[ ]'])
-    expect(classes(state)).toEqual(expect.arrayContaining([
-      'pt-line-editing', 'pt-heading-marks', 'pt-strong-mark', 'pt-bullet', 'pt-bullet-hidden',
-    ]))
-    for (const className of ['pt-em-mark', 'pt-strike-mark', 'pt-code-mark', 'pt-link-mark']) expect(classes(state)).not.toContain(className)
+  test('[] or [ ] and a space at the start of a line make a task, keeping the indentation', () => {
+    for (const typed of ['[]', '[ ]', '- []', '- [ ]']) {
+      const state = typeText(stateFor('  ', 2), `${typed} Ship`)
+      expect(state.doc.toString()).toBe('  - [ ] Ship')
+      expect(state.selection.main.head).toBe(state.doc.length)
+    }
+    expect(typeText(stateFor('text ', 5), '[] x').doc.toString()).toBe('text [] x')
   })
 
-  test('a link on a task line stays rendered with the caret inside it, while a prose link reveals its Markdown', () => {
-    const text = '- [ ] Read [the guide](https://example.com/guide) today\nSee [notes](#notes)\n'
-    const inside = text.indexOf('guide]') + 2
-    let state = stateFor(text, inside)
-    expect(state.field(documentDecorations).editing).toEqual([])
-    expect(hiddenText(state)).toEqual(['- ', '[', '](https://example.com/guide)', '[', '](#notes)'])
-    state = state.update({ selection: { anchor: text.indexOf('notes]') }, userEvent: 'select.pointer' }).state
-    expect(state.field(documentDecorations).editing).toEqual([2])
-    expect(hiddenText(state)).toEqual(['- ', '[', '](https://example.com/guide)'])
+  test('typing before a rendered prefix writes into the text, and a gapless box gets its space', () => {
+    let state = typeText(stateFor('  - [ ] Ship', 2), 'Now ')
+    expect(state.doc.toString()).toBe('  - [ ] Now Ship')
+    state = typeText(stateFor('## Title', 0), 'A ')
+    expect(state.doc.toString()).toBe('## A Title')
+    state = typeText(stateFor('- [ ]', 5), 'x')
+    expect(state.doc.toString()).toBe('- [ ] x')
   })
 
-  test('atomic ranges contain exactly the replacements, including markers, and never labels or line breaks', () => {
-    const text = '# Project\n- [ ] **label**\n- bullet\n'
-    const state = stateFor(text, text.length)
+  test('atomic ranges contain exactly the replacements and never labels or line breaks', () => {
+    const state = stateFor(everyKind, everyKind.length)
     const preview = state.field(documentDecorations)
     const atomic: Array<[number, number, Decoration]> = []
     const providers = state.facet(EditorView.atomicRanges)
     expect(providers).toHaveLength(1)
     const set = providers[0]!({ state } as EditorView)
     expect(set).toBe(preview.atomicRanges)
-    expect(set).not.toBe(preview.decorations)
     set.between(0, state.doc.length, (from, to, value: Decoration) => { atomic.push([from, to, value]) })
     atomic.sort((left, right) => left[0] - right[0] || left[1] - right[1])
     expect(atomic).toEqual(replacements(state).map(({ from, to, decoration }) => [from, to, decoration]))
     for (const [from, to] of atomic) {
-      expect(text.slice(from, to)).not.toContain('\n')
-      expect(text.slice(from, to)).not.toContain('label')
+      expect(everyKind.slice(from, to)).not.toContain('\n')
+      for (const word of ['Task', 'bold', 'link', 'planning', 'em', 'prose', 'code', 'gone', 'quote']) {
+        expect(everyKind.slice(from, to)).not.toContain(word)
+      }
     }
-    expect(atomic.map(([from, to]) => text.slice(from, to))).toContain('[ ]')
+  })
+
+  test('decorates tags with their shared and sanitized name classes', () => {
+    const text = '@today @HIGH @waiting\n`@code`\n```\n@fenced\n```'
+    const state = stateFor(text, text.length)
+    expect(classes(state)).toEqual(expect.arrayContaining(['pt-tag', 'pt-tag-today', 'pt-tag-high', 'pt-tag-waiting']))
+    expect(classes(state)).not.toContain('pt-tag-code')
+    expect(classes(state)).not.toContain('pt-tag-fenced')
+    expect(hiddenText(state)).not.toContain('@today')
+  })
+
+  test('returns false for unavailable Tab and Shift-Tab actions so the browser can handle them', () => {
+    const view = { state: stateFor('```\ncode\n```') } as unknown as EditorView
+    expect(runEditorCommand(view, 'tab' as EditorCommand)).toBe(false)
+    expect(runEditorCommand(view, 'outdent', true)).toBe(false)
   })
 
   test('emits heading level classes and hanging columns with mixed indentation', () => {
@@ -185,78 +242,58 @@ describe('editor extensions', () => {
     expect(decorations(state).filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-hang'))
       .map(({ decoration }) => decoration.spec.attributes.style)).toEqual(['--pt-hang: 8', '--pt-hang: 8', '--pt-hang: 6'])
   })
+})
 
-  test('caret moves on and between task lines reuse the preview, which only changes for lines that reveal Markdown', () => {
-    let state = stateFor('- [ ] **Task**\n- [ ] Next\nOther', 8)
-    const preview = state.field(documentDecorations)
-    const sets = state.facet(EditorView.decorations)
-    expect(hiddenText(state)).toEqual(['- ', '**', '**', '- '])
-    state = state.update({ selection: { anchor: 9 }, userEvent: 'select' }).state
-    expect(state.field(documentDecorations)).toBe(preview)
-    expect(state.facet(EditorView.decorations)).toBe(sets)
-    state = state.update({ selection: { anchor: state.doc.line(2).to }, userEvent: 'select.pointer' }).state
-    expect(state.field(documentDecorations)).toBe(preview)
-    state = state.update({ selection: { anchor: state.doc.line(3).from }, userEvent: 'select' }).state
-    expect(state.field(documentDecorations)).not.toBe(preview)
-    expect(hiddenText(state)).toEqual(['- ', '**', '**', '- '])
-    const beforeEdit = state.field(documentDecorations)
-    state = state.update({ changes: { from: state.doc.length, insert: '!' }, userEvent: 'input.type' }).state
-    expect(state.field(documentDecorations)).not.toBe(beforeEdit)
-  })
-
-  test('keyboard and pointer carets skip task prefixes while range and programmatic selections keep their position', () => {
+describe('caret over rendered prefixes', () => {
+  test('the box is one caret step: before it is a position, inside it never is', () => {
     const text = ' \t- [ ] Task\n- [ ] Other'
     const state = stateFor(text, text.length)
+    const prefix = text.indexOf('-')
     const label = text.indexOf('Task')
-    for (let anchor = 2; anchor < label; anchor += 1) {
+    for (let anchor = prefix + 1; anchor < label; anchor += 1) {
       expect(state.update({ selection: { anchor }, userEvent: 'select' }).state.selection.main.head).toBe(label)
       expect(state.update({ selection: { anchor }, userEvent: 'select.pointer' }).state.selection.main.head).toBe(label)
       expect(state.update({ selection: { anchor } }).state.selection.main.head).toBe(anchor)
     }
-    const fromLabel = stateFor(text, label + 2)
-    expect(fromLabel.update({ selection: { anchor: 3 }, userEvent: 'select.pointer' }).state.selection.main.head).toBe(label)
-    expect(state.update({ selection: { anchor: 1 }, userEvent: 'select' }).state.selection.main.head).toBe(1)
-    const range = state.update({ selection: { anchor: 2, head: 5 }, userEvent: 'select' }).state.selection.main
-    expect([range.anchor, range.head]).toEqual([2, 5])
-    const multi = state.update({
-      selection: EditorSelection.create([EditorSelection.cursor(2), EditorSelection.cursor(state.doc.line(2).from + 3)], 1),
-      userEvent: 'select',
-    }).state.selection
-    expect(multi.ranges.map(range => range.head)).toEqual([label, text.indexOf('Other')])
-    expect(multi.mainIndex).toBe(1)
-    const remote = state.update({ selection: { anchor: 3 }, userEvent: 'select', annotations: remoteTransaction.of(1) }).state
-    expect(remote.selection.main.head).toBe(3)
+    expect(state.update({ selection: { anchor: prefix }, userEvent: 'select' }).state.selection.main.head).toBe(prefix)
+    expect(state.update({ selection: { anchor: prefix }, userEvent: 'select.pointer' }).state.selection.main.head).toBe(prefix)
+    const range = state.update({ selection: { anchor: 3, head: 5 }, userEvent: 'select' }).state.selection.main
+    expect([range.anchor, range.head]).toEqual([3, 5])
+    const remote = state.update({ selection: { anchor: 4 }, userEvent: 'select', annotations: remoteTransaction.of(1) }).state
+    expect(remote.selection.main.head).toBe(4)
   })
 
-  test('ArrowLeft leaves a task label for the previous line end, including empty and indented tasks', () => {
-    for (const task of ['- [ ] Task', '  - [ ] Task', '- [ ] ', '  - [ ]']) {
-      const text = `Previous\n${task}`
-      let state = stateFor(text)
-      const line = state.field(documentDecorations).classified.lines[1]!
-      state = state.update({ selection: { anchor: line.label!.from } }).state
-      expect(cursorCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+  test('ArrowLeft steps from the label to before the box, then to the previous line; ArrowRight reverses it', () => {
+    for (const indent of ['', '  ']) {
+      const text = `Previous\n${indent}- [ ] Task`
+      let state = stateFor(text, text.indexOf('Task'))
+      const left = () => cursorCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })
+      const right = () => cursorCharForwardLogical({ state, dispatch: transaction => { state = transaction.state } })
+      left()
+      expect(state.selection.main.head).toBe(text.indexOf('- ['))
+      for (let step = 0; step <= indent.length; step += 1) left()
       expect(state.selection.main.head).toBe('Previous'.length)
-    }
-    let state = stateFor('- [ ] First', 6)
-    expect(cursorCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
-    expect(state.selection.main.head).toBe(0)
-    expect(cursorCharForwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
-    expect(state.selection.main.head).toBe(6)
-  })
-
-  test('ArrowRight enters a task at its label and vertical entry also skips the prefix', () => {
-    const text = 'Previous\n- [ ] Task\nNext'
-    let state = stateFor(text, 'Previous'.length)
-    const label = text.indexOf('Task')
-    expect(cursorCharForwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
-    expect(state.selection.main.head).toBe(label)
-    for (const start of [0, text.indexOf('Next')]) {
-      const fromAnotherLine = stateFor(text, start)
-      expect(fromAnotherLine.update({ selection: { anchor: label - 2 }, userEvent: 'select' }).state.selection.main.head).toBe(label)
+      for (let step = 0; step <= indent.length; step += 1) right()
+      expect(state.selection.main.head).toBe(text.indexOf('- ['))
+      right()
+      expect(state.selection.main.head).toBe(text.indexOf('Task'))
     }
   })
 
-  test('Home targets the task label from the label, body or marker without leaving the line', () => {
+  test('hidden heading and quote marks take no caret step', () => {
+    for (const line of ['## Title', '> quoted']) {
+      const text = `Previous\n${line}`
+      const start = text.lastIndexOf(line.startsWith('#') ? 'Title' : 'quoted')
+      let state = stateFor(text, start)
+      cursorCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })
+      expect(state.selection.main.head).toBe('Previous'.length)
+      cursorCharForwardLogical({ state, dispatch: transaction => { state = transaction.state } })
+      expect(state.selection.main.head).toBe(start)
+      expect(state.update({ selection: { anchor: start - 1 }, userEvent: 'select.pointer' }).state.selection.main.head).toBe(start)
+    }
+  })
+
+  test('Home targets the task label from the label, body or box without leaving the line', () => {
     for (const prefix of ['', 'Previous\n', 'Previous\n  ']) {
       const text = `${prefix}- [ ] Task`
       const label = text.indexOf('Task')
@@ -269,19 +306,99 @@ describe('editor extensions', () => {
     expect(moveToTaskLabel({ state: stateFor('Prose', 3), dispatch: () => { throw new Error('Unexpected Home interception') } })).toBe(false)
   })
 
-  test('Shift+ArrowLeft keeps a nonempty source selection and multiple carets use their own previous heads', () => {
+  test('Shift+ArrowLeft keeps a nonempty selection and multiple carets use their own previous heads', () => {
     const text = 'Previous\n- [ ] First\nBetween\n- [ ] Second'
     const first = text.indexOf('First')
-    const second = text.indexOf('Second')
     let state = stateFor(text, first)
     expect(selectCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
     expect([state.selection.main.anchor, state.selection.main.head]).toEqual([first, first - 1])
     state = state.update({
-      selection: EditorSelection.create([EditorSelection.cursor(first), EditorSelection.cursor(second)], 1),
+      selection: EditorSelection.create([EditorSelection.cursor(first), EditorSelection.cursor(text.indexOf('Second'))], 1),
     }).state
     expect(cursorCharBackwardLogical({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
-    expect(state.selection.ranges.map(range => range.head)).toEqual(['Previous'.length, text.indexOf('\n- [ ] Second')])
+    expect(state.selection.ranges.map(range => range.head)).toEqual([text.indexOf('- [ ] First'), text.indexOf('- [ ] Second')])
     expect(state.selection.mainIndex).toBe(1)
+  })
+})
+
+describe('deleting rendered syntax', () => {
+  const backspace = (state: EditorState) => run(state, deleteCharBackward).state
+  const forwardDelete = (state: EditorState) => run(state, deleteCharForward).state
+
+  test('Backspace after the box removes the whole task marker as one undoable character', () => {
+    for (const box of ['[ ]', '[x]', '[-]']) {
+      const text = `Before\n  - ${box} Ship it @done (26-11-05 10:00) @high\nAfter`
+      let state = backspace(stateFor(text, text.indexOf('Ship')))
+      expect(state.doc.toString()).toBe('Before\n  Ship it @done (26-11-05 10:00) @high\nAfter')
+      expect(state.selection.main.head).toBe('Before\n  '.length)
+      expect(widgetTexts(state)).toEqual([])
+      expect(undo({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
+      expect(state.doc.toString()).toBe(text)
+    }
+  })
+
+  test('Delete before the box removes it too, and so does a selection covering part of it', () => {
+    const text = '  - [x] Ship'
+    expect(forwardDelete(stateFor(text, 2)).doc.toString()).toBe('  Ship')
+    const cases: Array<[number, number, string]> = [[4, 9, '  hip'], [5, 6, '  Ship'], [9, 3, '  hip'], [0, 5, 'Ship']]
+    for (const [anchor, head, expected] of cases) {
+      const state = backspace(stateFor(text, anchor, head))
+      expect(state.doc.toString()).toBe(expected)
+      expect(state.doc.toString()).not.toMatch(/- \[|\[.\]/)
+    }
+  })
+
+  test('a selection from the line above into the box joins the lines without the box', () => {
+    const text = 'Plan\n- [ ] Ship'
+    const state = backspace(stateFor(text, 2, text.indexOf('[') + 1))
+    expect(state.doc.toString()).toBe('PlShip')
+  })
+
+  test('joining a prefixed line onto the previous one drops its prefix', () => {
+    for (const line of ['- [ ] next', '- next', '## next', '> next', '  - [x] next']) {
+      const text = `prev\n${line}`
+      const start = text.indexOf('\n') + 1
+      expect(backspace(stateFor(text, start)).doc.toString()).toBe('prevnext')
+      expect(forwardDelete(stateFor(text, 4)).doc.toString()).toBe('prevnext')
+    }
+  })
+
+  test('Backspace after a bullet dot or before a heading or quote title makes the line plain text', () => {
+    expect(backspace(stateFor('- item', 2)).doc.toString()).toBe('item')
+    expect(backspace(stateFor('## Title', 3)).doc.toString()).toBe('Title')
+    expect(backspace(stateFor('> quoted', 2)).doc.toString()).toBe('quoted')
+    expect(backspace(stateFor('- [ ] Task\n  - planning', '- [ ] Task\n  - '.length)).doc.toString()).toBe('- [ ] Task\n  planning')
+  })
+
+  test('Backspace and Delete next to hidden delimiters delete the visible character and keep the style', () => {
+    let result = run(stateFor('a **bold** b', '**bold**'.length + 2), deleteBackwardAcrossMarks)
+    expect(result.handled).toBe(true)
+    expect(result.state.doc.toString()).toBe('a **bol** b')
+    result = run(stateFor('a **bold** b', 2), deleteForwardAcrossMarks)
+    expect(result.state.doc.toString()).toBe('a **old** b')
+    result = run(stateFor('see [docs](#docs) now', 'see [docs](#docs)'.length), deleteBackwardAcrossMarks)
+    expect(result.state.doc.toString()).toBe('see [doc](#docs) now')
+    expect(run(stateFor('plain text', 5), deleteBackwardAcrossMarks).handled).toBe(false)
+  })
+
+  test('deleting the last styled character removes its delimiters, and hitting one delimiter removes both', () => {
+    let result = run(stateFor('a **b** c', 7), deleteBackwardAcrossMarks)
+    expect(result.state.doc.toString()).toBe('a  c')
+    expect(backspace(stateFor('a **bold** c', 4, 6)).doc.toString()).toBe('a **ld** c')
+    expect(backspace(stateFor('a **bold** c', 4, 8)).doc.toString()).toBe('a  c')
+    expect(backspace(stateFor('a **bold** c', 6, 10)).doc.toString()).toBe('a bo c')
+    expect(backspace(stateFor('[label](https://example.com) x', 1, 5)).doc.toString()).toBe('[l](https://example.com) x')
+    expect(backspace(stateFor('[label](https://example.com) x', 1, 6)).doc.toString()).toBe(' x')
+    result = run(stateFor('- [ ] **b**', 11), deleteBackwardAcrossMarks)
+    expect(result.state.doc.toString()).toBe('- [ ] ')
+    result = run(stateFor('- [ ] **b**', 8), deleteBackwardAcrossMarks)
+    expect(result.state.doc.toString()).toBe('**b**')
+  })
+
+  test('typing over a selection that covers a delimiter keeps no half of the syntax', () => {
+    const state = stateFor('a **bold** c', 6, 10)
+    const next = state.update({ changes: { from: 6, to: 10, insert: 'X' }, selection: { anchor: 7 }, userEvent: 'input.type' }).state
+    expect(next.doc.toString()).toBe('a boX c')
   })
 
   test('Backspace removes an empty task prefix in one undoable edit while keeping indentation', () => {
@@ -293,10 +410,7 @@ describe('editor extensions', () => {
     expect(undoDepth(state)).toBe(1)
     expect(undo({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
     expect(state.doc.toString()).toBe(text)
-    const nonempty = stateFor('- [ ] Task', 6)
-    expect(deleteEmptyTaskPrefix({ state: nonempty, dispatch: () => { throw new Error('Unexpected deletion') } })).toBe(false)
-    const selected = stateFor('- [ ] ').update({ selection: { anchor: 2, head: 6 } }).state
-    expect(deleteEmptyTaskPrefix({ state: selected, dispatch: () => { throw new Error('Unexpected deletion') } })).toBe(false)
+    expect(deleteEmptyTaskPrefix({ state: stateFor('- [ ] Task', 6), dispatch: () => { throw new Error('Unexpected deletion') } })).toBe(false)
   })
 
   test('Backspace removes empty prefixes at multiple carets and leaves extra label whitespace intact', () => {
@@ -311,6 +425,17 @@ describe('editor extensions', () => {
     expect(state.selection.ranges.map(range => range.head)).toEqual([2, 4])
   })
 
+  test('actions, remote edits, undo and redo pass through unchanged', () => {
+    const text = '- [ ] Ship'
+    const state = stateFor(text)
+    const remote = state.update({ changes: { from: 2, to: 3, insert: '' }, annotations: remoteTransaction.of(1) }).state
+    expect(remote.doc.toString()).toBe('-  ] Ship')
+    const action = state.update({ changes: { from: 3, to: 4, insert: 'x' }, userEvent: 'input.action' }).state
+    expect(action.doc.toString()).toBe('- [x] Ship')
+  })
+})
+
+describe('remote edits', () => {
   test('maps inserted remote highlights through typing and clears them with an effect', () => {
     let state = stateFor('base\n')
     state = state.update({
