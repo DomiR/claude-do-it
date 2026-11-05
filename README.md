@@ -56,10 +56,11 @@ claude plugin marketplace add DomiR/claude-do-it
 claude plugin install do-it@do-it
 ```
 
-This one step installs the skill and the `do-it` command. Claude Code puts the
-plugin's `bin` folder on its Bash tool's PATH, and the `do-it` there runs the
-published CLI of the same version through `bunx`, which downloads it on first
-use. A `do-it` you installed yourself comes first. Plugin skills carry the
+The plugin brings the skill and the `do-it` command, with nothing else to
+install. Claude Code puts the plugin's `bin` folder on its Bash tool's PATH,
+and the `do-it` there runs the published CLI of the same version through
+`bunx`, which downloads it on first use. A `do-it` you installed yourself comes
+first, so keep it as current as the plugin. Plugin skills carry the
 plugin's name, so the command is `/do-it:do-it`. The plugin's `do-it` exists
 only inside Claude Code: to run `do-it open TODO.md` in your own terminal, also
 install the CLI as below.

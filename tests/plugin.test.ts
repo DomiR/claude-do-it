@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test"
-import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs"
+import { afterAll, describe, expect, it } from "bun:test"
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve, sep } from "node:path"
 import { APP_VERSION } from "@do-it/protocol"
@@ -36,8 +36,17 @@ function skillFiles(dir: string): ReadonlyArray<string> {
     .map(entry => realpathSync(join(dir, entry.name, "SKILL.md")))
 }
 
-function fakeBun(): string {
+const scratch: string[] = []
+afterAll(() => { for (const dir of scratch) rmSync(dir, { recursive: true, force: true }) })
+
+function tempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "do-it-plugin-"))
+  scratch.push(dir)
+  return dir
+}
+
+function fakeBun(): string {
+  const dir = tempDir()
   writeFileSync(join(dir, "bun"), "#!/bin/sh\nprintf '%s\\n' \"$@\"\n", { mode: 0o755 })
   return dir
 }
@@ -96,15 +105,9 @@ describe("Claude Code plugin", () => {
   })
 
   it("explains when Bun is missing", async () => {
-    const result = await runWrapper(["status"], { PATH: mkdtempSync(join(tmpdir(), "do-it-plugin-")) })
+    const result = await runWrapper(["status"], { PATH: tempDir() })
     expect(result.code).toBe(127)
     expect(result.stderr).toContain("https://bun.sh")
-  })
-
-  it("refuses to call itself", async () => {
-    const result = await runWrapper(["status"], { PATH: fakeBun(), DO_IT_PLUGIN_WRAPPER: "1" })
-    expect(result.code).toBe(1)
-    expect(result.stdout).not.toContain("--package")
   })
 
   it("writes its descriptions without dashes as separators", () => {

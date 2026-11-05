@@ -36,7 +36,7 @@ $D watch TODO.md --todos                  # every change, as task lines
 - Text starting with `-` goes after `--`. `-` alone reads standard input (multi line blocks).
 - `edit --old` must match exactly one place; add context until it does.
 - Name yourself: `--as NAME` or `export DO_IT_AGENT=NAME`. The person sees the name next to your changes, and `watch --as NAME` skips your own changes.
-- The do-it Claude Code plugin puts `do-it` on the Bash tool's PATH, so the next bullet applies only without it. Monitor commands may not get the plugin's PATH: there use the full path Step 1 prints.
+- The do-it Claude Code plugin puts `do-it` on the Bash tool's PATH, so the next bullet applies only without it. When a Monitor command reports `do-it` not found, spell out the `bunx claude-do-it` call there as the next bullet says.
 - When `do-it` is not on PATH, define it as a shell function at the top of every Bash call (functions do not survive between calls, and `D="bun ..."` breaks in zsh because `$D` is not word split): `do-it() { bunx claude-do-it "$@"; }` (from a repo checkout: `do-it() { bun "<repo>/packages/cli/src/bin.ts" "$@"; }`). Monitor commands spell out the `bunx claude-do-it` (or `bun .../bin.ts`) call in full.
 - Exit codes: 0 done, 1 refused or version mismatch, 2 invalid arguments, 3 daemon not running and could not start, 4 nothing yet, 9 the document was deleted.
 
@@ -64,7 +64,7 @@ The editor understands PlainTasks `@` tags on task lines and colours them. There
 ## Step 1. Open the todo
 
 ```bash
-command -v do-it || echo "do-it is not on PATH: define the do-it function (see above)"
+command -v do-it >/dev/null || echo "do-it is not on PATH: define the do-it function (see above)"
 export DO_IT_AGENT=conductor
 ARG='<the todo file from the arguments, empty for a seed request>'
 TODO=$(cd "$(dirname "${ARG:-TODO.md}")" && pwd)/$(basename "${ARG:-TODO.md}")
