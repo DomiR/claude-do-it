@@ -72,13 +72,13 @@ export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: Ensure
    * unusable, which gets one probe. `info` is the last record read.
    */
   const check = (patient: boolean, judged: DaemonInfo | null = null) => Effect.gen(function* () {
-    for (let attempt = 0; ; attempt++) {
+    for (let tries = 0; ; tries++) {
       const info = yield* readDaemonInfo(p.home)
       if (!info || !alive(info.pid) || info.appVersion !== APP_VERSION) return { usable: false, info } as const
       const health = yield* checkHealth(info)
       if (health !== "slow") return health?.appVersion === APP_VERSION ? { usable: true, info } as const : { usable: false, info } as const
-      if (!patient || attempt >= retryDelays.length || sameDaemon(info, judged)) return { usable: false, info } as const
-      yield* Effect.sleep(retryDelays[attempt]!)
+      if (!patient || tries >= retryDelays.length || sameDaemon(info, judged)) return { usable: false, info } as const
+      yield* Effect.sleep(retryDelays[tries]!)
     }
   })
   const first = yield* check(true)
