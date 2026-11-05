@@ -61,6 +61,8 @@ button {
 
 /* Editor shell */
 .pt-shell {
+  /* The side inset shared by the editor text and the formatting bar. */
+  --pt-content-inset: 24px;
   display: grid;
   grid-template-rows: 40px 36px minmax(0, 1fr) 28px;
   width: 100%;
@@ -150,12 +152,13 @@ button {
 }
 
 /* Formatting bar */
+/* As wide as the editor, with the first icon on the text's left edge (buttons pad their icons by 6px). */
 .pt-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;
   min-width: 0;
-  padding: 0 12px;
+  padding-inline: calc(var(--pt-content-inset) - 6px);
   overflow-x: auto;
   border-bottom: 1px solid var(--pt-delimiter);
   background: var(--pt-paper);
@@ -507,11 +510,11 @@ button {
   line-height: 1.6;
 }
 
+/* The text uses the whole width of the window or split, inside the shared side inset. */
 .pt-editor-host .cm-content {
-  --pt-content-inset: 24px;
   min-height: 100%;
   padding-block: 28px 40px;
-  padding-inline: var(--pt-content-inset) max(24px, calc(100% - 46rem - var(--pt-content-inset)));
+  padding-inline: var(--pt-content-inset);
   color: var(--pt-ink);
   line-height: 1.6;
   white-space: pre-wrap;
@@ -977,6 +980,26 @@ button {
 @media (min-width: 1100px) {
   .pt-status-center {
     display: flex;
+  }
+}
+
+/* A narrow split beside a terminal: less side inset, so the text keeps its width. */
+@media (max-width: 640px) {
+  .pt-shell {
+    --pt-content-inset: 14px;
+  }
+
+  .pt-header {
+    padding: 0 10px;
+  }
+
+  .pt-header-actions {
+    gap: 12px;
+    padding-left: 12px;
+  }
+
+  .pt-status-bar {
+    padding: 0 10px;
   }
 }
 
