@@ -1,8 +1,7 @@
 # claude-do-it design (v1)
 
 The contract every package is built against. [plan.md](plan.md) says what and
-why; this file says exactly how. Sheprd's `sheprd-doc` crate
-(`/Users/domir/Developer/herdr-gpui/crates/sheprd-doc/src`, read only) is the
+why; this file says exactly how. Sheprd's `sheprd-doc` crate is the
 reference implementation of the document model; where this file is silent,
 copy Sheprd.
 
