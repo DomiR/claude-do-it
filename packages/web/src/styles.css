@@ -1137,7 +1137,7 @@ button {
     --pt-project-bg: #ffffff0a;
     --pt-link: #9fc5f0;
     --pt-delimiter: #ffffff5c;
-    --pt-selection: #e8e3c91f;
+    --pt-selection: #e8e3c933;
     --pt-active-row: #f7dc8612;
     --pt-marker-open: #e8e3c98c;
     --pt-marker-done: #5fd08a;
@@ -1149,8 +1149,6 @@ button {
     --pt-tag-low: #4a473c;
     --pt-tag-critical: #ff4d4d;
     --pt-tag-done: #f5ae62;
-    --pt-tag-chip-ink: #000000;
-    --pt-tag-low-ink: #ffffff;
     --pt-key-paper: #2c2b23;
     --pt-key-edge: #ffffff40;
     --pt-key-shade: #00000080;
@@ -1183,14 +1181,25 @@ button {
     background-color: var(--pt-active-row);
   }
 
-  /* The close button has no colour of its own and would fall back to the system button text. */
-  .pt-editor-host .cm-search [name='close'] {
+  /* Preflight paints placeholders at half the text colour, under 4.5:1 on dark paper. */
+  .pt-editor-host .cm-panels input::placeholder {
     color: var(--pt-prose);
+  }
+
+  /* The faint active row alone would not show which palette option is selected. */
+  .pt-palette-item-active {
+    background: var(--pt-selection);
+    box-shadow: inset 3px 0 0 var(--pt-project);
   }
 
   /* An unfinished `#` or `-` and the "do it" eyebrow are text, so they need 4.5:1, not the border colour. */
   .pt-editor-host .pt-heading-marks,
-  .pt-editor-host .pt-bullet:not(.pt-bullet-hidden) {
+  .pt-editor-host .pt-bullet {
+    color: var(--pt-prose);
+  }
+
+  /* A rule stays above 3:1 on archived lines too. */
+  .pt-editor-host .pt-line-rule {
     color: var(--pt-marker-open);
   }
 
@@ -1199,7 +1208,7 @@ button {
     color: var(--pt-prose);
   }
 
-  /* At 0.7 the resolved, @cancelled and @critical colours fall below 4.5:1 on dark paper. */
+  /* At 0.7 the resolved, tag, @cancelled and @critical colours fall below 4.5:1 on dark paper. */
   .pt-editor-host .pt-line-archived {
     opacity: 0.85;
   }

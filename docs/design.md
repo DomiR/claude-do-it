@@ -340,8 +340,9 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
   projects, and agent status lines in muted ink. When the system is in dark
   mode the notepad follows it with PlainTasks' dark notebook: warm dark paper,
   light ink, and the same markers and tag colours tuned for WCAG AA contrast.
-  The file remains plain Markdown. CodeMirror uses `\n` as its line separator, so `\r` remains a
-  source character and the text stays byte exact.
+  The file remains plain Markdown. CodeMirror uses `\n` as its line
+  separator, so `\r` remains a source character and the text stays byte
+  exact.
 - Line decorations come from `editor/lines.ts`. On decorated lines, task and
   status bullets, heading and quote markers, Markdown delimiters, and link
   syntax are hidden while the label remains editable. No line ever shows its
