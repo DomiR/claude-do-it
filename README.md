@@ -80,6 +80,13 @@ writing under the question). Delivered tasks are checked off with `@done`,
 their branch, and their test result. An optional messenger agent can write
 those lines for the conductor.
 
+Small tasks are planned by Opus and built by a Sonnet worker; medium ones use
+Opus for both. Large tasks use a stronger planner, reviewer, and model when the
+session finds one (an agent type or a CLI on PATH), otherwise Opus, and are always split
+into subtasks written under the task. The first subtask is `Review this task`:
+nothing is built until you check it off, and you can edit the other subtasks
+before you do.
+
 PlainTasks tags steer the work: `@critical`, `@high`, and `@today` go first,
 `@low` last, and `@due(date)` reaches the worker as a deadline. Agents never
 change your tags; `@started`, `@done`, and `@cancelled` come only from the
@@ -88,8 +95,8 @@ The skill checks where it runs and starts workers there:
 
 | Where | Workers |
 | --- | --- |
-| Herdr (`HERDR_ENV=1`) | Claude architects in Herdr worktrees and tabs, with Codex lanes |
-| [Orca](https://www.onorca.dev) | one Orca worktree per task, with Claude in its first terminal (`orca worktree create --agent claude`) |
+| Herdr (`HERDR_ENV=1`) | one Claude session per task in a Herdr worktree and space, started in the background |
+| [Orca](https://www.onorca.dev) | one Orca worktree per task, with Claude in a terminal of its own (`orca worktree create`, then `orca terminal create`) |
 | [T3 Code](https://github.com/pingdotgg/t3code), with its `t3` CLI | one T3 Code thread per task, in its own worktree (`t3 thread start --worktree`) |
 | Any other terminal | Claude Code subagents in worktrees, which need nothing beyond Claude Code |
 
