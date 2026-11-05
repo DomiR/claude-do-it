@@ -47,7 +47,7 @@ The binary is `do-it`, not `do`: `do` is a reserved word in bash and zsh, so
 
 Invoked like Plannotator: `/do-it [path]` (default `TODO.md`; created from a template if missing).
 
-1. Runs `do-it open PATH`: starts or reuses the daemon, opens the browser on the document (inside Herdr, a Sheprd browser tab through `DO_IT_BROWSER`), and returns at once.
+1. Runs `do-it open PATH`: starts or reuses the daemon, opens the browser on the document (inside Sheprd, a browser split beside the conversation through `DO_IT_BROWSER`), and returns at once.
 2. The session becomes the **conductor**, following the herdrdocwatch doctrine: three Monitors (the todo with `--settle 25`, the inbox, and the test queue), triage of each task (S, M, L, Q), one status line per task written back under it, questions under the task, and delivery through a team:
    - **Outside Herdr:** the conductor calls every agent itself, in the background, because subagents can neither start subagents nor be prompted mid run. Planners are `fable-advisor` (S, M) or the `astra-implementer` agent asked for a plan (L); workers are `general-purpose` subagents with `isolation: "worktree"`, at most 3; one tester subagent drains the test queue (`tests.md`, served by the same daemon) one request at a time; a worker that needs the person ends with `QUESTION:` and is resumed with the answer through `SendMessage`; the conductor runs the final `fable-advisor` review per task.
    - **Inside Herdr (`HERDR_ENV=1`):** the same roles in Herdr worktrees and tabs, as herdrdocwatch does, with `do-it` commands in place of Herdr's `doc` commands.

@@ -70,7 +70,8 @@ ln -s "$PWD/skill" ~/.claude/skills/do-it                  # the skill, always c
 /do-it PLAN.md
 ```
 
-The browser opens on the todo. Add one task per line. The session sizes each
+The browser opens on the todo (inside Sheprd, in a split beside the
+conversation). Add one task per line. The session sizes each
 task, plans it, starts a worker in its own worktree, and writes one status line
 under it, plus any question it needs you to answer (answer by writing under the
 question). Delivered tasks are checked off with their branch and test result.

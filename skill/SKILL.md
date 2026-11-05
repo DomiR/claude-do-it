@@ -71,16 +71,22 @@ detect_harness > "$STATE/harness"; cat "$STATE/harness"   # later Bash calls: HA
 
 `herdr`, `orca`, and `t3code` start workers as sessions in that app; `plain` (any other terminal) uses Claude Code subagents, which need nothing beyond Claude Code.
 
-Open it for the person. It starts or reuses the daemon, creates the file from a template when missing, opens the browser, and returns at once:
+Open it for the person. It starts or reuses the daemon, creates the file from a template when missing, opens the browser, and returns at once. Inside Sheprd (Herdr GPUI) the todo opens in a split beside this conversation, so the person sees both; the [[herdr-gpui-browser]] skill covers that browser and the notes the person can send from it:
 
 ```bash
-if [ "${HERDR_ENV:-}" = 1 ] && [ -x /Applications/Sheprd.app/Contents/MacOS/sheprd ]; then
-  DO_IT_BROWSER="/Applications/Sheprd.app/Contents/MacOS/sheprd browser open" do-it open "$TODO"
+SHEPRD=
+for app in /Applications/Sheprd.app/Contents/MacOS/sheprd /Applications/Herdr.app/Contents/MacOS/Herdr; do
+  [ -x "$app" ] && { SHEPRD=$app; break; }
+done
+if [ "${HERDR_ENV:-}" = 1 ] && [ -n "$SHEPRD" ]; then
+  DO_IT_BROWSER="$SHEPRD browser open --beside" do-it open "$TODO"   # a split next to this pane
 else
   do-it open "$TODO"
 fi
 do-it read "$TODO"
 ```
+
+Opening the todo again from the same pane reuses and reloads that split.
 
 Tell the person in one line that the todo is open and that they can add tasks there. Create the two agent channels with your Write tool if missing (nobody has them open yet): `$STATE/inbox.md` (`# Inbox`, `## Messages`) and `$STATE/tests.md` (`# Tests`, `## Queue`). If `$STATE/state.json` exists, this is a resume: reconcile it with what still runs (Herdr: `herdr agent list`, `herdr worktree list --json`; Orca: `orca worktree list --json`, `orca terminal list --json`; T3 Code: `t3 thread list`; otherwise the worktrees in `git worktree list`) and only dispatch tasks that have no live worker and are not delivered.
 
