@@ -4,14 +4,14 @@ import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, wri
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { readDaemonInfo, withClient, type DaemonInfo } from "../../client/src"
-import { isolateDaemonEnvironment } from "../../client/test/environment"
+import { isolateDaemonEnvironment, runClient } from "../../client/test/environment"
 
 isolateDaemonEnvironment()
 
 async function ready(home: string, child: ReturnType<typeof Bun.spawn>): Promise<DaemonInfo> {
   const deadline = Date.now() + 5000
   while (Date.now() < deadline) {
-    const info = readDaemonInfo(home)
+    const info = await runClient(readDaemonInfo(home))
     if (info) return info
     if (child.exitCode !== null) throw new Error(`Daemon exited during startup: ${child.exitCode}`)
     await Bun.sleep(10)
