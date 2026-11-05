@@ -1,9 +1,7 @@
 import { APP_VERSION } from "@do-it/protocol"
-import { spawn } from "node:child_process"
-import { chmodSync, closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { fileURLToPath } from "node:url"
-import { Effect } from "effect"
-import { alive, DaemonUnavailable, probeHealth, readDaemonInfo, type DaemonInfo } from "./info"
+import { Effect, FileSystem, Option, Path, PlatformError } from "effect"
+import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { alive, DaemonUnavailable, probeHealth, readDaemonInfo } from "./info"
 import { paths } from "./paths"
 import { withClient } from "./rpc"
 
@@ -11,8 +9,17 @@ const unavailable = (cause: unknown) => cause instanceof DaemonUnavailable ? cau
   : new DaemonUnavailable({ message: cause instanceof Error ? cause.message : String(cause) })
 const attempt = <A>(f: () => A) => Effect.try({ try: f, catch: unavailable })
 
+/** Recovers from one platform error reason, such as a file that does not exist. */
+function unless<B>(reason: PlatformError.SystemErrorTag, fallback: B) {
+  return <A, R>(effect: Effect.Effect<A, PlatformError.PlatformError, R>): Effect.Effect<A | B, PlatformError.PlatformError, R> =>
+    Effect.catch(effect, error => error.reason._tag === reason ? Effect.succeed(fallback) : Effect.fail(error))
+}
+
+/** `exec` keeps the shell's pid for the daemon, and the redirection sends its output to the log. */
+const daemonScript = 'exec "$0" "$1" >>"$2" 2>&1'
+
 export const stopDaemon = Effect.fn("stopDaemon")(function* (home?: string) {
-  const info = readDaemonInfo(home)
+  const info = yield* readDaemonInfo(home)
   if (!info || !alive(info.pid)) return false
   const stopped = yield* withClient(info, client => client.stop({})).pipe(
     Effect.timeout("500 millis"), Effect.map(() => true), Effect.catch(() => Effect.succeed(false)),
@@ -37,84 +44,82 @@ export interface EnsureOptions {
 }
 
 export const ensureDaemon = Effect.fn("ensureDaemon")(function* (options: EnsureOptions = {}) {
-  const p = paths(options.home ?? options.env?.DO_IT_HOME)
-  function compatible() {
-    return Effect.gen(function* () {
-      const info = readDaemonInfo(p.home)
-      if (!info || !alive(info.pid)) return null
-      const health = yield* probeHealth(info)
-      return health && health.appVersion === APP_VERSION && info.appVersion === APP_VERSION ? info : null
-    })
-  }
-  const existing = yield* compatible()
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const p = yield* paths(options.home ?? options.env?.DO_IT_HOME)
+  const compatible = Effect.gen(function* () {
+    const info = yield* readDaemonInfo(p.home)
+    if (!info || !alive(info.pid)) return null
+    const health = yield* probeHealth(info)
+    return health && health.appVersion === APP_VERSION && info.appVersion === APP_VERSION ? info : null
+  })
+  const existing = yield* compatible
   if (existing) return existing
   if (options.spawn === false) return yield* Effect.fail(new DaemonUnavailable({ message: "No compatible daemon is running" }))
-  yield* attempt(() => { mkdirSync(p.home, { recursive: true, mode: 0o700 }); chmodSync(p.home, 0o700) })
-  let inode: number | undefined
+  yield* fs.makeDirectory(p.home, { recursive: true, mode: 0o700 }).pipe(Effect.andThen(fs.chmod(p.home, 0o700)), Effect.mapError(unavailable))
+
+  // The startup lock is a directory, so creating it is atomic. It holds the
+  // owner's pid; a lock without a readable pid is abandoned after 10 seconds.
+  const lockOnce = Effect.gen(function* () {
+    const created = yield* fs.makeDirectory(p.lock, { mode: 0o700 }).pipe(Effect.as(true), unless("AlreadyExists", false))
+    if (created) {
+      yield* fs.writeFileString(p.lockPid, String(process.pid), { mode: 0o600 })
+      return Option.getOrNull((yield* fs.stat(p.lock)).ino)
+    }
+    const stat = yield* fs.stat(p.lock).pipe(unless("NotFound", undefined))
+    if (!stat) return undefined
+    const text = yield* fs.readFileString(p.lockPid).pipe(unless("NotFound", undefined))
+    const pid = text === undefined ? undefined : Number(text)
+    const modified = Option.match(stat.mtime, { onNone: () => 0, onSome: date => date.getTime() })
+    const abandoned = pid !== undefined && Number.isSafeInteger(pid) && pid > 0 ? !alive(pid) : Date.now() - modified > 10_000
+    if (abandoned) yield* fs.remove(p.lock, { recursive: true, force: true })
+    return undefined
+  }).pipe(Effect.mapError(unavailable))
+  let inode: bigint | null | undefined
   const lockDeadline = Date.now() + 12_000
   while (inode === undefined) {
-    inode = yield* attempt(() => {
-      try {
-        mkdirSync(p.lock, { mode: 0o700 })
-        writeFileSync(p.lockPid, String(process.pid), { mode: 0o600 })
-        return statSync(p.lock).ino
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
-        try {
-          const stat = statSync(p.lock)
-          let pid: number | undefined
-          try { pid = Number(readFileSync(p.lockPid, "utf8")) }
-          catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
-          const abandoned = pid !== undefined && Number.isSafeInteger(pid) && pid > 0
-            ? !alive(pid)
-            : Date.now() - stat.mtimeMs > 10_000
-          if (abandoned) rmSync(p.lock, { recursive: true, force: true })
-        } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
-        return undefined
-      }
-    })
+    inode = yield* lockOnce
     if (inode !== undefined) break
     if (Date.now() > lockDeadline) return yield* Effect.fail(new DaemonUnavailable({ message: "Timed out waiting for the daemon startup lock" }))
     yield* Effect.sleep("50 millis")
   }
-  let startingPid: number | undefined
-  const run = Effect.gen(function* () {
-    const found = yield* compatible()
+  const held = inode
+  const release = fs.stat(p.lock).pipe(
+    Effect.flatMap(stat => Option.getOrNull(stat.ino) === held ? fs.remove(p.lock, { recursive: true, force: true }) : Effect.void),
+    Effect.ignore,
+  )
+
+  const start = Effect.gen(function* () {
+    const found = yield* compatible
     if (found) return found
-    const old = readDaemonInfo(p.home)
+    const old = yield* readDaemonInfo(p.home)
     if (old && alive(old.pid) && !(yield* stopDaemon(p.home))) {
       return yield* Effect.fail(new DaemonUnavailable({ message: "The previous daemon could not be stopped" }))
     }
-    const child = yield* attempt(() => {
-      try { if (statSync(p.log).size >= 1024 * 1024) renameSync(p.log, `${p.log}.old`) }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
-      const fd = openSync(p.log, "a", 0o600)
-      try {
-        const env: Record<string, string | undefined> = { ...process.env, ...options.env, DO_IT_HOME: p.home }
-        if (options.port !== undefined) env.DO_IT_PORT = String(options.port)
-        const child = spawn(process.execPath, [fileURLToPath(new URL("../../server/src/main.ts", import.meta.url))], {
-          detached: true, stdio: ["ignore", fd, fd], env,
-        })
-        startingPid = child.pid
-        child.unref()
-        return child
-      } finally { closeSync(fd) }
+    const size = yield* fs.stat(p.log).pipe(Effect.map(stat => stat.size), unless("NotFound", 0n), Effect.mapError(unavailable))
+    if (size >= 1024n * 1024n) yield* fs.rename(p.log, `${p.log}.old`).pipe(Effect.mapError(unavailable))
+    yield* fs.writeFileString(p.log, "", { flag: "a", mode: 0o600 }).pipe(Effect.mapError(unavailable))
+    const main = yield* path.fromFileUrl(new URL("../../server/src/main.ts", import.meta.url)).pipe(Effect.mapError(unavailable))
+    const env: Record<string, string> = { ...options.env, DO_IT_HOME: p.home }
+    if (options.port !== undefined) env.DO_IT_PORT = String(options.port)
+    const command = ChildProcess.make("/bin/sh", ["-c", daemonScript, process.execPath, main, p.log], {
+      detached: true, stdin: "ignore", stdout: "ignore", stderr: "ignore", env, extendEnv: true,
     })
-    let spawnError: Error | undefined
-    child.on("error", error => { spawnError = error })
-    const deadline = Date.now() + 5000
-    while (Date.now() < deadline) {
-      if (spawnError) return yield* Effect.fail(unavailable(spawnError))
-      const info = yield* compatible()
-      if (info) { startingPid = undefined; return info }
-      if (child.exitCode !== null) break
-      yield* Effect.sleep("50 millis")
-    }
-    return yield* Effect.fail(new DaemonUnavailable({ message: `The daemon did not start, see ${p.log}` }))
+    const child = yield* spawner.spawn(command).pipe(Effect.mapError(unavailable))
+    // An unreferenced child outlives this scope and this process.
+    yield* child.unref.pipe(Effect.mapError(unavailable))
+    const wait = Effect.gen(function* () {
+      const deadline = Date.now() + 5000
+      while (Date.now() < deadline) {
+        const info = yield* compatible
+        if (info) return info
+        if (!(yield* child.isRunning.pipe(Effect.mapError(unavailable)))) break
+        yield* Effect.sleep("50 millis")
+      }
+      return yield* Effect.fail(new DaemonUnavailable({ message: `The daemon did not start, see ${p.log}` }))
+    })
+    return yield* wait.pipe(Effect.onError(() => child.kill({ forceKillAfter: "1 second" }).pipe(Effect.ignore)))
   })
-  return yield* run.pipe(Effect.onError(() => Effect.sync(() => {
-    if (startingPid && alive(startingPid)) { try { process.kill(startingPid, "SIGTERM") } catch { /* Already exited. */ } }
-  })), Effect.ensuring(Effect.sync(() => {
-    try { if (statSync(p.lock).ino === inode) rmSync(p.lock, { recursive: true, force: true }) } catch { /* Already released. */ }
-  })))
+  return yield* Effect.scoped(start).pipe(Effect.ensuring(release))
 })

@@ -1,5 +1,4 @@
-import { readFileSync, statSync } from "node:fs"
-import { Data, Effect } from "effect"
+import { Data, Effect, FileSystem, Path } from "effect"
 import { paths } from "./paths"
 
 export interface DaemonInfo {
@@ -16,23 +15,27 @@ export class DaemonUnavailable extends Data.TaggedError("DaemonUnavailable")<{
   readonly message: string
 }> {}
 
-export function readDaemonInfo(home?: string): DaemonInfo | null {
-  const p = paths(home)
-  try {
-    if (statSync(p.daemon).size > 4096 || statSync(p.token).size > 128) return null
-    const record = JSON.parse(readFileSync(p.daemon, "utf8"))
-    const token = readFileSync(p.token, "utf8").trim()
-    if (!Number.isSafeInteger(record.pid) || record.pid <= 0 || !Number.isInteger(record.port)
-      || record.port < 1 || record.port > 65535 || typeof record.appVersion !== "string"
+export function readDaemonInfo(home?: string): Effect.Effect<DaemonInfo | null, never, FileSystem.FileSystem | Path.Path> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const p = yield* paths(home)
+    if ((yield* fs.stat(p.daemon)).size > 4096n || (yield* fs.stat(p.token)).size > 128n) return null
+    const text = yield* fs.readFileString(p.daemon)
+    const token = (yield* fs.readFileString(p.token)).trim()
+    const record = yield* Effect.try(() => JSON.parse(text) as Record<string, unknown> | null)
+    if (!record || !Number.isSafeInteger(record.pid) || (record.pid as number) <= 0 || !Number.isInteger(record.port)
+      || (record.port as number) < 1 || (record.port as number) > 65535 || typeof record.appVersion !== "string"
       || !Number.isFinite(record.startedAt) || !/^[a-f0-9]{64}$/.test(token)) return null
-    return { home: p.home, pid: record.pid, port: record.port, appVersion: record.appVersion,
-      startedAt: record.startedAt, token, baseUrl: `http://127.0.0.1:${record.port}` }
-  } catch { return null }
+    const port = record.port as number
+    return { home: p.home, pid: record.pid as number, port, appVersion: record.appVersion,
+      startedAt: record.startedAt as number, token, baseUrl: `http://127.0.0.1:${port}` }
+  }).pipe(Effect.catch(() => Effect.succeed(null)))
 }
 
+/** Signal 0 checks that a process exists. EPERM means it exists but belongs to someone else. */
 export function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true }
-  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM" }
+  catch (error) { return (error as { code?: unknown }).code === "EPERM" }
 }
 
 export const probeHealth = (info: DaemonInfo) => Effect.tryPromise({
