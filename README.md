@@ -134,6 +134,7 @@ agent.
 | Move up | `Cmd-Ctrl-Up` or `Alt-Up` | `Ctrl-Shift-Up` or `Alt-Up` |
 | Move down | `Cmd-Ctrl-Down` or `Alt-Down` | `Ctrl-Shift-Down` or `Alt-Down` |
 | Continue task | `Enter` | `Enter` |
+| Note under the task (folds with it) | `Shift-Enter` | `Shift-Enter` |
 | Expand a PlainTasks tag, or indent | `Tab` | `Tab` |
 | Outdent | `Shift-Tab` or `Cmd-[` | `Shift-Tab` or `Ctrl-[` |
 | Open link | `Cmd-Shift-U` or `Alt-Enter` | `Alt-Enter` |
