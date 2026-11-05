@@ -28,6 +28,13 @@ describe('normalizing pasted Markdown', () => {
     expect(normalizeMarkdown('- \\[ \\] Ship it')).toBe('- [ ] Ship it')
   })
 
+  test('only a line that starts with an escaped block prefix is unescaped, never inline code or other lines', () => {
+    expect(normalizeMarkdown('\\- \\[ \\] Ship \\*it\\* `a\\*b` 1\\. \\(x\\)!\ngrep \'\\[x\\]\' TODO.md'))
+      .toBe('- [ ] Ship *it* `a\\*b` 1\\. \\(x\\)!\ngrep \'\\[x\\]\' TODO.md')
+    expect(normalizeMarkdown('```\n\\- \\[ \\] literal\n```\n\\- \\[ \\] task')).toBe('```\n\\- \\[ \\] literal\n```\n- [ ] task')
+    expect(clipboardMarkdown("grep '\\[x\\]' TODO.md")).toBeNull()
+  })
+
   test('todo source passes unchanged', () => {
     const source = '# Project\n\n- [ ] Ship **it** @started(26-11-05 10:00)\n  - **t1** planning\n    a note\n- [x] Done @done(26-11-05 11:00)\n> quote'
     expect(normalizeMarkdown(source)).toBe(source)
@@ -77,6 +84,13 @@ describe('converting a rich text copy', () => {
     const html = '<html><body><!--StartFragment--><meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-1">' +
       '<p dir="ltr"><span>First</span></p><ul><li dir="ltr"><p><span>Item</span></p></li></ul></b><!--EndFragment--></body></html>'
     expect(htmlToMarkdown(html)).toBe('First\n- Item')
+  })
+
+  test('a web page copy keeps entities, image alt text, and table cells', () => {
+    const html = '<p>It&rsquo;s <a href="https://x.dev">here</a> &hellip; caf&eacute; &amp; &Uuml;ber <img src="d.png" alt="the diagram"></p>' +
+      '<table><tr><td>a</td><td>b</td></tr><tr><th>c</th><td>d&nbsp;e</td></tr></table>'
+    expect(htmlToMarkdown(html)).toBe('It\u2019s [here](https://x.dev) \u2026 caf\u00e9 & \u00dcber the diagram\na b\nc d e')
+    expect(htmlToMarkdown('<b>&constructor; &unknown;</b>')).toBe('**&constructor; &unknown;**')
   })
 
   test('scripts, styles, and links without a web target drop out', () => {

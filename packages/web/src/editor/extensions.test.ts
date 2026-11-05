@@ -655,6 +655,22 @@ describe('pasting Markdown', () => {
     expect(paste(stateFor(text, text.length), 'x', '<b>bold</b>').doc.toString()).toBe('- [ ] Ship **bold**')
   })
 
+  test('inside fenced code the paste stays plain text, line endings normalised', () => {
+    const text = '- [ ] Script\n```\necho hi\n```'
+    const snippet = '# comment\r\n* not a bullet\r\n[ ] not a task'
+    for (const at of [text.indexOf('\necho') + 1, text.indexOf(' hi'), text.indexOf('```')]) {
+      expect(pasteMarkdown(stateFor(text, at), snippet)).toBeUndefined()
+    }
+    const state = stateFor(text, text.indexOf(' hi'))
+    const filtered = state.facet(EditorView.clipboardInputFilter).reduce((value, filter) => filter(value, state), snippet)
+    expect(filtered).toBe('# comment\n* not a bullet\n[ ] not a task')
+    expect(paste(state, filtered).doc.toString()).toBe('- [ ] Script\n```\necho# comment\n* not a bullet\n[ ] not a task hi\n```')
+  })
+
+  test('pasted Windows line endings never leave a carriage return', () => {
+    expect(paste(stateFor(''), '* [ ] one\r\n* [ ] two\rthree').doc.toString()).toBe('- [ ] one\n- [ ] two\nthree')
+  })
+
   test('the paste is one undoable change', () => {
     let state = paste(stateFor('Intro\n', 6), '* [ ] One\n* [ ] Two\n    * [ ] Nested')
     expect(undoDepth(state)).toBe(1)

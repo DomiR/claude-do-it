@@ -306,9 +306,16 @@ export const prefixTyping = (state: EditorState, from: number, to: number, text:
  * takes the line, after text it starts a new line, and text after the caret
  * moves to a line of its own below, keeping its prefix. Every pasted line
  * gets the indentation of the line the paste lands on, so nested tasks stay
- * nested. Returns undefined when the editor's own paste does the same.
+ * nested. Inside fenced code the paste stays plain text. Returns undefined
+ * when the editor's own paste does the same.
  */
 export const pasteMarkdown = (state: EditorState, plain: string, html?: string): TransactionSpec | undefined => {
+  const classified = state.field(documentDecorations).classified
+  const inCode = (position: number) => {
+    const kind = classified.lines[state.doc.lineAt(position).number - 1]?.kind
+    return kind === 'code' || kind === 'fence'
+  }
+  if (state.selection.ranges.some(range => inCode(range.from) || inCode(range.to))) return undefined
   const markdown = clipboardMarkdown(plain, html)
   if (markdown === null) return undefined
   const paste = (spec: TransactionSpec): TransactionSpec => ({
@@ -320,7 +327,6 @@ export const pasteMarkdown = (state: EditorState, plain: string, html?: string):
     return markdown === plain.replace(/\r\n?/g, '\n') ? undefined : paste(state.replaceSelection(markdown))
   }
   const { from, to } = state.selection.main
-  const classified = state.field(documentDecorations).classified
   const textStart = (line: Line): number =>
     classified.lines[line.number - 1]?.prefix?.to ?? line.from + /^[ \t]*/.exec(line.text)![0].length
   const startLine = state.doc.lineAt(from)
@@ -571,6 +577,8 @@ export const editorExtensions = (platform: Platform, wrap = false): Extension =>
   keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: 'Escape', run: temporarilySetTabFocusMode }]),
   search({ top: true }),
   documentDecorations, prefixCaretFilter, syntaxGuard, prefixInput, remoteHighlights, highlightTimer, linkEdits,
+  // The document's lines end in \n only, so a pasted or dropped \r would stay in the text.
+  EditorView.clipboardInputFilter.of(text => text.replace(/\r\n?/g, '\n')),
   EditorView.domEventHandlers({
     paste(event, view) {
       const data = event.clipboardData
