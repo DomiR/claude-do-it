@@ -40,6 +40,32 @@ flowchart LR
 
 Needs [Bun](https://bun.sh) 1.3 or newer on macOS or Linux.
 
+### As a Claude Code plugin
+
+In Claude Code:
+
+```
+/plugin marketplace add DomiR/claude-do-it
+/plugin install do-it@do-it
+```
+
+Or from a terminal:
+
+```bash
+claude plugin marketplace add DomiR/claude-do-it
+claude plugin install do-it@do-it
+```
+
+This one step installs the skill and the `do-it` command. Claude Code puts the
+plugin's `bin` folder on its Bash tool's PATH, and the `do-it` there runs the
+published CLI of the same version through `bunx`, which downloads it on first
+use. A `do-it` you installed yourself comes first. Plugin skills carry the
+plugin's name, so the command is `/do-it:do-it`. The plugin's `do-it` exists
+only inside Claude Code: to run `do-it open TODO.md` in your own terminal, also
+install the CLI as below.
+
+### With the CLI
+
 ```bash
 bun add -g claude-do-it        # or: npm install -g claude-do-it (Bun still runs it)
 do-it skill install            # the /do-it skill, copied into ~/.claude/skills/do-it
@@ -50,6 +76,8 @@ Run `do-it skill install` again after upgrading to refresh the skill. It never
 replaces a skill directory it did not create unless you pass `--force`.
 `do-it --skill` prints the skill, and `do-it skill path` shows where the
 package keeps it. To try it without installing, use `bunx claude-do-it open TODO.md`.
+Skip `do-it skill install` when you use the plugin: you would get the skill
+twice, as `/do-it` and `/do-it:do-it`.
 
 The command is `do-it`, not `do`: `do` is a reserved word in bash and zsh.
 
@@ -71,6 +99,8 @@ ln -s "$PWD/skill" ~/.claude/skills/do-it                  # the skill, always c
 /do-it            # TODO.md in the current directory, created when missing
 /do-it PLAN.md
 ```
+
+With the plugin, the command is `/do-it:do-it` (for example `/do-it:do-it PLAN.md`).
 
 The browser opens on the todo (inside Sheprd, in a split beside the
 conversation). Add one task per line. The session is a conductor: it marks each
@@ -219,6 +249,13 @@ bun run build:web
 bun run build:npm                     # the npm package, in dist/npm
 bun --cwd packages/web run dev        # editor with a proxy to the daemon on 47100
 ```
+
+A release changes three versions together: `APP_VERSION` in
+`packages/protocol/src/index.ts`, `version` in `.claude-plugin/plugin.json`, and
+the pinned `claude-do-it@` version in `bin/do-it`. `tests/plugin.test.ts`
+checks that they match. Publish to npm before pushing, because the plugin's
+`do-it` runs that exact npm version. `claude plugin validate . --strict` checks
+the plugin and marketplace manifests.
 
 ## Acknowledgements
 

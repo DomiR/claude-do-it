@@ -1,0 +1,11 @@
+{
+  "name": "do-it",
+  "version": "0.1.1",
+  "description": "Run a Markdown todo as your only interface to a team of Claude Code agents: the do-it skill plus the do-it CLI it drives.",
+  "author": { "name": "Dominique Rau" },
+  "homepage": "https://github.com/DomiR/claude-do-it#readme",
+  "repository": "https://github.com/DomiR/claude-do-it",
+  "license": "MIT",
+  "keywords": ["todo", "markdown", "agents", "crdt", "conductor"],
+  "skills": ["./skill"]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "do-it",
+  "description": "The do-it Claude Code plugin: a Markdown todo that you and Claude edit at the same time.",
+  "owner": { "name": "Dominique Rau" },
+  "plugins": [
+    {
+      "name": "do-it",
+      "source": "./",
+      "description": "Run a Markdown todo as your only interface to a team of Claude Code agents: the do-it skill plus the do-it CLI it drives."
+    }
+  ]
+}

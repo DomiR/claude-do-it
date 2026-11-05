@@ -1,0 +1,13 @@
+#!/bin/sh
+# The do-it command of the Claude Code plugin. Claude Code puts this folder on
+# the Bash tool's PATH after the user's own PATH, so an installed do-it wins.
+# It runs the published CLI whose version matches this plugin.
+if [ -n "${DO_IT_PLUGIN_WRAPPER:-}" ]; then
+  echo "do-it: the plugin wrapper called itself; install the CLI with: bun add -g claude-do-it" >&2
+  exit 1
+fi
+if ! command -v bun >/dev/null 2>&1; then
+  echo "do-it needs Bun 1.3 or newer: https://bun.sh" >&2
+  exit 127
+fi
+DO_IT_PLUGIN_WRAPPER=1 exec bun x --package claude-do-it@0.1.1 do-it "$@"
