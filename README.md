@@ -70,12 +70,35 @@ ln -s "$PWD/skill" ~/.claude/skills/do-it                  # the skill, always c
 /do-it PLAN.md
 ```
 
-The browser opens on the todo. Add one task per line. The session sizes each
-task, plans it, starts a worker in its own worktree, and writes one status line
-under it, plus any question it needs you to answer (answer by writing under the
-question). Delivered tasks are checked off with their branch and test result.
-Inside Herdr (`HERDR_ENV=1`) the workers are Claude architects in Herdr
-worktrees and tabs with Codex lanes; elsewhere they are Claude Code subagents.
+The browser opens on the todo (inside Sheprd, in a split beside the
+conversation). Add one task per line. The session is a conductor: it marks each
+task `@started` as soon as it picks it up, sizes it, and delegates the rest
+(planning, building, the single test queue, review, and answers to questions)
+to agents, watching them instead of doing the work itself. Each task gets one
+status line under it, plus any question it needs you to answer (answer by
+writing under the question). Delivered tasks are checked off with `@done`,
+their branch, and their test result. An optional messenger agent can write
+those lines for the conductor.
+
+Small tasks are planned by Opus and built by a Sonnet worker; medium ones use
+Opus for both. Large tasks use a stronger planner, reviewer, and model when the
+session finds one (an agent type or a CLI on PATH), otherwise Opus, and are always split
+into subtasks written under the task. The first subtask is `Review this task`:
+nothing is built until you check it off, and you can edit the other subtasks
+before you do.
+
+PlainTasks tags steer the work: `@critical`, `@high`, and `@today` go first,
+`@low` last, and `@due(date)` reaches the worker as a deadline. Agents never
+change your tags; `@started`, `@done`, and `@cancelled` come only from the
+`do-it todo` commands.
+The skill checks where it runs and starts workers there:
+
+| Where | Workers |
+| --- | --- |
+| Herdr (`HERDR_ENV=1`) | one Claude session per task in a Herdr worktree and space, started in the background |
+| [Orca](https://www.onorca.dev) | one Orca worktree per task, with Claude in a terminal of its own (`orca worktree create`, then `orca terminal create`) |
+| [T3 Code](https://github.com/pingdotgg/t3code), with its `t3` CLI | one T3 Code thread per task, in its own worktree (`t3 thread start --worktree`) |
+| Any other terminal | Claude Code subagents in worktrees, which need nothing beyond Claude Code |
 
 Set `DO_IT_BROWSER` to the command that should open links, or to `true` to
 open nothing.
