@@ -41,6 +41,9 @@ export type EditorCommand =
   | 'commandPalette'
   | 'find'
   | 'showShortcuts'
+  | 'toggleFold'
+  | 'foldAll'
+  | 'unfoldAll'
 
 /**
  * `Applied.edits` are sorted, non overlapping, and in offsets of the text the action ran on

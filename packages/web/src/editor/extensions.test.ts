@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorSelection, EditorState, Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, type Decoration } from '@codemirror/view'
+import { Schema } from 'effect'
 import {
   cursorCharBackwardLogical, cursorCharForwardLogical, deleteCharBackward, deleteCharForward, redo,
   selectCharBackwardLogical, undo, undoDepth,
@@ -8,7 +9,10 @@ import {
 
 import { blockEnd, lines } from '@do-it/doc/text'
 
+import { EditorCommandName } from '../model'
 import { rebaseRemote } from './changes'
+import { classifiedDocument } from './document'
+import { foldState, isFoldOpen } from './folds'
 import type { EditorCommand } from './types'
 import {
   clearRemoteHighlight, deleteBackwardAcrossMarks, deleteEmptyTaskPrefix, deleteForwardAcrossMarks, documentDecorations,
@@ -227,7 +231,7 @@ describe('rendered editor', () => {
     const wraps = (state: EditorState) => state.facet(EditorView.contentAttributes)
       .some(attributes => typeof attributes !== 'function' && attributes.class === 'cm-lineWrapping')
     expect(wraps(stateFor('- [ ] Ship'))).toBe(false)
-    expect(wraps(EditorState.create({ doc: '- [ ] Ship', extensions: [editorExtensions('mac', true)] }))).toBe(true)
+    expect(wraps(EditorState.create({ doc: '- [ ] Ship', extensions: [editorExtensions('mac', { wrap: true })] }))).toBe(true)
   })
 
   test('done and lasted stamps get their own tag classes, which the stylesheet colours orange', () => {
@@ -709,5 +713,37 @@ describe('remote edits', () => {
     expect(state.doc.toString()).toBe(remote)
     expect(redo({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
     expect(state.doc.toString()).toBe(`${remote}local\n`)
+  })
+})
+
+describe('fold command integration', () => {
+  test('routes all fold commands through the runtime schema and shared state', () => {
+    const text = '# Project\n- [ ] Task\n  <details><summary>Explanation</summary>\n  body\n  </details>'
+    let state = stateFor(text, text.indexOf('Project'))
+    for (const command of ['foldAll', 'unfoldAll', 'toggleFold'] as const) {
+      expect(Schema.is(EditorCommandName)(command)).toBe(true)
+      const result = run(state, view => runEditorCommand(view, command))
+      expect(result.handled).toBe(true)
+      state = result.state
+      expect(state.doc.toString()).toBe(text)
+      expect(undoDepth(state)).toBe(0)
+      const folds = state.field(foldState)
+      expect(isFoldOpen(folds, folds.candidates[0]!)).toBe(command === 'unfoldAll')
+    }
+  })
+
+  test('decorations and folds share classification across remote edits', () => {
+    const original = '- [ ] Task\n  note'
+    let state = run(stateFor(original), view => runEditorCommand(view, 'foldAll')).state
+    state = state.update({ changes: { from: original.indexOf('Task'), to: original.indexOf('Task') + 4, insert: 'Renamed' } }).state
+    state = state.update({
+      changes: rebaseRemote(original, `${original}\n  agent note`, state.doc.toString()),
+      annotations: [remoteTransaction.of(8), Transaction.addToHistory.of(false)],
+    }).state
+    expect(state.field(documentDecorations).classified).toBe(state.field(classifiedDocument))
+    const folds = state.field(foldState)
+    expect(folds.candidates[0]!.identityLabel).toBe('Renamed')
+    expect(folds.candidates[0]!.hiddenLines).toBe(2)
+    expect(isFoldOpen(folds, folds.candidates[0]!)).toBe(false)
   })
 })

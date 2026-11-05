@@ -11,7 +11,9 @@ import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 
 import { Message } from '../message'
 import { runAction } from './actions'
+import { classifiedDocument } from './document'
 import { clearRemoteHighlight, editorFacts, remoteTransaction } from './facts'
+import { foldAll, foldExtensions, toggleFold, unfoldAll, type FoldOptions } from './folds'
 import { bindings, type Platform } from './keymap'
 import {
   classifyDocument, linkAt, linkRangeOn, prefixHasWidth, type ClassifiedDocument, type InlineKind, type Span,
@@ -76,6 +78,11 @@ export const runEditorCommand = (view: EditorView, command: EditorCommand, fallT
       }))
       return true
     case 'editLink': return editLink(view)
+    case 'toggleFold':
+      if (!toggleFold(view)) view.state.facet(editorFacts)(Message.ShowedEditorNotice({ text: 'No foldable block here' }))
+      return true
+    case 'foldAll': return foldAll(view)
+    case 'unfoldAll': return unfoldAll(view)
     default: return runEditorAction(view, command, selectionOf(view), false, fallThroughUnavailable)
   }
 }
@@ -205,15 +212,16 @@ export const documentDecorations = StateField.define<{
   atomicRanges: RangeSet<Decoration>
 }>({
   create: state => {
-    const classified = classifyDocument(state.doc.toString())
+    const classified = state.field(classifiedDocument)
     return { classified, ...lineDecorations(classified) }
   },
   update: (value, transaction) => {
     if (!transaction.docChanged) return value
-    const classified = classifyDocument(transaction.newDoc.toString())
+    const classified = transaction.state.field(classifiedDocument)
     return { classified, ...lineDecorations(classified) }
   },
   provide: field => [
+    classifiedDocument,
     EditorView.decorations.from(field, value => value.decorations),
     EditorView.atomicRanges.of(view => view.state.field(field).atomicRanges),
   ],
@@ -543,11 +551,14 @@ export const setLineWrap = (view: EditorView, wrap: boolean): void => {
   view.dispatch({ effects: lineWrap.reconfigure(wrapping(wrap)) })
 }
 
-export const editorExtensions = (platform: Platform, wrap = false): Extension => [
+export interface EditorOptions extends FoldOptions { readonly wrap?: boolean }
+
+export const editorExtensions = (platform: Platform, options: EditorOptions = {}): Extension => [
   EditorState.lineSeparator.of('\n'),
   EditorState.tabSize.of(4),
   EditorState.allowMultipleSelections.of(true),
-  history(), drawSelection(), highlightActiveLine(), lineWrap.of(wrapping(wrap)),
+  history(), drawSelection(), highlightActiveLine(), lineWrap.of(wrapping(options.wrap ?? false)),
+  foldExtensions(options),
   EditorView.contentAttributes.of({ 'aria-label': 'Todo document' }),
   Prec.highest(inputGuard),
   Prec.highest(keymap.of([{

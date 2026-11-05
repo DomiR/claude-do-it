@@ -18,12 +18,12 @@ type MountEditorMessage =
   | typeof Message.OpenedEditorLink.Type
 
 export const MountEditor = Mount.defineStream('MountEditor', {
-  args: { session: Schema.String, text: Schema.String, selection: Selection, platform: Platform },
+  args: { session: Schema.String, path: Schema.String, text: Schema.String, selection: Selection, platform: Platform },
   messages: [
     Message.SucceededMountEditor, Message.UpdatedEditor, Message.MovedEditorSelection,
     Message.PressedEditorCommand, Message.ShowedEditorNotice, Message.OpenedEditorLink,
   ],
-  execute: ({ element, session, text, selection, platform }) =>
+  execute: ({ element, session, path, text, selection, platform }) =>
     Stream.callback<MountEditorMessage>(queue =>
       Effect.gen(function* () {
         const emit = (fact: MountEditorMessage) => { Queue.offerUnsafe(queue, fact) }
@@ -36,7 +36,7 @@ export const MountEditor = Mount.defineStream('MountEditor', {
                 selection,
                 extensions: [
                   // Read here rather than passed in, so toggling wrap never remounts the editor.
-                  editorExtensions(platform, storedWrap()),
+                  editorExtensions(platform, { path, wrap: storedWrap() }),
                   editorFacts.of(fact => {
                     if (fact._tag === 'PressedEditorCommand' && fact.command === 'openLink') {
                       emit(fact.link === undefined

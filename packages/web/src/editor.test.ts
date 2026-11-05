@@ -22,7 +22,7 @@ const ready = (): Model => update(makeInitialModel(path, 'mac'), Message.Receive
 describe('PlainTasks shell', () => {
   test('has one childless keyed editor host, stats, location, and no textarea', () => {
     scene({ update, view }, given(ready()),
-      Mount.expectExact(MountEditor({ session, text: sample, selection: { anchor: 0, head: 0 }, platform: 'mac' })),
+      Mount.expectExact(MountEditor({ session, path, text: sample, selection: { anchor: 0, head: 0 }, platform: 'mac' })),
       Mount.resolve(MountEditor, Message.SucceededMountEditor({ session })),
       expect(selector('.pt-file-name')).toHaveText('DEMO.md'),
       expect(selector('.pt-file-name')).toHaveAttr('title', path),
