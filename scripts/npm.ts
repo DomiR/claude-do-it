@@ -5,7 +5,8 @@
  * from its own directory, so it cannot be bundled).
  *
  *   bun scripts/npm.ts            build
- *   cd dist/npm && npm publish    publish
+ *   git tag v<APP_VERSION>        publish: the Release workflow does it, see
+ *                                 .github/workflows/release.yml
  */
 import { $ } from "bun"
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
