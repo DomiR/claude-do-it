@@ -7,7 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Auth } from "../src/auth"
 import { DocumentRegistry } from "../src/documents"
-import { watchDocument } from "../src/handlers"
+import { syncDocument, watchDocument } from "../src/handlers"
 import { Log } from "../src/log"
 import { ServerServices } from "../src/services"
 import { Versions } from "../src/versions"
@@ -114,6 +114,75 @@ for (const text of [false, true]) {
     expect(entry.watchers).toBe(0)
   })))
 }
+
+test("after a restart that gave the tab's base version to another text, a sync is Forgotten and a watch resyncs", () => run(Effect.gen(function* () {
+  const { registry, versions, file } = yield* fixture
+  const tab = "# Tasks\n- [ ] ship\n"
+  const path = file(tab)
+  // The old daemon held the tab's text at version 5, but its last saved record was an older version 1.
+  yield* versions.record(path, 1, "# Tasks\n")
+  const entry = yield* registry.get(path)
+  expect(entry.doc.version).toBe(2)
+  for (const line of ["- [ ] agent 1", "- [ ] agent 2", "- [ ] agent 3"]) {
+    const previous = entry.doc.version
+    entry.doc.agentEdit({ kind: "agent", name: "cli" }, { version: previous }, text => appendBlock(text, line))
+    yield* registry.changed(entry, previous)
+  }
+  expect(entry.doc.version).toBe(5)
+  const current = entry.doc.text
+  expect(current).not.toBe(tab)
+
+  const refused = yield* Effect.result(syncDocument(registry, { path, base: 5, baseHash: sha256(tab), text: `${tab}- [ ] local\n` }))
+  expect(refused._tag).toBe("Failure")
+  if (refused._tag === "Failure") expect(refused.failure).toMatchObject({ _tag: "Forgotten", latest: 5 })
+  expect(entry.doc.text).toBe(current)
+  expect(entry.doc.version).toBe(5)
+
+  for (const since of [5, 4]) {
+    yield* Effect.scoped(Effect.gen(function* () {
+      const pull = yield* Stream.toPull(watchDocument(registry, { path, since, sinceHash: sha256(tab), text: true }))
+      expect(yield* pull).toEqual([{ _tag: "Resync", version: 5, hash: sha256(current), text: current }])
+    }))
+  }
+  // A hash that names the kept text resumes as before.
+  yield* Effect.scoped(Effect.gen(function* () {
+    const pull = yield* Stream.toPull(watchDocument(registry, { path, since: 3, sinceHash: sha256(entry.doc.textAt(3)!), text: false }))
+    expect(yield* pull).toEqual([{ _tag: "Watching", version: 5, hash: sha256(current) }])
+    expect(yield* pull).toMatchObject([{ _tag: "Change", from: 3, to: 5, hash: sha256(current) }])
+  }))
+
+  // After the Resync the tab replays its typing over the current text and syncs from there.
+  const rebased = `${current}- [ ] local\n`
+  expect(yield* syncDocument(registry, { path, base: 5, baseHash: sha256(current), text: rebased }))
+    .toEqual({ version: 6, text: rebased, hash: sha256(rebased) })
+  const older = entry.doc.textAt(4)!
+  const merged = yield* syncDocument(registry, { path, base: 4, baseHash: sha256(older), text: older.replace("ship", "ship USER") })
+  expect(merged).toEqual({ version: 7, text: rebased.replace("ship", "ship USER"), hash: sha256(rebased.replace("ship", "ship USER")) })
+  for (const line of ["agent 1", "agent 2", "agent 3", "local"]) expect(merged.text.split(line)).toHaveLength(2)
+})))
+
+test("after a restart that kept the tab's base text, the same version merges without a resync", () => run(Effect.gen(function* () {
+  const { registry, versions, file } = yield* fixture
+  const tab = "# Tasks\n- [ ] ship\n"
+  const path = file(tab)
+  yield* versions.record(path, 5, tab)
+  const entry = yield* registry.get(path)
+  expect(entry.doc.version).toBe(5)
+  const previous = entry.doc.version
+  entry.doc.agentEdit({ kind: "agent", name: "cli" }, { version: previous }, text => appendBlock(text, "- [ ] agent"))
+  yield* registry.changed(entry, previous)
+  yield* Effect.scoped(Effect.gen(function* () {
+    const pull = yield* Stream.toPull(watchDocument(registry, { path, since: 5, sinceHash: sha256(tab), text: false }))
+    expect(yield* pull).toEqual([{ _tag: "Watching", version: 6, hash: sha256(entry.doc.text) }])
+    expect(yield* pull).toMatchObject([{ _tag: "Change", from: 5, to: 6 }])
+  }))
+  const synced = yield* syncDocument(registry, { path, base: 5, baseHash: sha256(tab), text: `${tab}- [ ] local\n` })
+  expect(synced.version).toBe(7)
+  for (const line of ["agent", "local"]) expect(synced.text.split(line)).toHaveLength(2)
+  // A sync without a hash, from an older tab, still merges by number.
+  const plain = yield* syncDocument(registry, { path, base: 7, text: synced.text.replace("ship", "ship USER") })
+  expect(plain).toEqual({ version: 8, text: synced.text.replace("ship", "ship USER"), hash: sha256(plain.text) })
+})))
 
 test("all three writers survive when disk changes during the write debounce", () => run(Effect.gen(function* () {
   const { registry, file } = yield* fixture
