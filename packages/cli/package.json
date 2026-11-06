@@ -1,11 +1,13 @@
 {
-  "name": "@do-it/cli",
-  "type": "module",
-  "exports": {".": "./src/index.ts"},
-  "dependencies": {
-    "@do-it/client": "workspace:*",
-    "@do-it/protocol": "workspace:*",
-    "@effect/platform-bun": "catalog:",
-    "effect": "catalog:"
-  }
+	"name": "@do-it/cli",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@do-it/client": "workspace:*",
+		"@do-it/protocol": "workspace:*",
+		"@effect/platform-bun": "catalog:",
+		"effect": "catalog:"
+	}
 }
