@@ -285,14 +285,23 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 
 The Release workflow checks that the tag equals `v` plus `APP_VERSION` and the
 `version` in `.claude-plugin/plugin.json`, runs the CI checks, builds
-`dist/npm`, and publishes it to npm with provenance. It needs a repository
-secret `NPM_TOKEN`: a granular npm token with publish rights for
-`claude-do-it`. Before publishing, the workflow runs `npm whoami` with that
-token and fails unless it prints `domir`, the npm owner of `claude-do-it` (see
-`npm view claude-do-it maintainers`). A missing or revoked token, or one from
-another npm account, stops the release with a clear error. The plugin's `do-it` runs that exact npm version, so a plugin
-installed from `main` fails until the workflow has published it: push the tag
-right after the commit.
+`dist/npm`, and publishes it to npm with trusted publishing (OIDC), which adds
+provenance itself. No `NPM_TOKEN` secret is needed. The job has
+`id-token: write`, runs on a GitHub-hosted runner, and installs the latest npm
+first, because trusted publishing needs npm 11.5.1 or newer. The plugin's
+`do-it` runs that exact npm version, so a plugin installed from `main` fails
+until the workflow has published it: push the tag right after the commit.
+
+One time setup on npmjs.com, as the `domir` account: open the package
+`claude-do-it`, then Settings, Trusted Publisher, and choose GitHub Actions.
+Enter the organization or user `DomiR`, the repository `claude-do-it`, and the
+workflow filename `release.yml` (the filename only, with the extension), and
+leave the environment empty. Under allowed actions, tick `npm publish`: the
+workflow publishes directly. The fields are case sensitive, npm does not check
+them when you save, and a new configuration must finish its first successful
+publish within two days. A wrong value shows up only as a failed publish.
+Afterwards, set Publishing access to "Require two-factor authentication and
+disallow tokens".
 
 ## Acknowledgements
 

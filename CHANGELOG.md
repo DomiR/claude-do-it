@@ -41,4 +41,4 @@ The npm package `claude-do-it` and the Claude Code plugin `do-it` share one vers
 - GitHub Actions CI runs the typecheck, lint, format check, tests, and both builds on Linux and macOS. Pushing a `v*` tag publishes to npm with provenance.
 - The typecheck uses effect-tsgo (TypeScript 7 with the Effect language service), lint uses type-aware Oxlint, and oxfmt formats the code. Effect comes from one root catalog.
 - The npm bundles are minified and built for production.
-- The release workflow fails when the tag does not match `APP_VERSION` or the version in `.claude-plugin/plugin.json`, and before publishing it checks that the `NPM_TOKEN` secret belongs to the npm account that owns `claude-do-it`.
+- The release workflow fails when the tag does not match `APP_VERSION` or the version in `.claude-plugin/plugin.json`. Publishing uses npm trusted publishing (OIDC), so no npm token is stored in the repository.
