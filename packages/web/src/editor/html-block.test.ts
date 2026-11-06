@@ -405,7 +405,6 @@ describe('HTML section widgets', () => {
 		expect(new HtmlSectionWidget('same', 2).eq(new HtmlSectionWidget('same', 4))).toBe(false);
 		const env = dom();
 		const view = {
-			...env.view,
 			dom: env.view.dom,
 			defaultCharacterWidth: 10,
 			requestMeasure: () => {}

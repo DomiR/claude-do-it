@@ -23,6 +23,8 @@ const reportScriptError = (error: unknown): void => {
 	console.error('HTML section script failed', error);
 };
 const evaluateScript = (code: string, root: ShadowRoot): void => {
+	// Running the section's own inline scripts is the feature: HTML sections are trusted, not sandboxed.
+	// oxlint-disable-next-line typescript/no-implied-eval
 	new Function('root', code)(root);
 };
 const classicType = (type: string): boolean => !type || /^(?:text|application)\/(?:java|ecma)script$/.test(type);
