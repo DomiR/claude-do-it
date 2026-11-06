@@ -4,7 +4,7 @@ import { Effect, Stream } from "effect"
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { ensureDaemon, paths, readDaemonInfo, stopDaemon, withClient } from "../src"
+import { clientBuild, ensureDaemon, paths, readDaemonInfo, stopDaemon, withClient } from "../src"
 import { isolateDaemonEnvironment, runClient } from "./environment"
 
 const defaultHome = isolateDaemonEnvironment()
@@ -52,9 +52,12 @@ test("spawns, reuses, reports status, and stops a daemon in a private home", asy
   expect(statSync(p.token).mode & 0o777).toBe(0o600)
   expect(statSync(p.log).mode & 0o777).toBe(0o600)
   expect(await runClient(ensureDaemon({ home: dir, port: 0 }))).toEqual(started)
-  expect(await (await fetch(`${started.baseUrl}/health`)).json()).toEqual({ ok: true, pid: started.pid, appVersion: started.appVersion })
+  expect(await (await fetch(`${started.baseUrl}/health`)).json()).toEqual({ ok: true, pid: started.pid, appVersion: started.appVersion, build: started.build })
   const status = await Effect.runPromise(withClient(started, client => client.status({})))
-  expect(status).toEqual({ pid: started.pid, port: started.port, appVersion: started.appVersion, startedAt: started.startedAt, documents: [] })
+  expect(status).toEqual({ pid: started.pid, port: started.port, appVersion: started.appVersion, startedAt: started.startedAt, build: started.build, documents: [] })
+  // The daemon reports the build this client computes, so doctor can compare them.
+  expect(started.build).toBe(await runClient(clientBuild))
+  expect(started.build).toStartWith("source:")
   expect(await runClient(stopDaemon(dir))).toBe(true)
   await eventually(async () => await info(dir) === null)
   expect(await runClient(stopDaemon(dir))).toBe(false)

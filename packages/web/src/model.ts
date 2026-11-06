@@ -16,14 +16,19 @@ export const EditorCommandName = Schema.Union([
 export const Selection = Schema.Struct({ anchor: Schema.Number, head: Schema.Number })
 export type Selection = typeof Selection.Type
 
-export const Base = Schema.Struct({ version: Version, text: Schema.String })
+/** The daemon's hash of a text. A restarted daemon can give a version number to another text. */
+const Hash = Schema.optional(Schema.String)
+export const Base = Schema.Struct({ version: Version, text: Schema.String, hash: Hash })
 export type Base = typeof Base.Type
-export const SyncRequest = Schema.Struct({ base: Version, text: Schema.String })
+/** Where a reconnecting watch resumes: the base's version and the hash of its text. */
+export const Cursor = Schema.Struct({ version: Version, hash: Hash })
+export type Cursor = typeof Cursor.Type
+export const SyncRequest = Schema.Struct({ base: Version, text: Schema.String, baseHash: Hash })
 export type SyncRequest = typeof SyncRequest.Type
-export const RemoteSnapshot = Schema.Struct({ version: Version, text: Schema.String, resync: Schema.Boolean })
+export const RemoteSnapshot = Schema.Struct({ version: Version, text: Schema.String, resync: Schema.Boolean, hash: Hash })
 export type RemoteSnapshot = typeof RemoteSnapshot.Type
 export const PendingRemote = Schema.Struct({
-  token: Schema.Number, version: Version, to: Schema.String, resync: Schema.Boolean,
+  token: Schema.Number, version: Version, to: Schema.String, resync: Schema.Boolean, hash: Hash,
 })
 
 export const ConnectionState = defineTaggedUnion({
@@ -44,7 +49,7 @@ export const ReadyDocument = Schema.Struct({
   nextToken: Schema.Number,
   retryAttempt: Schema.Number,
   watchKey: Schema.Number,
-  resumeFrom: Schema.Option(Version),
+  resumeFrom: Schema.Option(Cursor),
   reconnectAttempt: Schema.Number,
   connection: ConnectionState,
 })
@@ -55,7 +60,7 @@ export const DocumentState = defineTaggedUnion({
   Connecting: {
     path: Schema.String,
     watchKey: Schema.Number,
-    resumeFrom: Schema.Option(Version),
+    resumeFrom: Schema.Option(Cursor),
     reconnectAttempt: Schema.Number,
   },
   Ready: { document: ReadyDocument },

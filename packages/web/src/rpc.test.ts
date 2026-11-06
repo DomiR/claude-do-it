@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { Effect, Layer, Option, Stream } from 'effect'
 import { FetchHttpClient } from 'effect/http'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,6 +15,8 @@ import { makeInitialModel } from './model'
 import { DoItClient, DoItClientLive } from './rpc'
 import { subscriptions } from './subscription'
 import { update } from './update'
+
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
 
 test('the browser subscription omits an absent since on the wire and stays live for changes and sync', async () => {
   const home = mkdtempSync(join(tmpdir(), 'do-it-web-rpc-'))
@@ -54,7 +57,7 @@ test('the browser subscription omits an absent since on the wire and stays live 
         const dependencies = subscriptions.watch.modelToDependencies(model)
         const pull = yield* Stream.toPull(subscriptions.watch.dependenciesToStream(dependencies).pipe(Stream.rechunk(1)))
         const first = (yield* pull)[0]!
-        expect(first).toEqual(Message.ReceivedWatchEvent({ event: { _tag: 'Watching', version: 1, text: original } }))
+        expect(first).toEqual(Message.ReceivedWatchEvent({ event: { _tag: 'Watching', version: 1, hash: sha256(original), text: original } }))
         // Schema.optional permits undefined in memory, but toCodecJson encodes
         // a present undefined as null, which an already running daemon rejects.
         expect(requests[0]).toEqual({ url: '/rpc/', payload: { path, text: true } })
@@ -91,22 +94,28 @@ test('the browser subscription omits an absent since on the wire and stays live 
         const action = update(model, Message.UpdatedEditor({ session, text: checkedText, anchor: 0, head: 0, origin: 'Action', token: null }))
         const sync = action.commands?.[0]
         if (!sync || sync.name !== 'SyncDraft') throw new Error('The action did not request sync')
-        expect(sync.args).toEqual({ path, base: 2, text: checkedText })
+        expect(sync.args).toEqual({ path, base: 2, text: checkedText, baseHash: sha256(remoteText) })
         const synced = yield* sync.effect
         if (synced._tag !== 'SucceededSync') throw new Error('The action sync failed')
         model = update(action.model, synced).model
         expect(synced.text).toContain('- [x] Ship the editor')
         expect(synced.text).toContain('Added by agent')
-        expect(requests.at(-1)?.payload).toEqual({ path, base: 2, text: checkedText })
+        expect(requests.at(-1)?.payload).toEqual({ path, base: 2, text: checkedText, baseHash: sha256(remoteText) })
+        expect(synced.hash).toBe(sha256(synced.text))
         expect((yield* client.read({ path })).text).toBe(synced.text)
         expect((yield* pull)[0]).toMatchObject({ _tag: 'ReceivedWatchEvent', event: { _tag: 'Change', from: 2, to: 3, by: [{ _tag: 'User' }] } })
 
-        // A reconnect must still carry its concrete resume version.
-        const resume = subscriptions.watch.dependenciesToStream({ maybeWatch: Option.some({ path, watchKey: 1, resumeFrom: Option.some(2) }) })
+        // A reconnect must still carry its concrete resume version and the hash of its text.
+        const resume = subscriptions.watch.dependenciesToStream({ maybeWatch: Option.some({ path, watchKey: 1, resumeFrom: Option.some({ version: 2, hash: sha256(remoteText) }) }) })
         const resumed = yield* Stream.toPull(resume.pipe(Stream.rechunk(1)))
-        expect((yield* resumed)[0]).toMatchObject({ _tag: 'ReceivedWatchEvent', event: { _tag: 'Watching', version: 3 } })
-        expect(requests.at(-1)?.payload).toEqual({ path, since: 2, text: true })
+        expect((yield* resumed)[0]).toMatchObject({ _tag: 'ReceivedWatchEvent', event: { _tag: 'Watching', version: 3, hash: sha256(synced.text) } })
+        expect(requests.at(-1)?.payload).toEqual({ path, since: 2, sinceHash: sha256(remoteText), text: true })
         expect((yield* resumed)[0]).toMatchObject({ _tag: 'ReceivedWatchEvent', event: { _tag: 'Change', from: 2, to: 3 } })
+
+        // A version the daemon gave to another text starts over from its current text.
+        const stale = subscriptions.watch.dependenciesToStream({ maybeWatch: Option.some({ path, watchKey: 2, resumeFrom: Option.some({ version: 2, hash: sha256('another text\n') }) }) })
+        const restarted = yield* Stream.toPull(stale.pipe(Stream.rechunk(1)))
+        expect((yield* restarted)[0]).toMatchObject({ _tag: 'ReceivedWatchEvent', event: { _tag: 'Resync', version: 3, text: synced.text } })
       }).pipe(Effect.provide(browser)))
       const deadline = Date.now() + 1000
       while (server.documents.totalWatchers !== 0 && Date.now() < deadline) yield* Effect.sleep(10)

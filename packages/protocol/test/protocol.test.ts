@@ -68,6 +68,7 @@ const file = { _tag: 'File' } as const
 const todo = { number: 3, line: 7, state: 'open' as const, text: 'Ship', indent: 0, section: 'tasks' }
 const todoChange = { kind: 'checked' as const, number: 3, text: 'Ship', line: 7, oldLine: 7 }
 const section = { id: 'tasks', title: 'Tasks', level: 2 as const, line: 3 }
+const hash = 'a'.repeat(64)
 
 const roundTrip = (schema: any, value: any): unknown => {
   const json = JSON.parse(JSON.stringify(Schema.encodeSync(schema)(value)))
@@ -93,6 +94,7 @@ describe('protocol schemas', () => {
       [OpenSuccess, { path: '/TODO.md', version: 1, url: 'http://127.0.0.1:3210/?path=%2FTODO.md', created: true }],
       [ReadPayload, { path: '/TODO.md' }],
       [ReadSuccess, { version: 1, text: '# TODO\n' }],
+      [ReadSuccess, { version: 1, text: '# TODO\n', hash }],
       [SectionsPayload, { path: '/TODO.md' }],
       [SectionsSuccess, { version: 1, sections: [section] }],
       [TodosPayload, { path: '/TODO.md', section: 'tasks' }],
@@ -101,10 +103,13 @@ describe('protocol schemas', () => {
       [EditPayload, { path: '/TODO.md', author, version: 1, op: { _tag: 'TodoStart', target: 3 } }],
       [EditSuccess, { version: 2, changed: true, section: 'tasks', others: { since: 1, diff: null } }],
       [SyncPayload, { path: '/TODO.md', base: 1, text: '# TODO\n' }],
+      [SyncPayload, { path: '/TODO.md', base: 1, text: '# TODO\n', baseHash: hash }],
       [SyncSuccess, { version: 2, text: '# TODO\n' }],
+      [SyncSuccess, { version: 2, text: '# TODO\n', hash }],
       [DiffPayload, { path: '/TODO.md', since: 1, wait: 60 }],
       [DiffSuccess, { from: 1, to: 2, by: [agent], diff: '--- 1\n+++ 2\n', todos: [todoChange] }],
       [WatchPayload, { path: '/TODO.md', text: true }],
+      [WatchPayload, { path: '/TODO.md', since: 3, sinceHash: hash, text: true }],
     ]
 
     for (const [schema, value] of samples) {
@@ -129,6 +134,9 @@ describe('protocol schemas', () => {
       { _tag: 'Watching', version: 1, text: '# TODO\n' },
       { _tag: 'Change', from: 1, to: 2, by: [author], diff: null, todos: [todoChange], text: '# TODO\n' },
       { _tag: 'Resync', version: 2 },
+      { _tag: 'Watching', version: 1, hash, text: '# TODO\n' },
+      { _tag: 'Change', from: 1, to: 2, by: [author], diff: null, todos: [], hash },
+      { _tag: 'Resync', version: 2, hash },
       { _tag: 'Deleted' },
     ]
     for (const event of events) {
@@ -141,6 +149,9 @@ describe('protocol schemas', () => {
     expect(() => Schema.decodeUnknownSync(Author)({ _tag: 'Agent', name: '' })).toThrow()
     expect(() => Schema.decodeUnknownSync(ReadSuccess)({ version: 1, text: 'x'.repeat(2 * 1024 * 1024 + 1) })).toThrow()
     expect(() => Schema.decodeUnknownSync(Todo)({ ...todo, text: 'x'.repeat(4097) })).toThrow()
+    for (const bad of ['', 'A'.repeat(64), 'a'.repeat(63)]) {
+      expect(() => Schema.decodeUnknownSync(SyncPayload)({ path: '/TODO.md', base: 1, text: '', baseHash: bad })).toThrow()
+    }
   })
 
   it('defines exactly ten rpcs and makes watch a stream', () => {

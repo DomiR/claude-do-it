@@ -5,12 +5,13 @@
  * from its own directory, so it cannot be bundled).
  *
  *   bun scripts/npm.ts            build
- *   cd dist/npm && npm publish    publish
+ *   git tag v<APP_VERSION>        publish: the Release workflow does it, see
+ *                                 .github/workflows/release.yml
  */
 import { $ } from "bun"
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { APP_VERSION } from "../packages/protocol/src"
+import { APP_VERSION, MIN_BUN_VERSION } from "../packages/protocol/src"
 
 const root = join(import.meta.dir, "..")
 const out = join(root, "dist", "npm")
@@ -27,18 +28,26 @@ for (const name of runtime) {
 }
 const external = Object.keys(dependencies).flatMap(name => [name, `${name}/*`])
 
+// The CLI and the daemon of one build share this id, so `do-it doctor` can
+// tell a daemon from another build of the same version.
+const sha = (await $`git rev-parse --short HEAD`.cwd(root).nothrow().quiet().text()).trim() || "nogit"
+const dirty = (await $`git status --porcelain --untracked-files=no`.cwd(root).nothrow().quiet().text()).trim() !== ""
+const build = `${sha}${dirty ? "+dirty" : ""}.${Date.now().toString(36)}`
+
 await rm(out, { recursive: true, force: true })
 await mkdir(join(out, "bin"), { recursive: true })
 await $`bun run build:web`.cwd(root).quiet()
 
 const bundles = [
-  { entry: "packages/cli/src/bin.ts", name: "do-it.js", define: { DO_IT_DAEMON_ENTRY: JSON.stringify("./daemon.js"), DO_IT_SKILL_ROOT: JSON.stringify("../skill") } },
-  { entry: "packages/server/src/main.ts", name: "daemon.js", define: { DO_IT_WEB_ROOT: JSON.stringify("../web") } },
+  { entry: "packages/cli/src/bin.ts", name: "do-it.js", define: { DO_IT_DAEMON_ENTRY: JSON.stringify("./daemon.js"), DO_IT_SKILL_ROOT: JSON.stringify("../skill"), DO_IT_BUILD: JSON.stringify(build) } },
+  { entry: "packages/server/src/main.ts", name: "daemon.js", define: { DO_IT_WEB_ROOT: JSON.stringify("../web"), DO_IT_BUILD: JSON.stringify(build) } },
 ]
 for (const bundle of bundles) {
   const result = await Bun.build({ entrypoints: [join(root, bundle.entry)], outdir: join(out, "bin"), naming: bundle.name,
     target: "bun", external, minify: true, define: { "process.env.NODE_ENV": JSON.stringify("production"), ...bundle.define } })
   if (!result.success) { for (const log of result.logs) console.error(log); process.exit(1) }
+  // Without the define a bundle would report a `source:` build of a path that does not exist.
+  if (!(await readFile(join(out, "bin", bundle.name), "utf8")).includes(build)) throw new Error(`${bundle.name} does not contain the build id ${build}`)
 }
 const cli = join(out, "bin", "do-it.js")
 const code = await readFile(cli, "utf8")
@@ -62,9 +71,9 @@ const manifest = {
   type: "module",
   bin: { "do-it": "bin/do-it.js" },
   files: ["bin", "web", "skill", "NOTICE"],
-  engines: { bun: ">=1.3" },
+  engines: { bun: `>=${MIN_BUN_VERSION}` },
   os: ["darwin", "linux"],
   dependencies,
 }
 await writeFile(join(out, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`)
-console.log(`Built claude-do-it ${APP_VERSION} in ${out}`)
+console.log(`Built claude-do-it ${APP_VERSION} (build ${build}) in ${out}`)

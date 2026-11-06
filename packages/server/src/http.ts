@@ -5,7 +5,7 @@ import { Deferred, Effect, FileSystem, Layer, Path, Schedule } from "effect"
 import { HttpEffect, HttpRouter, HttpServerRequest as Request, HttpServerResponse as Response } from "effect/http"
 import { RpcSerialization, RpcServer } from "effect/rpc"
 import { Auth } from "./auth"
-import { APP_VERSION, MAX_BODY, config, type ServerConfig } from "./config"
+import { APP_VERSION, MAX_BODY, buildId, config, type ServerConfig } from "./config"
 import { Documents, DocumentsLive } from "./documents"
 import { HandlersLive, type RuntimeInfo } from "./handlers"
 import { readJson } from "./files"
@@ -21,6 +21,7 @@ interface RuntimeRecord {
   pid: number
   port: number
   appVersion: string
+  build: string
   startedAt: number
 }
 
@@ -38,7 +39,8 @@ export const makeServer = Effect.fn("makeServer")(function* (options?: ServerCon
   const scope = yield* Effect.scope
   let stopping = false
   // Answer the stop request before the server scope starts closing.
-  const runtime: RuntimeInfo = { port: settings.port, startedAt: Date.now(), stop: Effect.suspend(() => {
+  const build = yield* buildId
+  const runtime: RuntimeInfo = { port: settings.port, startedAt: Date.now(), build, stop: Effect.suspend(() => {
     if (stopping) return Effect.void
     stopping = true
     return Effect.asVoid(Effect.forkIn(Effect.delay(Deferred.succeed(stop, undefined), "50 millis"), scope))
@@ -93,7 +95,7 @@ export const makeServer = Effect.fn("makeServer")(function* (options?: ServerCon
     yield* Effect.addFinalizer(() => Effect.sync(() => { active--; lastRequest = Date.now() }))
     const url = new URL(request.url, `http://127.0.0.1:${runtime.port}`)
     if (request.method === "GET" && url.pathname === "/health") {
-      return Response.jsonUnsafe({ ok: true, pid: process.pid, appVersion: APP_VERSION })
+      return Response.jsonUnsafe({ ok: true, pid: process.pid, appVersion: APP_VERSION, build })
     }
     if (request.method === "GET" && url.pathname === "/auth") {
       const path = url.searchParams.get("path") ?? ""
@@ -134,7 +136,7 @@ export const makeServer = Effect.fn("makeServer")(function* (options?: ServerCon
       signal: AbortSignal.any([BunHttpServerRequest.toBunServerRequest(request).signal, shutdown.signal]),
     }))
   }))))
-  const record: RuntimeRecord = { pid: process.pid, port: runtime.port, appVersion: APP_VERSION, startedAt: runtime.startedAt }
+  const record: RuntimeRecord = { pid: process.pid, port: runtime.port, appVersion: APP_VERSION, build, startedAt: runtime.startedAt }
   // Exclusive publication also rejects concurrent manual starts. A dead
   // process's record may be removed; a live daemon's record is never replaced.
   const prior = yield* readJson(recordPath, 4096).pipe(Effect.map(value => value as { pid?: number } | null),

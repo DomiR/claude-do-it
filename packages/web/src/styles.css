@@ -27,6 +27,11 @@
   --pt-key-edge: #00000038;
   --pt-key-shade: #0000001f;
   --pt-key-ink: #3b392c;
+  --pt-tag-chip-ink: #000000;
+  --pt-tag-low-ink: #ffffff;
+  --pt-remote-flash: #f7dc86;
+  --pt-shadow-tooltip: 0 6px 16px rgb(0 0 0 / 14%);
+  --pt-shadow-popover: 0 12px 28px rgb(0 0 0 / 16%);
 }
 
 /* Keycaps: one cap per key, wherever a shortcut is shown. */
@@ -241,7 +246,7 @@ button {
   padding: 4px 6px 4px 8px;
   border: 1px solid var(--pt-delimiter);
   background: var(--pt-paper);
-  box-shadow: 0 6px 16px rgb(0 0 0 / 14%);
+  box-shadow: var(--pt-shadow-tooltip);
   color: var(--pt-ink);
   font-size: 12px;
   line-height: 20px;
@@ -473,7 +478,7 @@ button {
   overflow: hidden;
   border: 1px solid var(--pt-delimiter);
   background: var(--pt-paper);
-  box-shadow: 0 12px 28px rgb(0 0 0 / 16%);
+  box-shadow: var(--pt-shadow-popover);
   color: var(--pt-ink);
 }
 
@@ -813,7 +818,7 @@ button {
 .pt-editor-host .pt-tag-low,
 .pt-editor-host .pt-tag-critical {
   background: var(--pt-tag-today);
-  color: var(--pt-ink);
+  color: var(--pt-tag-chip-ink);
   font-weight: 700;
 }
 
@@ -823,7 +828,7 @@ button {
 
 .pt-editor-host .pt-tag-low {
   background: var(--pt-tag-low);
-  color: #ffffff;
+  color: var(--pt-tag-low-ink);
 }
 
 .pt-editor-host .pt-tag-critical {
@@ -917,7 +922,7 @@ button {
   padding: 10px 12px;
   border: 1px solid var(--pt-delimiter);
   background: var(--pt-paper);
-  box-shadow: 0 12px 28px rgb(0 0 0 / 16%);
+  box-shadow: var(--pt-shadow-popover);
   color: var(--pt-ink);
   font-family: Menlo, Consolas, 'Liberation Mono', monospace;
   font-size: 13px;
@@ -985,7 +990,7 @@ button {
 
 @keyframes pt-remote-highlight {
   from {
-    background: #f7dc86;
+    background: var(--pt-remote-flash);
   }
 
   to {
@@ -1116,7 +1121,96 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .pt-editor-host .pt-remote-highlight {
     animation: none;
-    background: #f7dc86;
+    background: var(--pt-remote-flash);
+  }
+}
+
+/* Dark mode: PlainTasks' dark notebook (tasks-dark.hidden-tmTheme), tuned for WCAG AA. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --pt-paper: #1a1914;
+    --pt-prose: #b3ae94;
+    --pt-ink: #e8e3c9;
+    --pt-resolved: #e8e3c9b8;
+    --pt-project: #ef9f80;
+    --pt-project-bg: #ffffff0a;
+    --pt-link: #9fc5f0;
+    --pt-delimiter: #ffffff5c;
+    --pt-selection: #e8e3c933;
+    --pt-active-row: #f7dc8612;
+    --pt-marker-open: #e8e3c98c;
+    --pt-marker-done: #5fd08a;
+    --pt-marker-cancelled: #ff8070;
+    --pt-tag: #f2918a;
+    --pt-tag-resolved: #e8e3c9a8;
+    --pt-tag-today: #eadd4e;
+    --pt-tag-high: #ff7f00;
+    --pt-tag-low: #4a473c;
+    --pt-tag-critical: #ff4d4d;
+    --pt-tag-done: #f5ae62;
+    --pt-key-paper: #2c2b23;
+    --pt-key-edge: #ffffff40;
+    --pt-key-shade: #00000080;
+    --pt-key-ink: #dcd7bc;
+    --pt-remote-flash: #463a12;
+    --pt-shadow-tooltip: 0 6px 16px rgb(0 0 0 / 50%);
+    --pt-shadow-popover: 0 12px 28px rgb(0 0 0 / 60%);
+    --pt-search-match: #eadd4e2e;
+    --pt-search-match-selected: #ff7f0042;
+  }
+
+  /* CodeMirror's light base theme paints the focused selection #d7d4f0 with five classes; six outrank it. */
+  .pt-editor-host .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
+    background: var(--pt-selection);
+  }
+
+  /* CodeMirror's light search highlights turn olive and brown on dark paper. */
+  .pt-editor-host .cm-searchMatch {
+    background-color: var(--pt-search-match);
+  }
+
+  .pt-editor-host .cm-searchMatch-selected {
+    background-color: var(--pt-search-match-selected);
+    outline: 1px solid var(--pt-tag-high);
+  }
+
+  /* CodeMirror's pressed button gradient is light grey. */
+  .pt-editor-host .cm-button:active {
+    background-image: none;
+    background-color: var(--pt-active-row);
+  }
+
+  /* Preflight paints placeholders at half the text colour, under 4.5:1 on dark paper. */
+  .pt-editor-host .cm-panels input::placeholder {
+    color: var(--pt-prose);
+  }
+
+  /* The faint active row alone would not show which palette option is selected. */
+  .pt-palette-item-active {
+    background: var(--pt-selection);
+    box-shadow: inset 3px 0 0 var(--pt-project);
+  }
+
+  /* An unfinished `#` or `-` and the "do it" eyebrow are text, so they need 4.5:1, not the border colour. */
+  .pt-editor-host .pt-heading-marks,
+  .pt-editor-host .pt-bullet {
+    color: var(--pt-prose);
+  }
+
+  /* A rule stays above 3:1 on archived lines too. */
+  .pt-editor-host .pt-line-rule {
+    color: var(--pt-marker-open);
+  }
+
+  .empty-mark,
+  .eyebrow {
+    color: var(--pt-prose);
+  }
+
+  /* At 0.7 the resolved, tag, @cancelled and @critical colours fall below 4.5:1 on dark paper. */
+  .pt-editor-host .pt-line-archived {
+    opacity: 0.85;
   }
 }
 
