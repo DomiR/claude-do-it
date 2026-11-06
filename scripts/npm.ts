@@ -12,6 +12,7 @@ import { $ } from 'bun';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { APP_VERSION, MIN_BUN_VERSION } from '../packages/protocol/src';
+import { undeclaredImports } from './bare-imports';
 
 const root = join(import.meta.dir, '..');
 const out = join(root, 'dist', 'npm');
@@ -75,8 +76,12 @@ for (const bundle of bundles) {
 		process.exit(1);
 	}
 	// Without the define a bundle would report a `source:` build of a path that does not exist.
-	if (!(await readFile(join(out, 'bin', bundle.name), 'utf8')).includes(build))
-		throw new Error(`${bundle.name} does not contain the build id ${build}`);
+	const built = await readFile(join(out, 'bin', bundle.name), 'utf8');
+	if (!built.includes(build)) throw new Error(`${bundle.name} does not contain the build id ${build}`);
+	// A bare import the package does not declare would crash the installed daemon at start.
+	const missing = undeclaredImports(built, dependencies);
+	if (missing.length > 0)
+		throw new Error(`${bundle.name} imports ${missing.join(', ')}, which dist/npm/package.json does not declare`);
 }
 const cli = join(out, 'bin', 'do-it.js');
 const code = await readFile(cli, 'utf8');
