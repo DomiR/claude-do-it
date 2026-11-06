@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Option, Path, Semaphore } from 'effect';
+import { Effect, FileSystem, Option, Path, PlatformError, Semaphore } from 'effect';
 
 const MAX_LOG = 1024 * 1024;
 const MAX_LINE = 16 * 1024;
@@ -17,7 +17,7 @@ export class Log {
 		return new Log(fs, path.join(home, 'daemon.log'));
 	});
 
-	rotate(): Effect.Effect<void, unknown> {
+	rotate(): Effect.Effect<void, PlatformError.PlatformError> {
 		return this.lock.withPermit(this.rotateUnlocked());
 	}
 
@@ -35,7 +35,7 @@ export class Log {
 			.pipe(Effect.ignore);
 	}
 
-	private rotateUnlocked(): Effect.Effect<void, unknown> {
+	private rotateUnlocked(): Effect.Effect<void, PlatformError.PlatformError> {
 		const { fs, path } = this;
 		return Effect.gen(function* () {
 			const info = yield* fs.stat(path).pipe(Effect.option);

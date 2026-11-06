@@ -31,7 +31,7 @@ const fixture = Effect.gen(function* () {
 		log,
 		versions,
 		registry,
-		file(text = '# Tasks\n- [ ] ship\n') {
+		file: (text = '# Tasks\n- [ ] ship\n') => {
 			const path = join(home, `${counter++}.md`);
 			writeFileSync(path, text);
 			return path;
@@ -284,8 +284,7 @@ test('subscriber counts are capped per document and globally, and release restor
 	run(
 		Effect.gen(function* () {
 			const { registry, file } = yield* fixture;
-			const entries = [];
-			for (let i = 0; i < 9; i++) entries.push(yield* registry.get(file()));
+			const entries = yield* Effect.forEach(Array.from({ length: 9 }), () => registry.get(file()));
 			const releases: Array<() => void> = [];
 			for (const entry of entries.slice(0, 8)) {
 				for (let i = 0; i < 32; i++) releases.push(registry.subscribe(entry));

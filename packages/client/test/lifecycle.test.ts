@@ -204,7 +204,7 @@ test('a live daemon whose health checks are slow is reused, not replaced', async
 		expect(healthChecks).toBe(3);
 		expect(readFileSync(p.daemon, 'utf8')).toBe(record);
 	} finally {
-		fake.stop(true);
+		void fake.stop(true);
 		rmSync(dir, { recursive: true, force: true });
 	}
 }, 10000);
@@ -227,7 +227,7 @@ test('port collision falls back to an available loopback port', async () => {
 		expect(started.port).not.toBe(occupied.port);
 		await runClient(stopDaemon(started.home));
 	} finally {
-		occupied.stop(true);
+		void occupied.stop(true);
 	}
 }, 15000);
 

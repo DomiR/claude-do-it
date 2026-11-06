@@ -50,6 +50,7 @@ export async function startCli(
 
 export async function readLines(child: ReturnType<typeof Bun.spawn>): Promise<AsyncGenerator<string>> {
 	const stream = child.stdout;
+	if (!(stream instanceof ReadableStream)) throw new Error("readLines needs a child spawned with stdout: 'pipe'");
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
 	return (async function* () {

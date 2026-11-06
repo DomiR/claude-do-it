@@ -104,16 +104,15 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
 		Effect.gen(function* () {
 			const registry = yield* Documents;
 			return {
-				status: Effect.fn('rpc.status')(function* () {
-					return {
+				status: () =>
+					Effect.sync(() => ({
 						pid: process.pid,
 						appVersion: APP_VERSION,
 						port: runtime.port,
 						startedAt: runtime.startedAt,
 						build: runtime.build,
 						documents: registry.status()
-					};
-				}),
+					})).pipe(Effect.withSpan('rpc.status')),
 				stop: Effect.fn('rpc.stop')(function* () {
 					yield* runtime.stop;
 					return {};

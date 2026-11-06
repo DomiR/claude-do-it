@@ -130,7 +130,7 @@ describe('do-it doctor', () => {
 			build = undefined;
 			expect((await doctor(fixture.env)).check('daemon').message).toContain('reports no build id');
 		} finally {
-			fake.stop(true);
+			void fake.stop(true);
 			rmSync(join(fixture.home, 'daemon.json'), { force: true });
 		}
 		stops.push(fixture.env);

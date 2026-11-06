@@ -44,7 +44,7 @@ await rm(out, { recursive: true, force: true });
 await mkdir(join(out, 'bin'), { recursive: true });
 await $`bun run build:web`.cwd(root).quiet();
 
-const bundles = [
+const bundles: Array<{ entry: string; name: string; define: Record<string, string> }> = [
 	{
 		entry: 'packages/cli/src/bin.ts',
 		name: 'do-it.js',

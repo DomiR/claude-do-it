@@ -16,7 +16,9 @@ function unless<B>(reason: PlatformError.SystemErrorTag, fallback: B) {
 	return <A, R>(
 		effect: Effect.Effect<A, PlatformError.PlatformError, R>
 	): Effect.Effect<A | B, PlatformError.PlatformError, R> =>
-		Effect.catch(effect, (error) => (error.reason._tag === reason ? Effect.succeed(fallback) : Effect.fail(error)));
+		effect.pipe(
+			Effect.catch((error) => (error.reason._tag === reason ? Effect.succeed(fallback) : Effect.fail(error)))
+		);
 }
 
 /**
@@ -125,7 +127,7 @@ export const ensureDaemon = Effect.fn('ensureDaemon')(function* (options: Ensure
 			pid !== undefined && Number.isSafeInteger(pid) && pid > 0 ? !alive(pid) : Date.now() - modified > 10_000;
 		if (abandoned) yield* fs.remove(p.lock, { recursive: true, force: true });
 		return undefined;
-	}).pipe(lockTurn.withPermit, Effect.mapError(unavailable));
+	}).pipe(Semaphore.withPermit(lockTurn), Effect.mapError(unavailable));
 	let inode: bigint | null | undefined;
 	const lockDeadline = Date.now() + 12_000;
 	while (inode === undefined) {
@@ -140,7 +142,7 @@ export const ensureDaemon = Effect.fn('ensureDaemon')(function* (options: Ensure
 		Effect.flatMap((stat) =>
 			Option.getOrNull(stat.ino) === held ? fs.remove(p.lock, { recursive: true, force: true }) : Effect.void
 		),
-		lockTurn.withPermit,
+		Semaphore.withPermit(lockTurn),
 		Effect.ignore
 	);
 
@@ -171,7 +173,7 @@ export const ensureDaemon = Effect.fn('ensureDaemon')(function* (options: Ensure
 		});
 		const child = yield* spawner.spawn(command).pipe(Effect.mapError(unavailable));
 		// An unreferenced child outlives this scope and this process.
-		yield* child.unref.pipe(Effect.mapError(unavailable));
+		yield* child.unref.pipe(Effect.asVoid, Effect.mapError(unavailable));
 		const wait = Effect.gen(function* () {
 			const deadline = Date.now() + 5000;
 			while (Date.now() < deadline) {

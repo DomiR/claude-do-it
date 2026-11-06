@@ -82,7 +82,7 @@ export class DocumentRegistry {
 	}
 
 	/** Logs a failure instead of propagating it. Interruption still propagates. */
-	private logged(message: string, effect: Effect.Effect<void, unknown>): Effect.Effect<void> {
+	private logged<E>(message: string, effect: Effect.Effect<void, E>): Effect.Effect<void> {
 		return effect.pipe(
 			Effect.catchCause((cause) =>
 				Cause.hasInterruptsOnly(cause)
