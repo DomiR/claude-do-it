@@ -9,9 +9,10 @@ import {
 	type DecorationSet
 } from '@codemirror/view';
 
-import type { SourceSpan } from './blocks';
+import type { DetailsBlock, SourceSpan } from './blocks';
 import { classifiedDocument } from './document';
 import type { FoldCandidate, FoldKey } from './fold-ranges';
+import type { ClassifiedDocument, ClassifiedLine } from './lines';
 import { foldState, isFoldOpen, setFoldOpen } from './folds';
 
 const labelFor = (candidate: FoldCandidate): string =>
@@ -121,6 +122,14 @@ export interface FoldViewState extends FoldLayout {
 	readonly markers: RangeSet<GutterMarker>;
 }
 
+/** The task whose block holds this section, from the classified indentation of its opener line. */
+const ownerTask = (document: ClassifiedDocument, block: DetailsBlock): ClassifiedLine | undefined => {
+	const owner = document.lines[block.startLine]?.owner;
+	return owner === undefined ? undefined : document.lines[owner];
+};
+/** Where the title of a section owned by a task starts, in columns from the line start. */
+const ownedColumn = (summary: ClassifiedLine, _owner: ClassifiedLine): number => summary.hang;
+
 const layoutFor = (state: EditorState): FoldLayout => {
 	const folds = state.field(foldState);
 	const document = state.field(classifiedDocument);
@@ -153,13 +162,14 @@ const layoutFor = (state: EditorState): FoldLayout => {
 		const block = details.get(candidate.startLine)!;
 		const summary = document.lines[block.summaryLine]!;
 		const twoLines = block.startLine !== block.summaryLine;
+		const owner = ownerTask(document, block);
 		// Both source lines become one rendered row. CSS restores any removed indentation.
-		replace(twoLines ? block.from : block.delimiters[0]!.from, block.title.from);
+		replace(twoLines || owner ? block.from : block.delimiters[0]!.from, block.title.from);
 		replace(block.title.to, summary.to);
 		ranges.push(
 			Decoration.line({
-				class: `pt-details-header${twoLines ? ' pt-details-header-two-line' : ''}${summary.archived ? ' pt-line-archived' : ''}`,
-				attributes: { style: `--pt-details-indent: ${summary.hang}` }
+				class: `pt-details-header${twoLines ? ' pt-details-header-two-line' : ''}${owner ? ' pt-details-header-owned' : ''}${summary.archived ? ' pt-line-archived' : ''}`,
+				attributes: { style: `--pt-details-indent: ${owner ? ownedColumn(summary, owner) : summary.hang}` }
 			}).range(block.from)
 		);
 		if (block.title.from < block.title.to)
