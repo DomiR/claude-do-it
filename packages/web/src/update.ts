@@ -8,7 +8,7 @@ import {
 } from './command'
 import { Message } from './message'
 import {
-  ConnectionState, DocumentState, Model, Palette, type PaletteKind, type ReadyDocument,
+  ConnectionState, DocumentState, Model, Palette, type Base, type Cursor, type PaletteKind, type ReadyDocument,
   type RemoteSnapshot, type SyncRequest,
 } from './model'
 import { paletteItems } from './view/palette'
@@ -22,6 +22,9 @@ const whenReady = (model: Model, step: (document: ReadyDocument) => UpdateReturn
   DocumentState.matchOrElse<UpdateReturn>(model.document, { Ready: ({ document }) => step(document) }, () => ({ model }))
 const matchesRequest = (document: ReadyDocument, request: SyncRequest): boolean =>
   Option.isSome(document.inFlight) && document.inFlight.value.base === request.base && document.inFlight.value.text === request.text
+// The hash goes with the version, so a restarted daemon that gave the version
+// to another text refuses the sync or resyncs the watch instead of merging.
+const cursor = ({ version, hash }: Base): Cursor => hash === undefined ? { version } : { version, hash }
 
 const keepNewest = (current: Option.Option<RemoteSnapshot>, incoming: RemoteSnapshot): Option.Option<RemoteSnapshot> => {
   if (Option.isNone(current)) return Option.some(incoming)
@@ -36,7 +39,8 @@ const startSync = (model: Model, document: ReadyDocument): UpdateReturn => {
   if (!isDirty(document) || isBusy(document) || awaitingResync) {
     return { model: withDocument(model, document) }
   }
-  const request = { base: document.base.version, text: document.draft }
+  const { version, hash } = document.base
+  const request = { base: version, text: document.draft, ...(hash === undefined ? {} : { baseHash: hash }) }
   return {
     model: withDocument(model, modifyFields(document, { inFlight: () => Option.some(request) })),
     commands: [SyncDraft({ path: document.path, ...request })],
@@ -47,7 +51,7 @@ const applyRemote = (model: Model, document: ReadyDocument, snapshot: RemoteSnap
   const token = document.nextToken
   return {
     model: withDocument(model, modifyFields(document, {
-      pendingRemote: () => Option.some({ token, version: snapshot.version, to: snapshot.text, resync: snapshot.resync }),
+      pendingRemote: () => Option.some({ token, version: snapshot.version, to: snapshot.text, resync: snapshot.resync, hash: snapshot.hash }),
       nextToken: value => value + 1,
     })),
     commands: [ApplyRemoteText({ session: document.session, token, from, to: snapshot.text })],
@@ -76,11 +80,11 @@ const settle = (model: Model, document: ReadyDocument): UpdateReturn => {
   return startSync(model, document)
 }
 
-const readyFromWatching = (model: Model, version: number, text: string, resync: boolean): UpdateReturn =>
+const readyFromWatching = (model: Model, version: number, text: string, resync: boolean, hash: string | undefined): UpdateReturn =>
   DocumentState.matchOrElse<UpdateReturn>(model.document, {
     Connecting: ({ path, watchKey, resumeFrom }) => ({
       model: withDocument(model, {
-        path, session: `${path}:${watchKey}`, base: { version, text }, draft: text,
+        path, session: `${path}:${watchKey}`, base: { version, text, hash }, draft: text,
         draftRevision: 0, selection: { anchor: 0, head: 0 }, inFlight: Option.none(),
         pendingRemote: Option.none(), latestRemote: Option.none(), nextToken: 1, retryAttempt: 0,
         watchKey, resumeFrom,
@@ -90,7 +94,7 @@ const readyFromWatching = (model: Model, version: number, text: string, resync: 
     Ready: ({ document }) => {
       if (!resync && document.connection._tag === 'Reconnecting' && document.connection.awaitingResync) {
         return { model: withDocument(model, modifyFields(document, {
-          latestRemote: current => keepNewest(current, { version, text, resync: false }),
+          latestRemote: current => keepNewest(current, { version, text, resync: false, hash }),
         })) }
       }
       const nextDocument = modifyFields(document, {
@@ -99,7 +103,7 @@ const readyFromWatching = (model: Model, version: number, text: string, resync: 
         reconnectAttempt: () => 0,
       })
       if (!resync && version <= document.base.version) return { model: withDocument(model, nextDocument) }
-      return receiveRemote(model, nextDocument, { version, text, resync })
+      return receiveRemote(model, nextDocument, { version, text, resync, hash })
     },
   }, () => ({ model }))
 
@@ -164,7 +168,7 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
       if (Option.isNone(document.pendingRemote) || fact.token !== document.pendingRemote.value.token) return { model }
       const pending = document.pendingRemote.value
       return settle(modifyFields(model, { notice: () => Option.none() }), modifyFields(document, {
-        base: () => ({ version: pending.version, text: pending.to }),
+        base: () => ({ version: pending.version, text: pending.to, hash: pending.hash }),
         draft: () => fact.text,
         selection: () => ({ anchor: fact.anchor, head: fact.head }),
         pendingRemote: () => Option.none(),
@@ -189,12 +193,12 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
   })),
   CompletedWaitBeforeSync: ({ session, revision }) => whenReady(model, document =>
     session === document.session && revision === document.draftRevision ? startSync(model, document) : { model }),
-  SucceededSync: ({ request, version, text }) => whenReady(model, document => {
+  SucceededSync: ({ request, version, text, hash }) => whenReady(model, document => {
     if (!matchesRequest(document, request)) return { model }
     const nextModel = modifyFields(model, { notice: () => Option.none() })
     const nextDocument = modifyFields(document, { inFlight: () => Option.none(), retryAttempt: () => 0 })
-    if (text === request.text) return settle(nextModel, modifyFields(nextDocument, { base: () => ({ version, text }) }))
-    return applyRemote(nextModel, nextDocument, { version, text, resync: false }, request.text)
+    if (text === request.text) return settle(nextModel, modifyFields(nextDocument, { base: () => ({ version, text, hash }) }))
+    return applyRemote(nextModel, nextDocument, { version, text, resync: false, hash }, request.text)
   }),
   FailedSync: ({ request, kind }) => whenReady(model, document => {
     if (!matchesRequest(document, request)) return { model }
@@ -202,7 +206,7 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
     if (kind === 'Unauthorized' || kind === 'DocumentGone') return terminal(model, kind === 'Unauthorized' ? 'Unauthorized' : 'Deleted')
     if (kind === 'Forgotten') return {
       model: withDocument(model, modifyFields(nextDocument, {
-        watchKey: value => value + 1, resumeFrom: () => Option.some(document.base.version),
+        watchKey: value => value + 1, resumeFrom: () => Option.some(cursor(document.base)),
         connection: () => ConnectionState.Reconnecting({ awaitingResync: true }),
       })),
     }
@@ -225,7 +229,7 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
     return {
       model: withDocument(modifyFields(model, { notice: () => Option.some(reason) }), modifyFields(document, {
         pendingRemote: () => Option.none(),
-        latestRemote: current => keepNewest(current, { version: pending.version, text: pending.to, resync: pending.resync }),
+        latestRemote: current => keepNewest(current, { version: pending.version, text: pending.to, resync: pending.resync, hash: pending.hash }),
       })),
       commands: [WaitBeforeRemoteRetry({ session: document.session, token })],
     }
@@ -233,14 +237,14 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
   CompletedWaitBeforeRemoteRetry: ({ session, token }) => whenReady(model, document =>
     session === document.session && token === document.nextToken - 1 ? settle(model, document) : { model }),
   ReceivedWatchEvent: ({ event }) => Match.value(event).pipe(
-    Match.tag('Watching', ({ version, text }) => text === undefined ? { model } : readyFromWatching(model, version, text, false)),
-    Match.tag('Resync', ({ version, text }) => text === undefined ? { model } : readyFromWatching(model, version, text, true)),
+    Match.tag('Watching', ({ version, text, hash }) => text === undefined ? { model } : readyFromWatching(model, version, text, false, hash)),
+    Match.tag('Resync', ({ version, text, hash }) => text === undefined ? { model } : readyFromWatching(model, version, text, true, hash)),
     Match.tag('Change', event => {
       const nextModel = modifyFields(model, {
         activity: activity => [{ from: event.from, to: event.to, by: event.by, todos: event.todos }, ...activity].slice(0, 20),
       })
       return whenReady(nextModel, document => event.text === undefined ? { model: nextModel }
-        : receiveRemote(nextModel, document, { version: event.to, text: event.text, resync: false }))
+        : receiveRemote(nextModel, document, { version: event.to, text: event.text, resync: false, hash: event.hash }))
     }),
     Match.tag('Deleted', () => terminal(model, 'Deleted')),
     Match.exhaustive,
@@ -249,7 +253,7 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
   FailedWatch: ({ unauthorized }) => unauthorized ? terminal(model, 'Unauthorized') : reconnect(model),
   CompletedWaitBeforeReconnect: () => DocumentState.matchOrElse(model.document, {
     Ready: ({ document }) => ({ model: withDocument(model, modifyFields(document, {
-      watchKey: value => value + 1, resumeFrom: () => Option.some(document.base.version),
+      watchKey: value => value + 1, resumeFrom: () => Option.some(cursor(document.base)),
     })) }),
     Connecting: state => ({ model: modifyFields(model, {
       document: () => modifyFields(state, { watchKey: value => value + 1 }),

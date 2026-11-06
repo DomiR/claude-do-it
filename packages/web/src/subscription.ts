@@ -3,7 +3,7 @@ import { Subscription } from 'foldkit'
 import { streamFromKeyBindings } from 'foldkit/dom'
 
 import { Message } from './message'
-import { DocumentState, Model } from './model'
+import { Cursor, DocumentState, Model } from './model'
 import { DoItClient, isUnauthorized } from './rpc'
 
 export const subscriptions = Subscription.make<Model, Message, DoItClient>()(entry => ({
@@ -13,7 +13,7 @@ export const subscriptions = Subscription.make<Model, Message, DoItClient>()(ent
         Schema.Struct({
           path: Schema.String,
           watchKey: Schema.Number,
-          resumeFrom: Schema.Option(Schema.Number),
+          resumeFrom: Schema.Option(Cursor),
         }),
       ),
     },
@@ -40,7 +40,11 @@ export const subscriptions = Subscription.make<Model, Message, DoItClient>()(ent
               const client = yield* DoItClient
               // Omit an absent cursor. Effect's JSON codec encodes a present
               // undefined as null, which older running daemons reject.
-              return client.watch({ path, text: true, ...(Option.isSome(resumeFrom) ? { since: resumeFrom.value } : {}) }).pipe(
+              const since = Option.match(resumeFrom, {
+                onNone: () => ({}),
+                onSome: ({ version, hash }) => ({ since: version, ...(hash === undefined ? {} : { sinceHash: hash }) }),
+              })
+              return client.watch({ path, text: true, ...since }).pipe(
                 Stream.map(event => Message.ReceivedWatchEvent({ event })),
                 Stream.concat(Stream.succeed(Message.WatchEnded())),
                 Stream.catchCause(cause =>

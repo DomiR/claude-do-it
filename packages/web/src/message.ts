@@ -39,7 +39,7 @@ export const Message = defineMessageUnion({
   CompletedWaitBeforeReconnect: {},
   CompletedWaitBeforeSync: { session: Schema.String, revision: Schema.Number },
   CompletedWaitBeforeSyncRetry: { session: Schema.String, attempt: Schema.Number },
-  SucceededSync: { request: SyncRequest, version: Schema.Number, text: Schema.String },
+  SucceededSync: { request: SyncRequest, version: Schema.Number, text: Schema.String, hash: Schema.optional(Schema.String) },
   FailedSync: { request: SyncRequest, kind: SyncFailureKind },
 })
 export type Message = typeof Message.Type
