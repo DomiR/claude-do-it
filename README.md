@@ -174,10 +174,10 @@ that section is unchanged.
 
 `do-it watch TODO.md --settle 25` prints one `Settled at version N by WHO`
 line once nobody changed the document for 25 seconds. When the person's latest
-change ends a line (Enter after a task or text line, or Enter on an empty task),
-it settles after `--settle-line` seconds instead (2 by default), so a new todo
-reaches the agents at once. While the person keeps typing in one line, the
-watch waits the full `--settle`. Set `--settle-line` to the `--settle` value to
+change adds a line (Enter at the end of a task or inside one), it settles after
+`--settle-line` seconds instead (2 by default), so a new todo reaches the agents
+at once. Every other change (typing, editing or deleting text, toggling a box)
+waits the full `--settle`. Set `--settle-line` to the `--settle` value to
 always wait the full period.
 
 A resumed watch that missed history prints

@@ -125,7 +125,7 @@ const settleLine = Flag.Finite('settle-line').pipe(
 	Flag.withSchema(Seconds),
 	Flag.withDefault(2),
 	Flag.withDescription(
-		"With --settle, wait only this many seconds (default 2) when the person's latest change ends a line: Enter after a task or text line, or Enter on an empty task. Typing inside one line keeps the full --settle. Set it to the --settle value to always wait the full period"
+		"With --settle, wait only this many seconds (default 2) when the person's latest change adds a line, as Enter does at the end of a task or inside one. Every other change (typing, editing or deleting text, toggling a box) keeps the full --settle. Set it to the --settle value to always wait the full period"
 	)
 );
 

@@ -22,7 +22,7 @@ import {
 } from './output';
 import { cliConfigFor, cliFormatter, cliPresenter, makeCli, normalizeArgv } from './parser';
 import { installSkill, readSkill, skillSource } from './skill';
-import { endsLine } from './settle';
+import { addsLine } from './settle';
 import { resolveText } from './stdin';
 import type { GlobalOptions, ParsedCommand } from './types';
 
@@ -263,12 +263,12 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 			let deleted = false;
 			let lastFailure: string | undefined;
 			// The settle timer: a quiet period after the last change, then one "settled" line.
-			// When the person's latest change ends a line, the quiet period is --settle-line.
+			// When the person's latest change adds a line (Enter), the quiet period is --settle-line.
 			const timer = yield* FiberHandle.make<void, never>();
 			let pending = false;
 			let settleVersion = 0;
 			let settleBy: string[] = [];
-			let lineEnded = false;
+			let lineAdded = false;
 			let lastText: string | undefined;
 			const settled = (delay: Duration.Duration, reason: 'line' | 'quiet') =>
 				Effect.sleep(delay).pipe(
@@ -281,7 +281,7 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 								const by = settleBy;
 								pending = false;
 								settleBy = [];
-								lineEnded = false;
+								lineAdded = false;
 								const byText = by.join(', ');
 								return outputText(command.options, `Settled at version ${version}${byText ? ` by ${byText}` : ''}`, {
 									event: 'settled',
@@ -300,7 +300,7 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 					settleVersion = version;
 					settleBy = [...new Set(pending ? [...settleBy, ...authors] : authors)];
 					pending = true;
-					const short = lineEnded && command.settleLine < command.settle;
+					const short = lineAdded && command.settleLine < command.settle;
 					return FiberHandle.run(
 						timer,
 						settled(Duration.millis((short ? command.settleLine : command.settle) * 1000), short ? 'line' : 'quiet')
@@ -353,7 +353,7 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 									}
 									if (event._tag === 'Resync') {
 										lastText = event.text;
-										lineEnded = false;
+										lineAdded = false;
 										yield* resyncOutput(command, event.version);
 										if (command.settle !== undefined) yield* schedule(event.version, []);
 										since = event.version;
@@ -369,9 +369,14 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 									const before = lastText;
 									lastText = event.text;
 									if (sameAgent(event.by, command.options.as)) return;
-									// Agent changes keep the mode of the person's pending change.
+									// Agent changes keep the mode of the person's pending change. A change
+									// bundled with an agent's edit waits, since the agent may have added the lines.
 									if (event.by.some((author) => author._tag !== 'Agent'))
-										lineEnded = before !== undefined && event.text !== undefined && endsLine(before, event.text);
+										lineAdded =
+											before !== undefined &&
+											event.text !== undefined &&
+											event.by.every((author) => author._tag !== 'Agent') &&
+											addsLine(before, event.text);
 									if (command.settle !== undefined) {
 										yield* schedule(event.to, event.by);
 										return;

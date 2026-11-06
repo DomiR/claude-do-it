@@ -306,9 +306,9 @@ describe('do-it CLI end to end', () => {
 		await stopFixture(fixture);
 	}, 30_000);
 
-	it('settles soon after the person ends a line and waits while a line is unfinished', async () => {
+	it('settles soon after the person presses Enter and waits while a line is edited', async () => {
 		const fixture = makeFixture();
-		writeDocument(fixture.file, '# TODO\n\n- [ ] first\n');
+		writeDocument(fixture.file, '# TODO\n\n- [ ] first\n- [ ] last\n');
 		await openFixture(fixture);
 		const info = await runClient(ensureDaemon({ home: fixture.home }));
 		const sync = (base: number, text: string) =>
@@ -319,10 +319,14 @@ describe('do-it CLI end to end', () => {
 		);
 		const lines = await readLines(watcher);
 		expect(JSON.parse((await lines.next()).value as string).event).toBe('watching');
-		const typed = await sync(1, '# TODO\n\n- [ ] first\n- [ ] sec');
 		const next = lines.next();
-		expect(await Promise.race([next.then(() => 'line'), wait(3000).then(() => 'quiet')])).toBe('quiet');
-		const entered = await sync(typed.version, '# TODO\n\n- [ ] first\n- [ ] second\n- [ ] ');
+		const early = () => Promise.race([next.then(() => 'line'), wait(2500).then(() => 'quiet')]);
+		// Typing in the middle of an existing task, then clearing the last one, both wait.
+		const typed = await sync(1, '# TODO\n\n- [ ] the first one\n- [ ] last\n');
+		expect(await early()).toBe('quiet');
+		const cleared = await sync(typed.version, '# TODO\n\n- [ ] the first one\n- [ ] \n');
+		expect(await early()).toBe('quiet');
+		const entered = await sync(cleared.version, '# TODO\n\n- [ ] the first one\n- [ ] second\n- [ ] \n');
 		const settled = await Promise.race([next, wait(5000).then(() => ({ value: 'timeout' }))]);
 		expect(JSON.parse(settled.value as string)).toMatchObject({
 			event: 'settled',
