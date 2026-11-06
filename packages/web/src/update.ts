@@ -17,7 +17,6 @@ import {
 	WaitBeforeSync,
 	WaitBeforeSyncRetry
 } from './command';
-import { isDark } from './editor/preferences';
 import { Message } from './message';
 import {
 	ConnectionState,
@@ -264,10 +263,7 @@ const choosePalette = (model: Model, index: number): UpdateReturn =>
 		if (item.kind === 'Theme')
 			return {
 				model: modifyFields(closed, { theme: () => item.theme }),
-				commands: [
-					SetTheme({ theme: item.theme, dark: isDark(item.theme, model.systemDark) }),
-					FocusEditor({ session: document.session })
-				]
+				commands: [SetTheme({ theme: item.theme }), FocusEditor({ session: document.session })]
 			};
 		if (item.command === 'gotoProject') return openPalette(model, 'Projects');
 		if (item.command === 'showShortcuts') return openPalette(model, 'Shortcuts');

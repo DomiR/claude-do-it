@@ -388,7 +388,8 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
   paper, 17px monospace text, a centred column, hanging indents, headings as
   projects, and agent status lines in muted ink. The command palette's
   Theme entries pick System (the default), Light, or Dark, remembered per browser in `localStorage` and
-  shown at once through `data-theme` on the root. In dark the notepad uses PlainTasks' dark notebook: warm dark paper,
+  shown at once through `data-theme` on the root (the dark block uses CSS `@scope`: Chrome 118, Safari 17.4,
+  Firefox 146; older browsers stay light). In dark the notepad uses PlainTasks' dark notebook: warm dark paper,
   light ink, and the same markers and tag colours tuned for WCAG AA contrast.
   The file remains plain Markdown. CodeMirror uses `\n` as its line
   separator, so `\r` remains a source character and the text stays byte

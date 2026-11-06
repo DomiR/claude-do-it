@@ -43,6 +43,10 @@ export const storeTheme = (theme: ThemeChoice): void => {
 export const isDark = (theme: ThemeChoice, systemDark: boolean): boolean =>
 	theme === 'Dark' || (theme === 'System' && systemDark);
 
+/** Whether the operating system prefers dark right now. False where media queries are unavailable. */
+export const systemPrefersDark = (): boolean =>
+	globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+
 /** Marks the page for the stylesheet's dark block. The inline script in index.html does the same before first paint. */
 export const applyTheme = (dark: boolean): void => {
 	globalThis.document?.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');

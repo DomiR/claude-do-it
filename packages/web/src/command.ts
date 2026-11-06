@@ -8,7 +8,7 @@ import type { RpcFailure } from '@do-it/protocol';
 import { rebaseRemote } from './editor/changes';
 import { remoteTransaction, runEditorCommand, setLineWrap } from './editor/extensions';
 import { getEditor } from './editor/host';
-import { applyTheme, storeTheme, storeWrap } from './editor/preferences';
+import { applyTheme, isDark, storeTheme, storeWrap, systemPrefersDark } from './editor/preferences';
 import { Message, type SyncFailureKind } from './message';
 import { EditorCommandName, Theme } from './model';
 import { DoItClient, isUnauthorized } from './rpc';
@@ -225,12 +225,13 @@ export const OpenEditorLink = Command.define('OpenEditorLink', {
 
 /** Remembers the chosen theme for this browser and shows it at once. */
 export const SetTheme = Command.define('SetTheme', {
-	args: { theme: Theme, dark: Schema.Boolean },
+	args: { theme: Theme },
 	messages: [Message.CompletedSetTheme],
-	execute: ({ theme, dark }) =>
+	execute: ({ theme }) =>
 		Effect.sync(() => {
 			storeTheme(theme);
-			applyTheme(dark);
+			// Read the system preference now: the model only tracks it while the theme is System.
+			applyTheme(isDark(theme, systemPrefersDark()));
 			return Message.CompletedSetTheme();
 		})
 });

@@ -639,13 +639,27 @@ describe('palette update', () => {
 			message(Message.UpdatedPaletteQuery({ query: 'theme dark' })),
 			model((next) => expect(paletteItems(next, original).map((item) => item.title)).toEqual(['Theme: Dark'])),
 			message(Message.PressedPaletteKey({ key: 'Enter' })),
-			Command.expectExact(SetTheme({ theme: 'Dark', dark: true }), FocusEditor({ session })),
+			Command.expectExact(SetTheme({ theme: 'Dark' }), FocusEditor({ session })),
 			Command.resolve(SetTheme, Message.CompletedSetTheme()),
 			Command.resolve(FocusEditor, Message.CompletedFocusEditor()),
 			model((next) => {
 				expect(next.theme).toBe('Dark');
 				expect(next.palette._tag).toBe('Closed');
 			})
+		);
+	});
+
+	test('choosing System from Dark asks the command to read the system preference', () => {
+		story(
+			update,
+			given({ ...readyModel(), theme: 'Dark' as const }),
+			message(Message.ClickedCommands()),
+			message(Message.UpdatedPaletteQuery({ query: 'theme system' })),
+			message(Message.PressedPaletteKey({ key: 'Enter' })),
+			Command.expectExact(SetTheme({ theme: 'System' }), FocusEditor({ session })),
+			Command.resolve(SetTheme, Message.CompletedSetTheme()),
+			Command.resolve(FocusEditor, Message.CompletedFocusEditor()),
+			model((next) => expect(next.theme).toBe('System'))
 		);
 	});
 
