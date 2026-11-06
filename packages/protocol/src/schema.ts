@@ -17,6 +17,13 @@ export const Path = Schema.String.pipe(
 export const Version = Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0)));
 export type Version = typeof Version.Type;
 
+/**
+ * The lowercase hex SHA-256 of a whole document text. A restarted daemon can
+ * give a version number to a different text, so a hash names the text itself.
+ */
+export const Hash = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/)));
+export type Hash = typeof Hash.Type;
+
 export const User = Schema.TaggedStruct('User', {});
 export type User = typeof User.Type;
 
@@ -134,7 +141,9 @@ export const ReadPayload = Schema.Struct({
 });
 export const ReadSuccess = Schema.Struct({
 	version: Version,
-	text: Text
+	text: Text,
+	/** Names the whole document at `version`, also when `text` is one section. */
+	hash: Schema.optionalKey(Hash)
 });
 
 export const SectionsPayload = Schema.Struct({ path: Path });
@@ -169,11 +178,14 @@ export const EditSuccess = Schema.Struct({
 export const SyncPayload = Schema.Struct({
 	path: Path,
 	base: Version,
-	text: Text
+	text: Text,
+	/** The hash of the text the sender holds as `base`. A different text at that version fails with Forgotten. */
+	baseHash: Schema.optionalKey(Hash)
 });
 export const SyncSuccess = Schema.Struct({
 	version: Version,
-	text: Text
+	text: Text,
+	hash: Schema.optionalKey(Hash)
 });
 
 export const DiffPayload = Schema.Struct({
@@ -192,12 +204,15 @@ export const DiffSuccess = Schema.Struct({
 export const WatchPayload = Schema.Struct({
 	path: Path,
 	since: Schema.optional(Version),
+	/** The hash of the text the watcher holds at `since`. A different text at that version starts with Resync. */
+	sinceHash: Schema.optionalKey(Hash),
 	section: SectionId,
 	text: Schema.Boolean
 });
 
 export const Watching = Schema.TaggedStruct('Watching', {
 	version: Version,
+	hash: Schema.optionalKey(Hash),
 	text: Schema.optionalKey(Text)
 });
 export type Watching = typeof Watching.Type;
@@ -208,12 +223,15 @@ export const Change = Schema.TaggedStruct('Change', {
 	by: Schema.Array(Author),
 	diff: Schema.NullOr(Text),
 	todos: Schema.Array(TodoChange),
+	/** Names the document at `to`. */
+	hash: Schema.optionalKey(Hash),
 	text: Schema.optionalKey(Text)
 });
 export type Change = typeof Change.Type;
 
 export const Resync = Schema.TaggedStruct('Resync', {
 	version: Version,
+	hash: Schema.optionalKey(Hash),
 	text: Schema.optionalKey(Text)
 });
 export type Resync = typeof Resync.Type;

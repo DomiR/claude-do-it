@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { Effect, Stream } from 'effect';
+import { createHash } from 'node:crypto';
 import {
 	chmodSync,
 	existsSync,
@@ -30,6 +31,7 @@ import { TEMPLATE } from '../src/config';
 import { isolateDaemonEnvironment, runClient } from '../../client/test/environment';
 
 isolateDaemonEnvironment();
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 const home = mkdtempSync(join(tmpdir(), 'do-it-server-'));
 const web = join(home, 'web');
 const pids = new Set<number>();
@@ -211,7 +213,11 @@ test('static assets have content types, SPA fallback, and no symlink escape', as
 
 test('read, sections, todos and all edit operations use document versions', async () => {
 	const path = file('# Todo\n- [ ] alpha\n## Later\n- [ ] beta\n');
-	expect(await call((client) => client.read({ path }))).toEqual({ version: 1, text: readFileSync(path, 'utf8') });
+	expect(await call((client) => client.read({ path }))).toEqual({
+		version: 1,
+		text: readFileSync(path, 'utf8'),
+		hash: sha256(readFileSync(path, 'utf8'))
+	});
 	expect((await call((client) => client.sections({ path }))).sections).toEqual([
 		{ id: 'todo', title: 'Todo', level: 1, line: 0 },
 		{ id: 'later', title: 'Later', level: 2, line: 2 }
@@ -302,7 +308,8 @@ test('stale browser sync and agent edits both survive, attributed to User and Ag
 	await edit(path, 1, { _tag: 'Replace', old: 'beta', new: 'beta AGENT' });
 	expect(await call((client) => client.sync({ path, base: 1, text: base.replace('alpha', 'alpha USER') }))).toEqual({
 		version: 3,
-		text: '# Todo\n- [ ] alpha USER\n- [ ] beta AGENT\n'
+		text: '# Todo\n- [ ] alpha USER\n- [ ] beta AGENT\n',
+		hash: sha256('# Todo\n- [ ] alpha USER\n- [ ] beta AGENT\n')
 	});
 	expect((await call((client) => client.diff({ path, since: 1, wait: 0 }))).by).toEqual([
 		{ _tag: 'Agent', name: 'tester' },
@@ -324,7 +331,12 @@ test('watch emits Watching, Change with authors and todos, file Change, and Dele
 	const path = file('# Todo\n- [ ] ship\n');
 	const iterator = watch(path);
 	try {
-		expect(await next(iterator)).toEqual({ _tag: 'Watching', version: 1, text: '# Todo\n- [ ] ship\n' });
+		expect(await next(iterator)).toEqual({
+			_tag: 'Watching',
+			version: 1,
+			hash: sha256('# Todo\n- [ ] ship\n'),
+			text: '# Todo\n- [ ] ship\n'
+		});
 		await eventually(
 			() => call((client) => client.status({})),
 			(status) => status.documents.some((doc) => doc.path === path && doc.watchers === 1)
@@ -386,7 +398,7 @@ test('many live streams leave RPC capacity available, and excess document stream
 					for (const [index, path] of files.entries()) {
 						for (let i = 0; i < (index === 0 ? 32 : 8); i++) {
 							const pull = yield* Stream.toPull(client.watch({ path, text: false }, { streamBufferSize: 1 }));
-							expect((yield* pull)[0]).toEqual({ _tag: 'Watching', version: 1 });
+							expect((yield* pull)[0]).toEqual({ _tag: 'Watching', version: 1, hash: sha256('# Watched\n') });
 						}
 					}
 					const status = yield* client.status({});
@@ -416,7 +428,11 @@ test('restart preserves versions and cookies, while offline file edits take the 
 	expect(existsSync((await runClient(paths(home))).versions)).toBe(true);
 	await start();
 	expect(info.token).toBe(token);
-	expect(await call((client) => client.read({ path }))).toEqual({ version: 2, text: 'after\n' });
+	expect(await call((client) => client.read({ path }))).toEqual({
+		version: 2,
+		text: 'after\n',
+		hash: sha256('after\n')
+	});
 	const reply = await fetch(`${info.baseUrl}/rpc`, { method: 'POST', headers: { Cookie: cookie }, body: rawBody });
 	expect(JSON.parse(await reply.text()).exit.value.pid).toBe(info.pid);
 	expect((await failure((client) => client.diff({ path, since: 1, wait: 0 })))._tag).toBe('Forgotten');
@@ -428,5 +444,9 @@ test('restart preserves versions and cookies, while offline file edits take the 
 	await runClient(stopDaemon(home));
 	writeFileSync(path, 'offline edit\n');
 	await start();
-	expect(await call((client) => client.read({ path }))).toEqual({ version: 3, text: 'offline edit\n' });
+	expect(await call((client) => client.read({ path }))).toEqual({
+		version: 3,
+		text: 'offline edit\n',
+		hash: sha256('offline edit\n')
+	});
 });

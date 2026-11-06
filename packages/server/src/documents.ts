@@ -28,6 +28,8 @@ export interface OpenDocument {
 	scope: Scope.Closeable;
 	writing: Fiber.Fiber<void> | undefined;
 	missing: Fiber.Fiber<void> | undefined;
+	/** The newest version hashed so far. In one entry a version number always names one text. */
+	hash: { version: number; value: string } | undefined;
 }
 
 export function rpcError(error: unknown, latest = 1): RpcFailure {
@@ -226,7 +228,8 @@ export class DocumentRegistry {
 					lock: Semaphore.makeUnsafe(1),
 					scope: yield* Scope.fork(this.scope),
 					writing: undefined,
-					missing: undefined
+					missing: undefined,
+					hash: undefined
 				};
 				this.entries.set(path, entry);
 				yield* this.disk(watchFile(path, this.poll(entry))).pipe(Scope.provide(entry.scope));
@@ -269,6 +272,27 @@ export class DocumentRegistry {
 			this.versions.record(entry.path, entry.doc.version, entry.doc.text),
 			this.scheduleWrite(entry)
 		);
+	}
+
+	/** The hash of `text`, which the entry held at `version`. Takes the text so a caller can read it before yielding. */
+	hashOf(entry: OpenDocument, version: number, text: string): Effect.Effect<string> {
+		return Effect.suspend(() => {
+			if (entry.hash?.version === version) return Effect.succeed(entry.hash.value);
+			return Effect.tap(this.versions.sha256(text), (value) =>
+				Effect.sync(() => {
+					if (version > (entry.hash?.version ?? 0)) entry.hash = { version, value };
+				})
+			);
+		});
+	}
+
+	/** The hash of the text at `version`, or null when the document no longer keeps that version. */
+	hashAt(entry: OpenDocument, version: number): Effect.Effect<string | null> {
+		return Effect.suspend(() => {
+			if (entry.hash?.version === version) return Effect.succeed(entry.hash.value);
+			const text = entry.doc.textAt(version);
+			return text === null ? Effect.succeed(null) : this.hashOf(entry, version, text);
+		});
 	}
 
 	subscribe(entry: OpenDocument): () => void {

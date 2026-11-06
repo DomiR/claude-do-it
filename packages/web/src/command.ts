@@ -51,16 +51,19 @@ export const syncFailureKind = (error: RpcFailure | { readonly _tag: 'RpcClientE
 }
 
 export const SyncDraft = Command.define('SyncDraft', {
-  args: { path: Schema.String, base: Schema.Number, text: Schema.String },
+  args: { path: Schema.String, base: Schema.Number, text: Schema.String, baseHash: Schema.optional(Schema.String) },
   messages: [Message.SucceededSync, Message.FailedSync],
-  execute: ({ path, base, text }) =>
-    Effect.gen(function* () {
+  execute: ({ path, base, text, baseHash }) => {
+    // Omit an absent hash: a present undefined goes on the wire as null.
+    const request = { base, text, ...(baseHash === undefined ? {} : { baseHash }) }
+    return Effect.gen(function* () {
       const client = yield* DoItClient
-      const result = yield* client.sync({ path, base, text })
-      return Message.SucceededSync({ request: { base, text }, version: result.version, text: result.text })
+      const result = yield* client.sync({ path, ...request })
+      return Message.SucceededSync({ request, version: result.version, text: result.text, hash: result.hash })
     }).pipe(
-      Effect.catch(error => Effect.succeed(Message.FailedSync({ request: { base, text }, kind: syncFailureKind(error) }))),
-    ),
+      Effect.catch(error => Effect.succeed(Message.FailedSync({ request, kind: syncFailureKind(error) }))),
+    )
+  },
 })
 
 type RemoteResult = typeof Message.CompletedApplyRemoteText.Type | typeof Message.FailedApplyRemoteText.Type

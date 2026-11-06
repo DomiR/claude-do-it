@@ -205,7 +205,7 @@ Rpcs (all payloads carry `path` unless noted):
   status   {}                                → { pid, appVersion, port, startedAt, build?, documents: [{ path, version, watchers }] }
   stop     {}                                → {}                     // replies, then shuts down
   open     { path, create: boolean }         → { path, version, url, created: boolean }
-  read     { path, section? }                → { version, text }
+  read     { path, section? }                → { version, text, hash? }
   sections { path }                          → { version, sections }
   todos    { path, section? }                → { version, todos }
   edit     { path, author, version, section?, op }
@@ -213,11 +213,11 @@ Rpcs (all payloads carry `path` unless noted):
               | TodoSet { target: number | string, state: TaskState }
               | TodoStart { target: number | string }
                                              → { version, changed, section: string | null, others: Others | null }
-  sync     { path, base, text }              → { version, text }      // author is always User
+  sync     { path, base, baseHash?, text }   → { version, text, hash? }   // author is always User
   diff     { path, since, wait: 0..600 }     → { from, to, by: Author[], diff, todos }
-  watch    { path, since?, section?, text: boolean }   stream: true
-           → Watching { version, text? } | Change { from, to, by, diff, todos, text? }
-             | Resync { version, text? } | Deleted {}
+  watch    { path, since?, sinceHash?, section?, text: boolean }   stream: true
+           → Watching { version, hash?, text? } | Change { from, to, by, diff, todos, hash?, text? }
+             | Resync { version, hash?, text? } | Deleted {}
 
 Errors (Schema.TaggedErrorClass), union on every rpc:
   VersionMismatch { latest, since, diff: string | null, forgotten: boolean }   exit 1
@@ -238,6 +238,21 @@ gets one coalesced `Change { from, to }` (printed `Versions A-N`). When
 `lastSent` is forgotten it emits `Resync` as the first event for a resumed
 watch. The CLI prints `Missed changes, now at version N: run do-it read` for
 that event. `text: true` adds the full current text (the web uses it).
+
+Version identity: a version number names one text only within one daemon's
+life. A restart after a crash, or after a replacement before the debounced
+save of `versions.json`, reopens at an older number and counts on from there,
+so the number a tab holds can come to name another text. A merge from that
+text would delete every line between the tab's real base and the reused
+number. So every text reply carries `hash`, the lowercase hex SHA-256 of the
+whole document text at its version (`to` for a Change, and the whole
+document for a section `read`). A `sync` that sends `baseHash` fails with
+`Forgotten` when the text at `base` has another hash or is no longer kept; a
+`watch` that sends `sinceHash` starts with `Resync` in the same case. Without
+them the server compares numbers only, as before. The fields are optional, so
+older clients and daemons keep working. The server caches the newest hash of
+each open document. The CLI does not send hashes yet: `--version` and
+`--since` still compare numbers only.
 
 ## Daemon (`packages/server`)
 
@@ -273,7 +288,8 @@ that event. `text: true` adds the full current text (the web uses it).
 - Versions survive restarts: `versions.json` maps path to `{ version, sha256 }`
   (LRU, 256 entries, written atomically, debounced 1 s and on shutdown). On
   open, a matching hash reopens at that version; a different hash opens at
-  `version + 1`, made by `file`.
+  `version + 1`, made by `file`. A record that lags the file reuses numbers
+  a client already holds; the wire hashes (see Version identity) catch that.
 - Graceful shutdown on `stop`, SIGTERM, SIGINT, idle: flush writes and
   `versions.json`, remove `daemon.json` if it is still ours.
 
@@ -462,6 +478,13 @@ browser focus navigation remains available.
   version, and waits for Resync. Other non-auth, non-deletion sync failures
   retry a dirty draft after two seconds, up to five attempts. A failed remote
   apply retries after 500 ms.
+- The base keeps the `hash` of the event or reply that set it. Every sync
+  sends it as `baseHash`, and a reconnecting watch sends it as `sinceHash`
+  with the base version. A tab whose base a restarted daemon gave to another
+  text gets `Forgotten` or `Resync`, then rebases its unsent typing over the
+  current text instead of merging from the wrong one. A tab loaded from a
+  daemon without hashes has none until it reloads, so it still compares
+  numbers only.
 - No dash separators in copy.
 
 ## Conductor (`skill/SKILL.md`)

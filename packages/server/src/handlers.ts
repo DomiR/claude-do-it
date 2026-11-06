@@ -17,6 +17,7 @@ import {
 	NothingYet,
 	type Author,
 	type DiffSuccess,
+	type SyncPayload,
 	type WatchEvent,
 	type WatchPayload
 } from '@do-it/protocol';
@@ -67,15 +68,21 @@ export function watchDocument(registry: DocumentRegistry, request: WatchPayload)
 					const signal = entry.signal;
 					if (first) {
 						first = false;
-						const resync =
+						let resync =
 							request.since !== undefined &&
 							(since > entry.doc.version || (since < entry.doc.version && entry.doc.textAt(since) === null));
+						// A restarted daemon can give the watcher's version number to another text.
+						if (!resync && request.since !== undefined && request.sinceHash !== undefined) {
+							resync = (yield* registry.hashAt(entry, since)) !== request.sinceHash;
+						}
 						if (request.since === undefined || resync) since = entry.doc.version;
+						const { version, text } = entry.doc;
 						return [
 							{
 								_tag: resync ? 'Resync' : 'Watching',
-								version: entry.doc.version,
-								...(request.text ? { text: entry.doc.text } : {})
+								version,
+								hash: yield* registry.hashOf(entry, version, text),
+								...(request.text ? { text } : {})
 							} satisfies WatchEvent
 						] as const;
 					}
@@ -86,15 +93,41 @@ export function watchDocument(registry: DocumentRegistry, request: WatchPayload)
 					if (entry.doc.version > since) {
 						const result = changes(entry, since, request.section);
 						since = entry.doc.version;
+						const text = entry.doc.text;
+						const hash = yield* registry.hashOf(entry, since, text);
 						const event: WatchEvent = result
-							? { _tag: 'Change', ...result, ...(request.text ? { text: entry.doc.text } : {}) }
-							: { _tag: 'Resync', version: since, ...(request.text ? { text: entry.doc.text } : {}) };
+							? { _tag: 'Change', ...result, hash, ...(request.text ? { text } : {}) }
+							: { _tag: 'Resync', version: since, hash, ...(request.text ? { text } : {}) };
 						return [event] as const;
 					}
 					yield* Deferred.await(signal);
 				}
 			});
 			return pull;
+		})
+	);
+}
+
+/** Merges the text a browser edited from `base`. */
+export function syncDocument(registry: DocumentRegistry, request: SyncPayload) {
+	return registry.withEntry(request.path, (entry) =>
+		Effect.gen(function* () {
+			// A restarted daemon can give the base's number to another text. A merge
+			// from that text would delete what the sender never saw, so it must resync.
+			if (request.baseHash !== undefined && (yield* registry.hashAt(entry, request.base)) !== request.baseHash) {
+				return yield* Effect.fail(new Forgotten({ latest: entry.doc.version }));
+			}
+			// Hashing can yield, and a file deleted meanwhile frees the document.
+			if (entry.deleted || entry.closed) return yield* Effect.fail(new DocumentGone({ path: entry.path }));
+			const previous = entry.doc.version;
+			yield* rpcTry(
+				() => entry.doc.userEdit(request.base, request.text),
+				() => entry.doc.version
+			);
+			// Read the reply before yielding: a deleted file frees the document.
+			const { version, text } = entry.doc;
+			yield* registry.changed(entry, previous);
+			return { version, text, hash: yield* registry.hashOf(entry, version, text) };
 		})
 	);
 }
@@ -138,11 +171,14 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
 				read: (request) =>
 					registry
 						.withEntry(request.path, (entry) =>
-							rpcTry(() => {
-								const scope = request.section === undefined ? null : findSection(entry.doc.text, request.section);
+							Effect.gen(function* () {
+								const { version, text } = entry.doc;
+								const scope =
+									request.section === undefined ? null : yield* rpcTry(() => findSection(text, request.section!));
 								return {
-									version: entry.doc.version,
-									text: scope ? entry.doc.text.slice(scope.from, scope.to) : entry.doc.text
+									version,
+									text: scope ? text.slice(scope.from, scope.to) : text,
+									hash: yield* registry.hashOf(entry, version, text)
 								};
 							})
 						)
@@ -210,22 +246,7 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
 							})
 						)
 						.pipe(Effect.withSpan('rpc.edit')),
-				sync: (request) =>
-					registry
-						.withEntry(request.path, (entry) =>
-							Effect.gen(function* () {
-								const previous = entry.doc.version;
-								yield* rpcTry(
-									() => entry.doc.userEdit(request.base, request.text),
-									() => entry.doc.version
-								);
-								// Read the reply before yielding: a deleted file frees the document.
-								const reply = { version: entry.doc.version, text: entry.doc.text };
-								yield* registry.changed(entry, previous);
-								return reply;
-							})
-						)
-						.pipe(Effect.withSpan('rpc.sync')),
+				sync: (request) => syncDocument(registry, request).pipe(Effect.withSpan('rpc.sync')),
 				diff: (request) =>
 					registry
 						.withEntry(request.path, (entry) =>
