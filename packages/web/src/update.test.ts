@@ -41,7 +41,7 @@ const watching = (version: number, text: string) => Message.ReceivedWatchEvent({
   event: { _tag: 'Watching', version, text, hash: hash(version) },
 })
 
-const argsOf = (commands: ReadonlyArray<{ readonly name: string; readonly args: unknown }> | undefined, name: string) =>
+const argsOf = (commands: ReadonlyArray<{ readonly name: string; readonly args?: unknown }> | undefined, name: string) =>
   (commands ?? []).filter(command => command.name === name).map(command => command.args)
 
 // Story normally settles Commands before the next Message. These races need
