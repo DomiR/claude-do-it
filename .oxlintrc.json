@@ -3,7 +3,7 @@
 	"extends": ["./node_modules/@effect/tsgo/oxlint-presets/recommended.json"],
 	"plugins": ["typescript", "import", "promise"],
 	"categories": { "correctness": "error" },
-	"ignorePatterns": ["**/dist/**", "**/node_modules/**", ".claude/**", "repos/**", "skill/**"],
+	"ignorePatterns": ["**/dist/**", "**/node_modules/**", ".claude/**", "repos/**", "skill/**", "packages/web/**"],
 	"rules": {
 		"no-console": "warn",
 		"typescript/no-unused-vars": "warn"
