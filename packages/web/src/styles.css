@@ -1148,9 +1148,10 @@ button {
 	}
 }
 
-/* Dark mode: PlainTasks' dark notebook (tasks-dark.hidden-tmTheme), tuned for WCAG AA. */
-@media (prefers-color-scheme: dark) {
-	:root {
+/* Dark mode: PlainTasks' dark notebook (tasks-dark.hidden-tmTheme), tuned for WCAG AA. The theme command (or
+   the system setting) puts data-theme="dark" on the root. */
+@scope (:root[data-theme='dark']) {
+	:scope {
 		color-scheme: dark;
 		--pt-paper: #1a1914;
 		--pt-prose: #b3ae94;

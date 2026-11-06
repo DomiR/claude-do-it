@@ -4,6 +4,8 @@ import { defineTaggedUnion } from 'foldkit/schema';
 import { Author, TodoChange, Version } from '@do-it/protocol';
 
 export const Platform = Schema.Literals(['mac', 'other']);
+export const Theme = Schema.Literals(['System', 'Light', 'Dark']);
+export type Theme = typeof Theme.Type;
 export const EditorAction = Schema.Literals([
 	'newTask',
 	'toggleDone',
@@ -125,11 +127,20 @@ export const Model = Schema.Struct({
 	palette: Palette,
 	notice: Schema.Option(Schema.String),
 	/** Whether long lines wrap. Off means they scroll horizontally. */
-	wrap: Schema.Boolean
+	wrap: Schema.Boolean,
+	/** The chosen theme. System follows the operating system. */
+	theme: Theme,
+	/** Whether the operating system prefers dark. Only tracked while the theme is System. */
+	systemDark: Schema.Boolean
 });
 export type Model = typeof Model.Type;
 
-export const makeInitialModel = (path: string, platform: typeof Platform.Type = 'other', wrap = false): Model => ({
+export const makeInitialModel = (
+	path: string,
+	platform: typeof Platform.Type = 'other',
+	wrap = false,
+	theme: Theme = 'System'
+): Model => ({
 	document:
 		path.length === 0
 			? DocumentState.NoPath()
@@ -139,7 +150,9 @@ export const makeInitialModel = (path: string, platform: typeof Platform.Type = 
 	platform,
 	palette: Palette.Closed(),
 	notice: Option.none(),
-	wrap
+	wrap,
+	theme,
+	systemDark: false
 });
 
 export const saveStatus = (document: ReadyDocument): 'Saved' | 'Saving' | 'Reconnecting' =>

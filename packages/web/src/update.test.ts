@@ -5,9 +5,11 @@ import { Command, given, message, model, story, type StorySimulation } from 'fol
 
 import {
 	ApplyRemoteText,
+	ApplyTheme,
 	FocusEditor,
 	RevealEditorPosition,
 	RunEditorAction,
+	SetTheme,
 	SyncDraft,
 	WaitBeforeReconnect,
 	WaitBeforeRemoteRetry,
@@ -627,6 +629,52 @@ describe('palette update', () => {
 			Command.resolve(FocusEditor, Message.CompletedFocusEditor()),
 			model((next) => expect(next.palette._tag).toBe('Closed'))
 		);
+	});
+
+	test('chooses a theme through the command palette', () => {
+		story(
+			update,
+			given(readyModel()),
+			message(Message.ClickedCommands()),
+			message(Message.UpdatedPaletteQuery({ query: 'theme dark' })),
+			model((next) => expect(paletteItems(next, original).map((item) => item.title)).toEqual(['Theme: Dark'])),
+			message(Message.PressedPaletteKey({ key: 'Enter' })),
+			Command.expectExact(SetTheme({ theme: 'Dark', dark: true }), FocusEditor({ session })),
+			Command.resolve(SetTheme, Message.CompletedSetTheme()),
+			Command.resolve(FocusEditor, Message.CompletedFocusEditor()),
+			model((next) => {
+				expect(next.theme).toBe('Dark');
+				expect(next.palette._tag).toBe('Closed');
+			})
+		);
+	});
+
+	test('lists the themes in the commands palette only and marks the current one', () => {
+		const opened = update(readyModel(), Message.ClickedCommands()).model;
+		const themes = paletteItems(opened, original).filter((item) => item.kind === 'Theme');
+		expect(themes.map((item) => item.title)).toEqual(['Theme: System', 'Theme: Light', 'Theme: Dark']);
+		expect(themes[0]?.detail.startsWith('Current')).toBe(true);
+		expect(themes[1]?.detail.startsWith('Current')).toBe(false);
+		const shortcuts = update(readyModel(), Message.PressedHelpKey()).model;
+		expect(paletteItems(shortcuts, original).some((item) => item.kind === 'Theme')).toBe(false);
+	});
+
+	test('follows the system theme only while the theme is System', () => {
+		const system = readyModel();
+		expect(subscriptions.systemTheme.modelToDependencies(system)).toEqual({ follows: true });
+		story(
+			update,
+			given(system),
+			message(Message.ChangedSystemTheme({ dark: true })),
+			Command.expectExact(ApplyTheme({ dark: true })),
+			Command.resolve(ApplyTheme, Message.CompletedApplyTheme()),
+			model((next) => expect(next.systemDark).toBe(true))
+		);
+		const light = { ...system, theme: 'Light' as const };
+		expect(subscriptions.systemTheme.modelToDependencies(light)).toEqual({ follows: false });
+		const result = update(light, Message.ChangedSystemTheme({ dark: true }));
+		expect(result.model.systemDark).toBe(true);
+		expect(result.commands ?? []).toEqual([]);
 	});
 
 	test('navigates projects and exposes shortcuts through the palette', () => {

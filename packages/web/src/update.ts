@@ -4,17 +4,20 @@ import { modifyFields } from 'foldkit/struct';
 
 import {
 	ApplyRemoteText,
+	ApplyTheme,
 	FocusEditor,
 	OpenEditorLink,
 	RevealEditorPosition,
 	RunEditorAction,
 	SetEditorWrap,
+	SetTheme,
 	SyncDraft,
 	WaitBeforeReconnect,
 	WaitBeforeRemoteRetry,
 	WaitBeforeSync,
 	WaitBeforeSyncRetry
 } from './command';
+import { isDark } from './editor/preferences';
 import { Message } from './message';
 import {
 	ConnectionState,
@@ -258,6 +261,14 @@ const choosePalette = (model: Model, index: number): UpdateReturn =>
 				model: closed,
 				commands: [RevealEditorPosition({ session: document.session, offset: item.offset })]
 			};
+		if (item.kind === 'Theme')
+			return {
+				model: modifyFields(closed, { theme: () => item.theme }),
+				commands: [
+					SetTheme({ theme: item.theme, dark: isDark(item.theme, model.systemDark) }),
+					FocusEditor({ session: document.session })
+				]
+			};
 		if (item.command === 'gotoProject') return openPalette(model, 'Projects');
 		if (item.command === 'showShortcuts') return openPalette(model, 'Shortcuts');
 		if (item.command === 'commandPalette') return openPalette(model, 'Commands');
@@ -449,6 +460,12 @@ export const update = (model: Model, message: Message) =>
 			}));
 		},
 		CompletedSetEditorWrap: () => ({ model }),
+		ChangedSystemTheme: ({ dark }) => ({
+			model: modifyFields(model, { systemDark: () => dark }),
+			commands: model.theme === 'System' ? [ApplyTheme({ dark })] : []
+		}),
+		CompletedSetTheme: () => ({ model }),
+		CompletedApplyTheme: () => ({ model }),
 		ClickedCommands: () => (model.palette._tag === 'Open' ? closePalette(model) : openPalette(model, 'Commands')),
 		PressedHelpKey: () => (model.palette._tag === 'Open' ? closePalette(model) : openPalette(model, 'Shortcuts')),
 		UpdatedPaletteQuery: ({ query }) => ({

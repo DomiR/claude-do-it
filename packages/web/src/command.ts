@@ -8,9 +8,9 @@ import type { RpcFailure } from '@do-it/protocol';
 import { rebaseRemote } from './editor/changes';
 import { remoteTransaction, runEditorCommand, setLineWrap } from './editor/extensions';
 import { getEditor } from './editor/host';
-import { storeWrap } from './editor/preferences';
+import { applyTheme, storeTheme, storeWrap } from './editor/preferences';
 import { Message, type SyncFailureKind } from './message';
-import { EditorCommandName } from './model';
+import { EditorCommandName, Theme } from './model';
 import { DoItClient, isUnauthorized } from './rpc';
 
 export const WaitBeforeReconnect = Command.define('WaitBeforeReconnect', {
@@ -221,4 +221,27 @@ export const OpenEditorLink = Command.define('OpenEditorLink', {
 			}
 			return Message.ShowedEditorNotice({ text: 'This link cannot be opened here' });
 		}).pipe(Effect.catch(() => Effect.succeed(Message.ShowedEditorNotice({ text: 'Could not open this link' }))))
+});
+
+/** Remembers the chosen theme for this browser and shows it at once. */
+export const SetTheme = Command.define('SetTheme', {
+	args: { theme: Theme, dark: Schema.Boolean },
+	messages: [Message.CompletedSetTheme],
+	execute: ({ theme, dark }) =>
+		Effect.sync(() => {
+			storeTheme(theme);
+			applyTheme(dark);
+			return Message.CompletedSetTheme();
+		})
+});
+
+/** Shows the theme without remembering it, as when the operating system changes under System. */
+export const ApplyTheme = Command.define('ApplyTheme', {
+	args: { dark: Schema.Boolean },
+	messages: [Message.CompletedApplyTheme],
+	execute: ({ dark }) =>
+		Effect.sync(() => {
+			applyTheme(dark);
+			return Message.CompletedApplyTheme();
+		})
 });

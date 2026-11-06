@@ -5,7 +5,7 @@ import { commands, keysFor } from '../editor/keymap';
 import { classifyDocument } from '../editor/lines';
 import type { EditorCommand } from '../editor/types';
 import { Message } from '../message';
-import type { Model } from '../model';
+import type { Model, Theme } from '../model';
 import { FocusPaletteInput } from '../mount';
 import { keysView } from './keys';
 
@@ -23,7 +23,20 @@ type PaletteItem =
 			readonly detail: string;
 			readonly keys: ReadonlyArray<string>;
 			readonly offset: number;
+	  }
+	| {
+			readonly kind: 'Theme';
+			readonly title: string;
+			readonly detail: string;
+			readonly keys: ReadonlyArray<string>;
+			readonly theme: Theme;
 	  };
+
+const themeChoices: ReadonlyArray<{ readonly theme: Theme; readonly detail: string }> = [
+	{ theme: 'System', detail: 'Follow the system light or dark setting' },
+	{ theme: 'Light', detail: 'Always use the light theme' },
+	{ theme: 'Dark', detail: 'Always use the dark theme' }
+];
 
 export const matchesSubsequence = (text: string, query: string): boolean => {
 	const candidate = text.toLowerCase();
@@ -57,7 +70,17 @@ export const paletteItems = (model: Model, draft: string): ReadonlyArray<Palette
 						command: command.command,
 						keys: keysFor(model.platform, command.command)
 					}));
-	return items.filter((item) => matchesSubsequence(item.title, palette.query));
+	const themes: ReadonlyArray<PaletteItem> =
+		palette.kind === 'Commands'
+			? themeChoices.map(({ theme, detail }) => ({
+					kind: 'Theme',
+					title: `Theme: ${theme}`,
+					detail: theme === model.theme ? `Current, ${detail.toLowerCase()}` : detail,
+					keys: [],
+					theme
+				}))
+			: [];
+	return [...items, ...themes].filter((item) => matchesSubsequence(item.title, palette.query));
 };
 
 export const paletteView = (model: Model, draft: string, h: HtmlBuilder<Message>): Html => {

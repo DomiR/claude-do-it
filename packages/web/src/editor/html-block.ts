@@ -109,7 +109,7 @@ const baseStyles = `
   white-space: normal;
   font: 16px/1.5 system-ui, sans-serif;
   color: var(--pt-ink, #000);
-  color-scheme: light dark;
+  color-scheme: inherit;
 }
 *, *::before, *::after { box-sizing: border-box; }
 img, svg, video, canvas { max-width: 100%; }
