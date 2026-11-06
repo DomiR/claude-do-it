@@ -1,5 +1,5 @@
 import {
-  Annotation, EditorSelection, EditorState, Transaction,
+  Annotation, EditorSelection, EditorState, SelectionRange, Transaction,
   type Extension, type TransactionSpec,
 } from '@codemirror/state'
 import { isolateHistory } from '@codemirror/commands'
@@ -151,7 +151,12 @@ export const blockInput = (state: EditorState, text: string): TransactionSpec | 
     const result = blockTyping(state, range.from, range.to, text)
     if (!result) return { changes: { from: range.from, to: range.to, insert: text }, range: EditorSelection.cursor(range.from + text.length) }
     handled = true
-    return { changes: result.changes, range: (result.selection as EditorSelection).main, effects: result.effects }
+    // blockTyping answers with one caret, a SelectionRange, not a whole EditorSelection.
+    const selection = result.selection
+    const next = selection instanceof EditorSelection ? selection.main
+      : selection instanceof SelectionRange ? selection
+        : EditorSelection.range(selection?.anchor ?? range.from + text.length, selection?.head ?? selection?.anchor ?? range.from + text.length)
+    return { changes: result.changes, range: next, effects: result.effects }
   })
   return handled ? { ...spec, annotations: blockInputHandled.of(true), userEvent: 'input.type', scrollIntoView: true } : undefined
 }
