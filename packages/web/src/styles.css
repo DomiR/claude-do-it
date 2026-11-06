@@ -876,6 +876,14 @@ button {
 	font-weight: 700;
 }
 
+/* A done or cancelled task is settled, so every tag on it, chips and stamps included, drops to muted ink. */
+.pt-editor-host .pt-line-task-done .pt-tag,
+.pt-editor-host .pt-line-task-cancelled .pt-tag {
+	background: none;
+	color: var(--pt-tag-resolved);
+	font-weight: 400;
+}
+
 /* A bullet's `- ` and a status line's bullet render in the width of their source. */
 .pt-editor-host .pt-bullet-dot,
 .pt-editor-host .pt-bullet-gap {
