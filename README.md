@@ -289,8 +289,8 @@ The Release workflow checks that the tag equals `v` plus `APP_VERSION` and the
 secret `NPM_TOKEN`: a granular npm token with publish rights for
 `claude-do-it`. Before publishing, the workflow runs `npm whoami` with that
 token and fails unless it prints `domir`, the npm owner of `claude-do-it` (see
-`npm view claude-do-it maintainers`), so a token from another npm account stops
-the release with a clear error. The plugin's `do-it` runs that exact npm version, so a plugin
+`npm view claude-do-it maintainers`). A missing or revoked token, or one from
+another npm account, stops the release with a clear error. The plugin's `do-it` runs that exact npm version, so a plugin
 installed from `main` fails until the workflow has published it: push the tag
 right after the commit.
 

@@ -73,7 +73,10 @@ jobs:
           fi
       - name: Check the npm token owner
         run: |
-          user="$(npm whoami)"
+          if ! user="$(npm whoami)"; then
+            echo "::error::npm whoami failed: the NPM_TOKEN secret is missing, expired, or revoked. Replace it with a granular token from the npm account domir."
+            exit 1
+          fi
           if [ "$user" != "domir" ]; then
             echo "::error::The NPM_TOKEN secret belongs to the npm account '$user', not 'domir', the owner of claude-do-it. Replace the secret with a token from the domir account."
             exit 1
