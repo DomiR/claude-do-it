@@ -11,6 +11,8 @@
   Effect diagnostics come from Oxlint: the tsconfig plugin sets `diagnostics: false`, so `check` reports
   type errors only. Fix lint errors; warnings are advice.
 - Test with `bun run test`. Build with `bun run build:web` and `bun run build:npm`.
+- `.vscode/settings.json` starts stock TypeScript 7 (`@typescript/native`), which skips the Effect plugin.
+  For Effect quickinfo in the editor, run `bunx @effect/tsgo setup --vscode` and apply what it prints.
 - Every `effect` and `@effect/*` package comes from the root `catalog`, and `overrides.effect` pins the
   one version. Never add a second version.
 
