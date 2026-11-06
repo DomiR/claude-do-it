@@ -13,9 +13,21 @@ export function packageOf(specifier: string): string {
  * literal specifier, and `require` calls. Relative paths, `node:` and `bun:` modules, and Node builtins are skipped.
  */
 export function bareImports(code: string): ReadonlyArray<string> {
+	// The transpiler reports imports; the pattern also catches `require` and dynamic `import` with a literal.
+	const specifiers = [
+		...new Bun.Transpiler({ loader: 'js' }).scan(code).imports.map(({ path }) => path),
+		...Array.from(code.matchAll(/\b(?:require|import)\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g), (match) => match[1] ?? '')
+	];
 	const found = new Set<string>();
-	for (const { path } of new Bun.Transpiler({ loader: 'js' }).scan(code).imports) {
-		if (path.startsWith('.') || path.startsWith('/') || path.startsWith('node:') || path.startsWith('bun:')) continue;
+	for (const path of specifiers) {
+		if (
+			path === '' ||
+			path.startsWith('.') ||
+			path.startsWith('/') ||
+			path.startsWith('node:') ||
+			path.startsWith('bun:')
+		)
+			continue;
 		const name = packageOf(path);
 		if (name === 'bun' || builtins.has(name)) continue;
 		found.add(name);
