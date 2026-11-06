@@ -1,5 +1,5 @@
 import { describeAuthor, exitCodeFor, formatTodoChange, formatVersionHeader } from '@do-it/protocol';
-import type { Author, Change, EditSuccess, RpcFailure, TodoChange } from '@do-it/protocol';
+import type { Change, EditSuccess, RpcFailure, TodoChange } from '@do-it/protocol';
 import { Console, Effect } from 'effect';
 /** Writes `text` and one line break. A text that already ends in a line break gets no second one. */
 export function writeLine(text = ''): Effect.Effect<void> {

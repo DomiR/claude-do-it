@@ -15,5 +15,5 @@ export const openBrowser = (url: string) =>
 			stdout: 'ignore',
 			stderr: 'ignore'
 		});
-		yield* Effect.scoped(Effect.flatMap(spawner.spawn(opener), (child) => child.unref));
+		yield* Effect.scoped(Effect.flatMap(spawner.spawn(opener), (child) => Effect.asVoid(child.unref)));
 	}).pipe(Effect.ignore);

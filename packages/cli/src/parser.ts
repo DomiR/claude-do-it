@@ -10,6 +10,8 @@ export type { ParsedCommand } from './types';
 export type CommandRunner = (command: ParsedCommand) => Effect.Effect<void, never, Command.Environment>;
 
 export const cliFormatter: CliOutput.Formatter = {
+	// defaultFormatter returns a plain object, so the spread keeps every member.
+	// oxlint-disable-next-line typescript/no-misused-spread
 	...CliOutput.defaultFormatter({ colors: false }),
 	formatVersion: (name, version) => `${name} ${version}`
 };
