@@ -21,6 +21,9 @@ const allCommands: ReadonlyArray<EditorCommand> = [
   'toggleTask',
   'toggleBullet',
   'toggleHeading',
+  'toggleFold',
+  'foldAll',
+  'unfoldAll',
   'openLink',
   'editLink',
   'gotoProject',
@@ -47,6 +50,7 @@ describe('editor keymap', () => {
       { command: 'toggleTask', mac: ['Cmd-Alt-4'], other: ['Ctrl-Shift-4'] },
       { command: 'toggleBullet', mac: ['Cmd-Alt-5'], other: ['Ctrl-Shift-5'] },
       { command: 'toggleHeading', mac: ['Cmd-Alt-2'], other: ['Ctrl-Shift-2'] },
+      { command: 'toggleFold', mac: ['Cmd-Alt-f', 'F2'], other: ['Ctrl-Shift-f', 'F2'] },
       { command: 'gotoProject', mac: ['Cmd-p'], other: ['Ctrl-p'] },
       { command: 'commandPalette', mac: ['Cmd-Shift-p', 'F1'], other: ['Ctrl-Shift-p', 'F1'] },
       { command: 'find', mac: ['Cmd-f'], other: ['Ctrl-f'] },
@@ -111,6 +115,9 @@ describe('editor keymap', () => {
       'Task line',
       'Bulleted line',
       'Project heading',
+      'Toggle fold',
+      'Fold all',
+      'Unfold all',
       'Go to project',
       'Command palette',
       'Find',
@@ -138,6 +145,22 @@ describe('editor keymap', () => {
       { command: 'showShortcuts', label: 'Help' },
     ])
     expect(hints.every(hint => keysFor('mac', hint.command).length > 0)).toBe(true)
+  })
+
+  test('fold commands have palette descriptions and only toggle has shortcuts', () => {
+    expect(commands.filter(command => ['toggleFold', 'foldAll', 'unfoldAll'].includes(command.command))).toEqual([
+      { command: 'toggleFold', title: 'Toggle fold', description: 'Fold or unfold the project, task, or section at the caret', inPalette: true },
+      { command: 'foldAll', title: 'Fold all', description: 'Fold every project, task, and section', inPalette: true },
+      { command: 'unfoldAll', title: 'Unfold all', description: 'Unfold every project, task, and section', inPalette: true },
+    ])
+    for (const platform of ['mac', 'other'] as const) {
+      expect(keysFor(platform, 'foldAll')).toEqual([])
+      expect(keysFor(platform, 'unfoldAll')).toEqual([])
+      expect(hints.some(hint => hint.command === 'toggleFold')).toBe(false)
+      expect(keyCaps(platform, 'F2')).toEqual([{ text: 'F2', spoken: 'F2' }])
+    }
+    expect(spokenKeys('mac', 'Cmd-Alt-f')).toBe('Option Command F')
+    expect(spokenKeys('other', 'Ctrl-Shift-f')).toBe('Control Shift F')
   })
 
   test('turns key names into one cap per key, icons on Macs and words elsewhere, in platform order', () => {

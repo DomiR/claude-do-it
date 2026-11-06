@@ -13,7 +13,8 @@ import { Message } from '../message'
 import { runAction } from './actions'
 import { classifiedDocument } from './document'
 import { clearRemoteHighlight, editorFacts, remoteTransaction } from './facts'
-import { foldAll, foldExtensions, toggleFold, unfoldAll, type FoldOptions } from './folds'
+import { foldView, foldViewState } from './fold-view'
+import { foldAll, foldExtensions, foldState, toggleFold, unfoldAll, type FoldOptions } from './folds'
 import { bindings, type Platform } from './keymap'
 import {
   classifyDocument, linkAt, linkRangeOn, prefixHasWidth, type ClassifiedDocument, type InlineKind, type Span,
@@ -79,7 +80,7 @@ export const runEditorCommand = (view: EditorView, command: EditorCommand, fallT
       return true
     case 'editLink': return editLink(view)
     case 'toggleFold':
-      if (!toggleFold(view)) view.state.facet(editorFacts)(Message.ShowedEditorNotice({ text: 'No foldable block here' }))
+      if (!toggleFold(view)) view.state.facet(editorFacts)(Message.ShowedEditorNotice({ text: 'Nothing to fold here' }))
       return true
     case 'foldAll': return foldAll(view)
     case 'unfoldAll': return unfoldAll(view)
@@ -153,7 +154,7 @@ class Marker extends WidgetType {
  * for the caret: prefixes become boxes, dots and hidden heading or quote
  * marks, and inline delimiters are hidden. Fenced code stays as written.
  */
-const lineDecorations = (classified: ClassifiedDocument) => {
+const lineDecorations = (classified: ClassifiedDocument, hidden: readonly Span[] = []) => {
   const ranges: Range<Decoration>[] = []
   const replaced: Range<Decoration>[] = []
   const mark = (span: Span | undefined, className: string) => {
@@ -164,7 +165,12 @@ const lineDecorations = (classified: ClassifiedDocument) => {
     replaced.push(range)
     ranges.push(range)
   }
+  let hiddenIndex = 0
   for (const line of classified.lines) {
+    while (hidden[hiddenIndex] && hidden[hiddenIndex]!.to <= line.from) hiddenIndex += 1
+    const folded = hidden[hiddenIndex]
+    if (folded && line.from > folded.from && line.to <= folded.to) continue
+    if (line.blockRole && line.blockRole !== 'details-summary') continue
     const classes: string[] = []
     switch (line.kind) {
       case 'project': classes.push('pt-line-project', `pt-level-${line.level ?? 1}`); break
@@ -181,7 +187,7 @@ const lineDecorations = (classified: ClassifiedDocument) => {
     if (line.archived) classes.push('pt-line-archived')
     const hanging = line.kind === 'task' || line.kind === 'status' || line.kind === 'note'
     if (hanging) classes.push('pt-hang')
-    if (classes.length) ranges.push(Decoration.line({
+    if (classes.length && line.blockRole !== 'details-summary') ranges.push(Decoration.line({
       class: classes.join(' '),
       attributes: hanging ? { style: `--pt-hang: ${line.hang}` } : undefined,
     }).range(line.from))
@@ -213,12 +219,12 @@ export const documentDecorations = StateField.define<{
 }>({
   create: state => {
     const classified = state.field(classifiedDocument)
-    return { classified, ...lineDecorations(classified) }
+    return { classified, ...lineDecorations(classified, state.field(foldViewState, false)?.hidden) }
   },
   update: (value, transaction) => {
-    if (!transaction.docChanged) return value
+    if (!transaction.docChanged && transaction.startState.field(foldState, false) === transaction.state.field(foldState, false)) return value
     const classified = transaction.state.field(classifiedDocument)
-    return { classified, ...lineDecorations(classified) }
+    return { classified, ...lineDecorations(classified, transaction.state.field(foldViewState, false)?.hidden) }
   },
   provide: field => [
     classifiedDocument,
@@ -558,7 +564,7 @@ export const editorExtensions = (platform: Platform, options: EditorOptions = {}
   EditorState.tabSize.of(4),
   EditorState.allowMultipleSelections.of(true),
   history(), drawSelection(), highlightActiveLine(), lineWrap.of(wrapping(options.wrap ?? false)),
-  foldExtensions(options),
+  foldExtensions(options), foldView,
   EditorView.contentAttributes.of({ 'aria-label': 'Todo document' }),
   Prec.highest(inputGuard),
   Prec.highest(keymap.of([{
@@ -583,6 +589,7 @@ export const editorExtensions = (platform: Platform, options: EditorOptions = {}
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,
     run: unlessComposing(view => runEditorCommand(view, binding.command, key === 'Shift-Tab' && binding.command === 'outdent')),
+    preventDefault: binding.command === 'toggleFold',
     stopPropagation: true,
   }))))),
   keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: 'Escape', run: temporarilySetTabFocusMode }]),

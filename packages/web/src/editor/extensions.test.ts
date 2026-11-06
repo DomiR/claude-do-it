@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorSelection, EditorState, Transaction, type TransactionSpec } from '@codemirror/state'
-import { EditorView, type Decoration } from '@codemirror/view'
+import { EditorView, keymap, type Decoration } from '@codemirror/view'
 import { Schema } from 'effect'
 import {
   cursorCharBackwardLogical, cursorCharForwardLogical, deleteCharBackward, deleteCharForward, redo,
@@ -12,11 +12,12 @@ import { blockEnd, lines } from '@do-it/doc/text'
 import { EditorCommandName } from '../model'
 import { rebaseRemote } from './changes'
 import { classifiedDocument } from './document'
+import { FoldPlaceholder, foldViewState } from './fold-view'
 import { foldState, isFoldOpen } from './folds'
 import type { EditorCommand } from './types'
 import {
   clearRemoteHighlight, deleteBackwardAcrossMarks, deleteEmptyTaskPrefix, deleteForwardAcrossMarks, documentDecorations,
-  continueBlockLine, editorExtensions, insertNoteLine, moveToTaskLabel, pasteMarkdown, prefixTyping, remoteHighlights, remoteTransaction,
+  continueBlockLine, editorExtensions, editorFacts, insertNoteLine, moveToTaskLabel, pasteMarkdown, prefixTyping, remoteHighlights, remoteTransaction,
   runEditorCommand,
 } from './extensions'
 
@@ -86,6 +87,7 @@ const viewFor = (initial: EditorState) => {
   let state = initial
   return {
     get state() { return state },
+    plugin() { return null },
     dispatch(spec: TransactionSpec | Transaction) { state = spec instanceof Transaction ? spec.state : state.update(spec).state },
   } as unknown as EditorView & { state: EditorState }
 }
@@ -717,6 +719,35 @@ describe('remote edits', () => {
 })
 
 describe('fold command integration', () => {
+  test('toggle shortcuts prevent browser defaults and report when no block is available', () => {
+    for (const [platform, keys] of [['mac', ['Cmd-Alt-f', 'F2']], ['other', ['Ctrl-Shift-f', 'F2']]] as const) {
+      const notices: string[] = []
+      const state = EditorState.create({ doc: 'plain', extensions: [
+        editorExtensions(platform), editorFacts.of(fact => { if (fact._tag === 'ShowedEditorNotice') notices.push(fact.text) }),
+      ] })
+      for (const key of keys) {
+        const binding = state.facet(keymap).flat().find(value => value.key === key)!
+        expect(binding.preventDefault).toBe(true)
+        expect(binding.stopPropagation).toBe(true)
+        expect(binding.run!(viewFor(state))).toBe(true)
+      }
+      expect(notices).toEqual(['Nothing to fold here', 'Nothing to fold here'])
+    }
+  })
+
+  test('search-style selections reveal hidden text and restore base decorations', () => {
+    const text = '# Project\n- [ ] Task\n  <details><summary>Explanation</summary>\n  **needle**\n  </details>'
+    let state = run(stateFor(text), view => runEditorCommand(view, 'foldAll')).state
+    expect(classes(state)).not.toContain('pt-strong')
+    const from = text.indexOf('needle')
+    state = state.update({ selection: { anchor: from, head: from + 6 }, userEvent: 'select.search' }).state
+    expect(state.field(foldViewState).hidden).toEqual([])
+    expect(classes(state)).toContain('pt-strong')
+    expect(state.selection.main.from).toBe(from)
+    expect(state.selection.main.to).toBe(from + 6)
+    expect(state.field(foldState).folded.size).toBe(0)
+  })
+
   test('routes all fold commands through the runtime schema and shared state', () => {
     const text = '# Project\n- [ ] Task\n  <details><summary>Explanation</summary>\n  body\n  </details>'
     let state = stateFor(text, text.indexOf('Project'))
@@ -745,5 +776,8 @@ describe('fold command integration', () => {
     expect(folds.candidates[0]!.identityLabel).toBe('Renamed')
     expect(folds.candidates[0]!.hiddenLines).toBe(2)
     expect(isFoldOpen(folds, folds.candidates[0]!)).toBe(false)
+    const placeholders = decorations(state).filter(range => range.decoration.spec.widget instanceof FoldPlaceholder)
+    expect(placeholders).toHaveLength(1)
+    expect(placeholders[0]!.decoration.spec.widget.count).toBe(2)
   })
 })
