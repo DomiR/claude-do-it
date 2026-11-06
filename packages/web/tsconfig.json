@@ -1,10 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // Off until the open folds branch lands in packages/web: then mark the
-    // WidgetType members in src/editor/extensions.ts with override and drop this.
-    "noImplicitOverride": false
-  },
-  "include": ["src/**/*.ts", "vite.config.ts"]
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": { "noEmit": true },
+	"include": ["src/**/*.ts", "vite.config.ts"]
 }

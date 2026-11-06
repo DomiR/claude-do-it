@@ -10,13 +10,5 @@
 	"arrowParens": "always",
 	"bracketSpacing": true,
 	"endOfLine": "lf",
-	"ignorePatterns": [
-		"**/dist/**",
-		"**/node_modules/**",
-		".claude/**",
-		"repos/**",
-		"skill/**",
-		"**/*.md",
-		"packages/web/**"
-	]
+	"ignorePatterns": ["**/dist/**", "**/node_modules/**", ".claude/**", "repos/**", "skill/**", "**/*.md"]
 }
