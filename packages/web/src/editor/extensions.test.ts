@@ -366,6 +366,7 @@ describe('rendered editor', () => {
 		const state = stateFor(text, text.length);
 		const all = decorations(state);
 		const lineStates = ['done', 'cancelled', 'open'];
+		const tagCounts = [3, 2, 1];
 		for (const [index, lineState] of lineStates.entries()) {
 			const line = state.doc.line(index + 1);
 			const lineClass = all.find(
@@ -373,7 +374,7 @@ describe('rendered editor', () => {
 			);
 			expect(lineClass).toBeDefined();
 			const tags = all.filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-tag'));
-			expect(tags.filter(({ from }) => from >= line.from && from <= line.to).length).toBeGreaterThan(0);
+			expect(tags.filter(({ from }) => from >= line.from && from <= line.to)).toHaveLength(tagCounts[index]!);
 		}
 	});
 

@@ -863,7 +863,7 @@ button {
 	font-weight: 400;
 }
 
-/* As in PlainTasks, a done stamp and how long the task lasted stand out in orange. */
+/* As in PlainTasks, a done stamp and how long the task lasted stand out in orange, until the task is resolved (see below). */
 .pt-editor-host .pt-tag-done,
 .pt-editor-host .pt-tag-lasted {
 	color: var(--pt-tag-done);
