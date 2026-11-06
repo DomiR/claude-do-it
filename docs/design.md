@@ -409,7 +409,9 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
   `@today` is bold black on yellow, `@high` is bold black on orange, `@low` is
   bold white on dark grey, `@critical` is bold black on red, `@done` and
   `@lasted` are bold orange, and the other state and project tags use muted
-  ink. Tag arguments remain part of the tag decoration. Marking a task done
+  ink. These colours hold on open tasks only: on a done or cancelled task
+  every tag, chips and stamps included, turns muted ink at regular weight.
+  Tag arguments remain part of the tag decoration. Marking a task done
   that has a `@started(...)` stamp adds `@lasted(...)` with the time between
   them in PlainTasks' format (`2:30`, `1 day, 0:05`, `3 days`); unchecking or
   cancelling removes it. Only stamps with parentheses are stamps: a bare

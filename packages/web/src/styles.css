@@ -863,7 +863,7 @@ button {
 	font-weight: 400;
 }
 
-/* As in PlainTasks, a done stamp and how long the task lasted stand out in orange. */
+/* As in PlainTasks, a done stamp and how long the task lasted stand out in orange, until the task is resolved (see below). */
 .pt-editor-host .pt-tag-done,
 .pt-editor-host .pt-tag-lasted {
 	color: var(--pt-tag-done);
@@ -874,6 +874,14 @@ button {
 .pt-editor-host .pt-tag-started {
 	color: var(--pt-tag);
 	font-weight: 700;
+}
+
+/* A done or cancelled task is settled, so every tag on it, chips and stamps included, drops to muted ink. */
+.pt-editor-host .pt-line-task-done .pt-tag,
+.pt-editor-host .pt-line-task-cancelled .pt-tag {
+	background: none;
+	color: var(--pt-tag-resolved);
+	font-weight: 400;
 }
 
 /* A bullet's `- ` and a status line's bullet render in the width of their source. */

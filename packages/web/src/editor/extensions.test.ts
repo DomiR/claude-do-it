@@ -361,6 +361,23 @@ describe('rendered editor', () => {
 		expect(state.doc.sliceString(lasted.from, lasted.to)).toBe('@lasted(2:30)');
 	});
 
+	test('every tag sits inside a line that carries its task state, which the stylesheet mutes when resolved', () => {
+		const text = '- [x] Ship @today @high @done (26-11-04 21:32)\n- [-] Drop @critical @cancelled\n- [ ] Keep @today';
+		const state = stateFor(text, text.length);
+		const all = decorations(state);
+		const lineStates = ['done', 'cancelled', 'open'];
+		const tagCounts = [3, 2, 1];
+		for (const [index, lineState] of lineStates.entries()) {
+			const line = state.doc.line(index + 1);
+			const lineClass = all.find(
+				({ from, decoration }) => from === line.from && decoration.spec.class?.includes('pt-line-task-' + lineState)
+			);
+			expect(lineClass).toBeDefined();
+			const tags = all.filter(({ decoration }) => decoration.spec.class?.split(' ').includes('pt-tag'));
+			expect(tags.filter(({ from }) => from >= line.from && from <= line.to)).toHaveLength(tagCounts[index]!);
+		}
+	});
+
 	test('decorates tags with their shared and sanitized name classes', () => {
 		const text = '@today @HIGH @waiting\n`@code`\n```\n@fenced\n```';
 		const state = stateFor(text, text.length);
