@@ -1230,3 +1230,117 @@ button {
     color: CanvasText;
   }
 }
+
+/* Folding uses one fixed gutter for projects, tasks, and details. */
+.pt-editor-host .cm-editor {
+  --pt-fold-gutter-width: 14px;
+}
+
+.pt-editor-host .cm-editor .cm-gutters.cm-gutters-before {
+  border: 0;
+  background: var(--pt-paper);
+}
+
+.pt-editor-host .pt-fold-gutter {
+  width: var(--pt-fold-gutter-width);
+  min-width: var(--pt-fold-gutter-width);
+  max-width: var(--pt-fold-gutter-width);
+}
+
+.pt-editor-host .pt-fold-gutter .cm-gutterElement {
+  padding: 0;
+}
+
+.pt-editor-host .cm-content {
+  padding-inline-start: calc(var(--pt-content-inset) - var(--pt-fold-gutter-width));
+}
+
+.pt-editor-host .pt-hang {
+  margin-left: calc((var(--pt-content-inset) - var(--pt-fold-gutter-width)) * -1);
+  padding-left: calc(var(--pt-hang) * 1ch + var(--pt-content-inset) - var(--pt-fold-gutter-width));
+}
+
+.pt-editor-host .pt-fold-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pt-fold-gutter-width);
+  height: 1.6em;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pt-prose);
+  font: inherit;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.pt-editor-host .pt-fold-chevron {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.pt-editor-host .pt-fold-button[aria-expanded='true'] .pt-fold-chevron {
+  transform: rotate(45deg);
+}
+
+.pt-editor-host .pt-fold-button[aria-expanded='false'],
+.pt-editor-host .pt-fold-button.pt-fold-active,
+.pt-editor-host .pt-fold-gutter .cm-gutterElement:hover .pt-fold-button {
+  opacity: 0.65;
+}
+
+.pt-editor-host .pt-fold-placeholder {
+  display: inline-flex;
+  margin: 0;
+  padding: 0 0 0 0.75ch;
+  border: 0;
+  background: transparent;
+  color: var(--pt-prose);
+  font: inherit;
+  font-size: 0.75em;
+  vertical-align: baseline;
+  white-space: pre;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pt-editor-host .pt-fold-button:focus-visible,
+.pt-editor-host .pt-fold-placeholder:focus-visible {
+  outline: 1px solid var(--pt-prose);
+  outline-offset: 1px;
+  opacity: 1;
+}
+
+.pt-editor-host .cm-line.pt-details-header {
+  padding-left: calc(var(--pt-details-indent) * 1ch);
+  text-indent: calc(var(--pt-details-indent) * -1ch);
+}
+
+.pt-editor-host .cm-line.pt-details-header-two-line {
+  text-indent: 0;
+}
+
+.pt-editor-host .pt-details-title {
+  color: var(--pt-ink);
+  font-weight: 600;
+}
+
+.pt-editor-host .pt-details-end {
+  display: inline-block;
+  width: 5ch;
+  height: 1px;
+  background: var(--pt-delimiter);
+  vertical-align: middle;
+}
+
+@media (hover: none) {
+  .pt-editor-host .pt-fold-button {
+    opacity: 0.4;
+  }
+}

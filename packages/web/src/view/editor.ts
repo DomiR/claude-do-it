@@ -62,7 +62,7 @@ export const editorView = (model: Model, document: ReadyDocument, h: HtmlBuilder
       h.keyed('div')(`editor:${document.session}`, [
         h.Class('pt-editor-host'),
         h.OnMount(MountEditor({
-          session: document.session, text: document.draft, selection: document.selection, platform: model.platform,
+          session: document.session, path: document.path, text: document.draft, selection: document.selection, platform: model.platform,
         })),
       ]),
       ...(model.activityOpen ? [activityView(model, h)] : []),

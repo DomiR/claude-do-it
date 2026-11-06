@@ -11,14 +11,22 @@ import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 
 import { Message } from '../message'
 import { runAction } from './actions'
+import {
+  blockCaretFilter, blockInput, blockInputFilter, blockInputHandled, blockTyping, deleteAdjacentBlock, enterDetailsBody,
+  guardedEvents, htmlBoundaryGuard, htmlSelectionFeedback, protectRenderedSyntax, replacementTouchesBlockSyntax, syntaxCleanup,
+} from './block-editing'
+import { classifiedDocument } from './document'
 import { clearRemoteHighlight, editorFacts, remoteTransaction } from './facts'
+import { foldView, foldViewState } from './fold-view'
+import { foldAll, foldExtensions, foldState, toggleFold, unfoldAll, type FoldOptions } from './folds'
+import { htmlBlockDecorations } from './html-block'
 import { bindings, type Platform } from './keymap'
 import {
   classifyDocument, linkAt, linkRangeOn, prefixHasWidth, type ClassifiedDocument, type InlineKind, type Span,
 } from './lines'
 import { closeLinkEditor, editLink, linkEdits, openLinkEditor } from './link-popover'
 import { clipboardMarkdown, startsBlock } from './paste'
-import { protectSyntax, type TextChange } from './syntax'
+import type { TextChange } from './syntax'
 import type { ActionId, EditorCommand, TextSelection } from './types'
 
 export { clearRemoteHighlight, editorFacts, remoteTransaction, type EditorFact } from './facts'
@@ -76,6 +84,11 @@ export const runEditorCommand = (view: EditorView, command: EditorCommand, fallT
       }))
       return true
     case 'editLink': return editLink(view)
+    case 'toggleFold':
+      if (!toggleFold(view)) view.state.facet(editorFacts)(Message.ShowedEditorNotice({ text: 'Nothing to fold here' }))
+      return true
+    case 'foldAll': return foldAll(view)
+    case 'unfoldAll': return unfoldAll(view)
     default: return runEditorAction(view, command, selectionOf(view), false, fallThroughUnavailable)
   }
 }
@@ -146,7 +159,7 @@ class Marker extends WidgetType {
  * for the caret: prefixes become boxes, dots and hidden heading or quote
  * marks, and inline delimiters are hidden. Fenced code stays as written.
  */
-const lineDecorations = (classified: ClassifiedDocument) => {
+const lineDecorations = (classified: ClassifiedDocument, hidden: readonly Span[] = []) => {
   const ranges: Range<Decoration>[] = []
   const replaced: Range<Decoration>[] = []
   const mark = (span: Span | undefined, className: string) => {
@@ -157,7 +170,12 @@ const lineDecorations = (classified: ClassifiedDocument) => {
     replaced.push(range)
     ranges.push(range)
   }
+  let hiddenIndex = 0
   for (const line of classified.lines) {
+    while (hidden[hiddenIndex] && hidden[hiddenIndex]!.to <= line.from) hiddenIndex += 1
+    const folded = hidden[hiddenIndex]
+    if (folded && line.from > folded.from && line.to <= folded.to) continue
+    if (line.blockRole && line.blockRole !== 'details-summary') continue
     const classes: string[] = []
     switch (line.kind) {
       case 'project': classes.push('pt-line-project', `pt-level-${line.level ?? 1}`); break
@@ -174,7 +192,7 @@ const lineDecorations = (classified: ClassifiedDocument) => {
     if (line.archived) classes.push('pt-line-archived')
     const hanging = line.kind === 'task' || line.kind === 'status' || line.kind === 'note'
     if (hanging) classes.push('pt-hang')
-    if (classes.length) ranges.push(Decoration.line({
+    if (classes.length && line.blockRole !== 'details-summary') ranges.push(Decoration.line({
       class: classes.join(' '),
       attributes: hanging ? { style: `--pt-hang: ${line.hang}` } : undefined,
     }).range(line.from))
@@ -205,15 +223,16 @@ export const documentDecorations = StateField.define<{
   atomicRanges: RangeSet<Decoration>
 }>({
   create: state => {
-    const classified = classifyDocument(state.doc.toString())
-    return { classified, ...lineDecorations(classified) }
+    const classified = state.field(classifiedDocument)
+    return { classified, ...lineDecorations(classified, state.field(foldViewState, false)?.hidden) }
   },
   update: (value, transaction) => {
-    if (!transaction.docChanged) return value
-    const classified = classifyDocument(transaction.newDoc.toString())
-    return { classified, ...lineDecorations(classified) }
+    if (!transaction.docChanged && transaction.startState.field(foldState, false) === transaction.state.field(foldState, false)) return value
+    const classified = transaction.state.field(classifiedDocument)
+    return { classified, ...lineDecorations(classified, transaction.state.field(foldViewState, false)?.hidden) }
   },
   provide: field => [
+    classifiedDocument,
     EditorView.decorations.from(field, value => value.decorations),
     EditorView.atomicRanges.of(view => view.state.field(field).atomicRanges),
   ],
@@ -254,23 +273,21 @@ const prefixCaretFilter = EditorState.transactionFilter.of(transaction => {
   }] : transaction
 })
 
-const guardedEvents = ['delete', 'input.type', 'input.paste', 'input.drop', 'input.complete']
-
 /** A person's deletions and replacements take rendered syntax whole, so no edit leaves `- [` or a lone `**` behind. */
 const syntaxGuard = EditorState.transactionFilter.of(transaction => {
   if (!transaction.docChanged || transaction.annotation(remoteTransaction) !== undefined) return transaction
   if (!guardedEvents.some(event => transaction.isUserEvent(event))) return transaction
   const changes: TextChange[] = []
   transaction.changes.iterChanges((from, to, _fromB, _toB, inserted) => { changes.push({ from, to, insert: inserted.toString() }) })
-  const widened = protectSyntax(transaction.startState.field(documentDecorations).classified, changes)
-  if (!widened) return transaction
-  const changeSet = transaction.startState.changes(widened)
-  return {
-    changes: changeSet,
-    selection: transaction.startState.selection.map(changeSet, 1),
-    userEvent: transaction.annotation(Transaction.userEvent),
-    scrollIntoView: transaction.scrollIntoView,
+  const classified = transaction.startState.field(documentDecorations).classified
+  if (transaction.isUserEvent('input.replace')) {
+    if (!replacementTouchesBlockSyntax(classified.blocks, changes)) return transaction
+    transaction.startState.facet(editorFacts)(Message.ShowedEditorNotice({ text: 'Edit the section markup with do-it edit' }))
+    return []
   }
+  const widened = protectRenderedSyntax(classified, changes)
+  if (!widened) return transaction
+  return [transaction, { changes: syntaxCleanup(transaction, widened), sequential: true }]
 })
 
 /**
@@ -318,6 +335,8 @@ export const pasteMarkdown = (state: EditorState, plain: string, html?: string):
   if (state.selection.ranges.some(range => inCode(range.from) || inCode(range.to))) return undefined
   const markdown = clipboardMarkdown(plain, html)
   if (markdown === null) return undefined
+  const block = blockInput(state, markdown)
+  if (block) return { ...block, userEvent: 'input.paste', annotations: [blockInputHandled.of(true), isolateHistory.of('full')] }
   const paste = (spec: TransactionSpec): TransactionSpec => ({
     ...spec, userEvent: 'input.paste', annotations: isolateHistory.of('full'), scrollIntoView: true,
   })
@@ -351,7 +370,8 @@ export const pasteMarkdown = (state: EditorState, plain: string, html?: string):
 
 const prefixInput = EditorView.inputHandler.of((view, from, to, text) => {
   if (view.composing) return false
-  const spec = prefixTyping(view.state, from, to, text)
+  const spec = (view.state.selection.ranges.length === 1 ? blockTyping(view.state, from, to, text) : blockInput(view.state, text)) ??
+    prefixTyping(view.state, from, to, text)
   if (!spec) return false
   view.dispatch(spec)
   return true
@@ -543,11 +563,14 @@ export const setLineWrap = (view: EditorView, wrap: boolean): void => {
   view.dispatch({ effects: lineWrap.reconfigure(wrapping(wrap)) })
 }
 
-export const editorExtensions = (platform: Platform, wrap = false): Extension => [
+export interface EditorOptions extends FoldOptions { readonly wrap?: boolean }
+
+export const editorExtensions = (platform: Platform, options: EditorOptions = {}): Extension => [
   EditorState.lineSeparator.of('\n'),
   EditorState.tabSize.of(4),
   EditorState.allowMultipleSelections.of(true),
-  history(), drawSelection(), highlightActiveLine(), lineWrap.of(wrapping(wrap)),
+  history(), drawSelection(), highlightActiveLine(), lineWrap.of(wrapping(options.wrap ?? false)),
+  foldExtensions(options), foldView, htmlBlockDecorations,
   EditorView.contentAttributes.of({ 'aria-label': 'Todo document' }),
   Prec.highest(inputGuard),
   Prec.highest(keymap.of([{
@@ -555,28 +578,30 @@ export const editorExtensions = (platform: Platform, wrap = false): Extension =>
     run: closeLinkEditor,
   }, {
     key: 'Backspace',
-    run: unlessComposing(view => deleteEmptyTaskPrefix(view) || deleteBackwardAcrossMarks(view)),
+    run: unlessComposing(view => deleteAdjacentBlock(false)(view) || deleteEmptyTaskPrefix(view) || deleteBackwardAcrossMarks(view)),
   }, {
     key: 'Delete',
-    run: unlessComposing(deleteForwardAcrossMarks),
+    run: unlessComposing(view => deleteAdjacentBlock(true)(view) || deleteForwardAcrossMarks(view)),
   }, {
     key: 'Home',
     run: unlessComposing(moveToTaskLabel),
   }, {
     key: 'Shift-Enter',
-    run: unlessComposing(insertNoteLine),
+    run: unlessComposing(view => enterDetailsBody(view) || insertNoteLine(view)),
   }, {
     key: 'Enter',
-    run: unlessComposing(continueBlockLine),
+    run: unlessComposing(view => enterDetailsBody(view) || continueBlockLine(view)),
   }])),
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,
     run: unlessComposing(view => runEditorCommand(view, binding.command, key === 'Shift-Tab' && binding.command === 'outdent')),
+    preventDefault: binding.command === 'toggleFold',
     stopPropagation: true,
   }))))),
   keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: 'Escape', run: temporarilySetTabFocusMode }]),
   search({ top: true }),
-  documentDecorations, prefixCaretFilter, syntaxGuard, prefixInput, remoteHighlights, highlightTimer, linkEdits,
+  documentDecorations, htmlBoundaryGuard, prefixCaretFilter, blockCaretFilter, syntaxGuard, blockInputFilter, prefixInput,
+  htmlSelectionFeedback, remoteHighlights, highlightTimer, linkEdits,
   // The document's lines end in \n only, so a pasted or dropped \r would stay in the text.
   EditorView.clipboardInputFilter.of(text => text.replace(/\r\n?/g, '\n')),
   EditorView.domEventHandlers({

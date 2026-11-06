@@ -130,6 +130,69 @@ describe('PlainTasks line classification', () => {
     ])
   })
 
+  test('limits summary inline rendering and links to the title span', () => {
+    const title = '**Bold** `code` @today [guide](#tasks) *edge*'
+    for (const separator of ['', '\n  ']) {
+      const text = `<details id="**hidden** @hidden [outside](#outside)">${separator}<summary>${title}</summary>\nbody\n</details>`
+      const document = classifyDocument(text)
+      const block = document.blocks.details[0]!
+      const summary = document.lines[block.summaryLine]!
+      expect(summary.blockRole).toBe('details-summary')
+      expect(summary.label).toEqual(block.title)
+      expect(slices(text, summary.inline)).toEqual(['**', 'Bold', '**', '`', 'code', '`', '@today', '[', 'guide', '](#tasks)', '*', 'edge', '*'])
+      expect(summary.inline.every(span => span.from >= block.title.from && span.to <= block.title.to)).toBe(true)
+      expect(summary.constructs.every(span => span.from >= block.title.from && span.to <= block.title.to)).toBe(true)
+      expect(linkAt(text, text.indexOf('guide'))).toBe('#tasks')
+      expect(linkAt(text, text.indexOf('outside'))).toBeUndefined()
+      if (block.startLine !== block.summaryLine) {
+        expect(document.lines[block.startLine]!.blockRole).toBe('details-open')
+        expect(document.lines[block.startLine]!.inline).toEqual([])
+      }
+      expect(document.lines[block.endLine - 1]!.blockRole).toBe('details-close')
+      expect(document.lines[block.endLine - 1]!.inline).toEqual([])
+    }
+  })
+
+  test('exposes block roles without decorating HTML payload or changing body classification', () => {
+    const text = [
+      '<details><summary>Explanation</summary>', '**ordinary body**', '- [ ] Real task',
+      '```html do-it', '## Not a project', '- [ ] Not a task', '', '**not bold** @today https://hidden.example', '```',
+      '</details>', '## Visible project',
+    ].join('\n')
+    const document = classifyDocument(text)
+    expect(document.blocks.html[0]!.closed).toBe(true)
+    expect(document.lines.map(line => line.blockRole)).toEqual([
+      'details-summary', undefined, undefined, 'html-open', 'html-body', 'html-body', 'html-body', 'html-body', 'html-close',
+      'details-close', undefined,
+    ])
+    expect(slices(text, document.lines[1]!.inline)).toEqual(['**', 'ordinary body', '**'])
+    for (const line of document.lines.slice(3, 9)) {
+      expect(line.inline).toEqual([])
+      expect(line.constructs).toEqual([])
+    }
+    expect(document.stats).toEqual({ done: 0, cancelled: 0, open: 1, total: 1 })
+    expect(document.projects.map(project => project.title)).toEqual(['Visible project'])
+    expect(linkAt(text, text.indexOf('https://hidden'))).toBeUndefined()
+    const ordinary = classifyDocument('```html\n**code**\n```')
+    expect(ordinary.blocks.html).toEqual([])
+    expect(ordinary.lines.every(line => line.blockRole === undefined)).toBe(true)
+  })
+
+  test('keeps unmatched details delimiters literal and their body visible', () => {
+    const text = '<details id="**literal**">\n<summary>**literal title**</summary>\n**body**\n# Still visible'
+    const document = classifyDocument(text)
+    expect(document.blocks.details).toEqual([])
+    expect(document.blocks.diagnostics.map(value => value.reason)).toEqual(['unmatched-open', 'unmatched-open'])
+    for (const line of document.lines.slice(0, 2)) {
+      expect(line.blockRole).toBe('diagnostic')
+      expect(line.inline).toEqual([])
+      expect(line.constructs).toEqual([])
+      expect(line.previewHidden).toEqual([])
+    }
+    expect(slices(text, document.lines[2]!.inline)).toEqual(['**', 'body', '**'])
+    expect(document.projects.map(project => project.title)).toEqual(['Still visible'])
+  })
+
   test('finds each supported link form and misses ordinary text', () => {
     const bare = source.indexOf('https://example.com/docs') + 5
     const markdown = source.indexOf('[guide]') + 2

@@ -92,7 +92,13 @@ const readyFromWatching = (model: Model, version: number, text: string, resync: 
       }),
     }),
     Ready: ({ document }) => {
-      if (!resync && document.connection._tag === 'Reconnecting' && document.connection.awaitingResync) {
+      const awaitingResync = document.connection._tag === 'Reconnecting' && document.connection.awaitingResync
+      // A resumed watch that confirms the base's version and hash means the daemon still knows this
+      // base, so the Resync that Forgotten waits for never comes: sync the draft from the base again.
+      if (awaitingResync && !resync && version === document.base.version && hash !== undefined && hash === document.base.hash) {
+        return settle(model, modifyFields(document, { connection: () => ConnectionState.Live(), reconnectAttempt: () => 0 }))
+      }
+      if (!resync && awaitingResync) {
         return { model: withDocument(model, modifyFields(document, {
           latestRemote: current => keepNewest(current, { version, text, resync: false, hash }),
         })) }
@@ -252,9 +258,15 @@ export const update = (model: Model, message: Message) => Message.match<UpdateRe
   WatchEnded: () => reconnect(model),
   FailedWatch: ({ unauthorized }) => unauthorized ? terminal(model, 'Unauthorized') : reconnect(model),
   CompletedWaitBeforeReconnect: () => DocumentState.matchOrElse(model.document, {
-    Ready: ({ document }) => ({ model: withDocument(model, modifyFields(document, {
-      watchKey: value => value + 1, resumeFrom: () => Option.some(cursor(document.base)),
-    })) }),
+    Ready: ({ document }) => {
+      // While a Resync is awaited, resume from the forgotten base. A base that a remote change moved
+      // meanwhile is still known to the daemon, which would answer with Watching and never a Resync.
+      const awaitingResync = document.connection._tag === 'Reconnecting' && document.connection.awaitingResync
+      return { model: withDocument(model, modifyFields(document, {
+        watchKey: value => value + 1,
+        resumeFrom: current => awaitingResync && Option.isSome(current) ? current : Option.some(cursor(document.base)),
+      })) }
+    },
     Connecting: state => ({ model: modifyFields(model, {
       document: () => modifyFields(state, { watchKey: value => value + 1 }),
     }) }),

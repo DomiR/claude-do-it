@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { EditorSelection, EditorState, Transaction, type TransactionSpec } from '@codemirror/state'
-import { EditorView, type Decoration } from '@codemirror/view'
+import { EditorSelection, EditorState, RangeSet, Transaction, type TransactionSpec } from '@codemirror/state'
+import { EditorView, keymap, type Decoration } from '@codemirror/view'
+import { Schema } from 'effect'
 import {
   cursorCharBackwardLogical, cursorCharForwardLogical, deleteCharBackward, deleteCharForward, redo,
   selectCharBackwardLogical, undo, undoDepth,
@@ -8,11 +9,15 @@ import {
 
 import { blockEnd, lines } from '@do-it/doc/text'
 
+import { EditorCommandName } from '../model'
 import { rebaseRemote } from './changes'
+import { classifiedDocument } from './document'
+import { FoldPlaceholder, foldViewState } from './fold-view'
+import { foldState, isFoldOpen } from './folds'
 import type { EditorCommand } from './types'
 import {
   clearRemoteHighlight, deleteBackwardAcrossMarks, deleteEmptyTaskPrefix, deleteForwardAcrossMarks, documentDecorations,
-  continueBlockLine, editorExtensions, insertNoteLine, moveToTaskLabel, pasteMarkdown, prefixTyping, remoteHighlights, remoteTransaction,
+  continueBlockLine, editorExtensions, editorFacts, insertNoteLine, moveToTaskLabel, pasteMarkdown, prefixTyping, remoteHighlights, remoteTransaction,
   runEditorCommand,
 } from './extensions'
 
@@ -82,6 +87,7 @@ const viewFor = (initial: EditorState) => {
   let state = initial
   return {
     get state() { return state },
+    plugin() { return null },
     dispatch(spec: TransactionSpec | Transaction) { state = spec instanceof Transaction ? spec.state : state.update(spec).state },
   } as unknown as EditorView & { state: EditorState }
 }
@@ -209,11 +215,14 @@ describe('rendered editor', () => {
     const preview = state.field(documentDecorations)
     const atomic: Array<[number, number, Decoration]> = []
     const providers = state.facet(EditorView.atomicRanges)
-    expect(providers).toHaveLength(1)
-    const set = providers[0]!({ state } as EditorView)
-    expect(set).toBe(preview.atomicRanges)
+    const sets = providers.map(provider => provider({ state } as EditorView))
+    expect(sets).toContain(preview.atomicRanges)
+    const set = RangeSet.join(sets)
     set.between(0, state.doc.length, (from, to, value: Decoration) => { atomic.push([from, to, value]) })
     atomic.sort((left, right) => left[0] - right[0] || left[1] - right[1])
+    const base: Array<[number, number, Decoration]> = []
+    preview.atomicRanges.between(0, state.doc.length, (from, to, value) => { base.push([from, to, value]) })
+    expect(atomic).toEqual(base)
     expect(atomic).toEqual(replacements(state).map(({ from, to, decoration }) => [from, to, decoration]))
     for (const [from, to] of atomic) {
       expect(everyKind.slice(from, to)).not.toContain('\n')
@@ -227,7 +236,7 @@ describe('rendered editor', () => {
     const wraps = (state: EditorState) => state.facet(EditorView.contentAttributes)
       .some(attributes => typeof attributes !== 'function' && attributes.class === 'cm-lineWrapping')
     expect(wraps(stateFor('- [ ] Ship'))).toBe(false)
-    expect(wraps(EditorState.create({ doc: '- [ ] Ship', extensions: [editorExtensions('mac', true)] }))).toBe(true)
+    expect(wraps(EditorState.create({ doc: '- [ ] Ship', extensions: [editorExtensions('mac', { wrap: true })] }))).toBe(true)
   })
 
   test('done and lasted stamps get their own tag classes, which the stylesheet colours orange', () => {
@@ -709,5 +718,69 @@ describe('remote edits', () => {
     expect(state.doc.toString()).toBe(remote)
     expect(redo({ state, dispatch: transaction => { state = transaction.state } })).toBe(true)
     expect(state.doc.toString()).toBe(`${remote}local\n`)
+  })
+})
+
+describe('fold command integration', () => {
+  test('toggle shortcuts prevent browser defaults and report when no block is available', () => {
+    for (const [platform, keys] of [['mac', ['Cmd-Alt-f', 'F2']], ['other', ['Ctrl-Shift-f', 'F2']]] as const) {
+      const notices: string[] = []
+      const state = EditorState.create({ doc: 'plain', extensions: [
+        editorExtensions(platform), editorFacts.of(fact => { if (fact._tag === 'ShowedEditorNotice') notices.push(fact.text) }),
+      ] })
+      for (const key of keys) {
+        const binding = state.facet(keymap).flat().find(value => value.key === key)!
+        expect(binding.preventDefault).toBe(true)
+        expect(binding.stopPropagation).toBe(true)
+        expect(binding.run!(viewFor(state))).toBe(true)
+      }
+      expect(notices).toEqual(['Nothing to fold here', 'Nothing to fold here'])
+    }
+  })
+
+  test('search-style selections reveal hidden text and restore base decorations', () => {
+    const text = '# Project\n- [ ] Task\n  <details><summary>Explanation</summary>\n  **needle**\n  </details>'
+    let state = run(stateFor(text), view => runEditorCommand(view, 'foldAll')).state
+    expect(classes(state)).not.toContain('pt-strong')
+    const from = text.indexOf('needle')
+    state = state.update({ selection: { anchor: from, head: from + 6 }, userEvent: 'select.search' }).state
+    expect(state.field(foldViewState).hidden).toEqual([])
+    expect(classes(state)).toContain('pt-strong')
+    expect(state.selection.main.from).toBe(from)
+    expect(state.selection.main.to).toBe(from + 6)
+    expect(state.field(foldState).folded.size).toBe(0)
+  })
+
+  test('routes all fold commands through the runtime schema and shared state', () => {
+    const text = '# Project\n- [ ] Task\n  <details><summary>Explanation</summary>\n  body\n  </details>'
+    let state = stateFor(text, text.indexOf('Project'))
+    for (const command of ['foldAll', 'unfoldAll', 'toggleFold'] as const) {
+      expect(Schema.is(EditorCommandName)(command)).toBe(true)
+      const result = run(state, view => runEditorCommand(view, command))
+      expect(result.handled).toBe(true)
+      state = result.state
+      expect(state.doc.toString()).toBe(text)
+      expect(undoDepth(state)).toBe(0)
+      const folds = state.field(foldState)
+      expect(isFoldOpen(folds, folds.candidates[0]!)).toBe(command === 'unfoldAll')
+    }
+  })
+
+  test('decorations and folds share classification across remote edits', () => {
+    const original = '- [ ] Task\n  note'
+    let state = run(stateFor(original), view => runEditorCommand(view, 'foldAll')).state
+    state = state.update({ changes: { from: original.indexOf('Task'), to: original.indexOf('Task') + 4, insert: 'Renamed' } }).state
+    state = state.update({
+      changes: rebaseRemote(original, `${original}\n  agent note`, state.doc.toString()),
+      annotations: [remoteTransaction.of(8), Transaction.addToHistory.of(false)],
+    }).state
+    expect(state.field(documentDecorations).classified).toBe(state.field(classifiedDocument))
+    const folds = state.field(foldState)
+    expect(folds.candidates[0]!.identityLabel).toBe('Renamed')
+    expect(folds.candidates[0]!.hiddenLines).toBe(2)
+    expect(isFoldOpen(folds, folds.candidates[0]!)).toBe(false)
+    const placeholders = decorations(state).filter(range => range.decoration.spec.widget instanceof FoldPlaceholder)
+    expect(placeholders).toHaveLength(1)
+    expect(placeholders[0]!.decoration.spec.widget.count).toBe(2)
   })
 })

@@ -41,6 +41,9 @@ const watching = (version: number, text: string) => Message.ReceivedWatchEvent({
   event: { _tag: 'Watching', version, text, hash: hash(version) },
 })
 
+const argsOf = (commands: ReadonlyArray<{ readonly name: string; readonly args?: unknown }> | undefined, name: string) =>
+  (commands ?? []).filter(command => command.name === name).map(command => command.args)
+
 // Story normally settles Commands before the next Message. These races need
 // a Mount or watch fact while a Command remains outstanding, retaining every
 // pending Command so Story still verifies and resolves all of them.
@@ -239,6 +242,39 @@ describe('editor synchronization', () => {
       Command.expectExact(SyncDraft({ path, base: 10, text: combined })),
       Command.resolve(SyncDraft, reply(10, combined, 11)),
     )
+  })
+
+  test('a reconnect while awaiting a Resync resumes from the forgotten base even after a remote change moved it', () => {
+    const agent = `${original}- [ ] Agent\n`
+    let current = update(readyModel(), edited(sent, 'Action')).model
+    current = update(current, Message.FailedSync({ request: { base: 1, text: sent }, kind: 'Forgotten' })).model
+    // The person undoes the edit, so a late change from the old watch applies to a clean draft.
+    current = update(current, edited(original)).model
+    const applied = update(current, changed(3, agent))
+    expect(argsOf(applied.commands, 'ApplyRemoteText')).toEqual([{ session, token: 1, from: original, to: agent }])
+    current = update(applied.model, remote(1, agent)).model
+    expect(documentOf(current).base.version).toBe(3)
+    expect(documentOf(current).connection).toEqual({ _tag: 'Reconnecting', awaitingResync: true })
+    current = update(current, Message.FailedWatch({ unauthorized: false })).model
+    current = update(current, Message.CompletedWaitBeforeReconnect()).model
+    // Resuming from version 3 would get a plain Watching, and the Resync would never come.
+    expect(Option.getOrThrow(documentOf(current).resumeFrom)).toEqual({ version: 1 })
+    expect(documentOf(current).connection).toEqual({ _tag: 'Reconnecting', awaitingResync: true })
+  })
+
+  test('a Watching that confirms the base version and hash ends the wait for a Resync and syncs the draft', () => {
+    const live = `${original}- [ ] Local\n`
+    let current = update(makeInitialModel(path, 'mac'), watching(5, original)).model
+    const syncing = update(current, edited(live, 'Action'))
+    expect(argsOf(syncing.commands, 'SyncDraft')).toEqual([{ path, base: 5, text: live, baseHash: hash(5) }])
+    current = update(syncing.model, Message.FailedSync({ request: { base: 5, text: live, baseHash: hash(5) }, kind: 'Forgotten' })).model
+    expect(documentOf(current).connection).toEqual({ _tag: 'Reconnecting', awaitingResync: true })
+    // A Watching for another version or without the base's hash keeps waiting.
+    expect(documentOf(update(current, watching(6, original)).model).connection)
+      .toEqual({ _tag: 'Reconnecting', awaitingResync: true })
+    const confirmed = update(current, watching(5, original))
+    expect(documentOf(confirmed.model).connection).toEqual({ _tag: 'Live' })
+    expect(argsOf(confirmed.commands, 'SyncDraft')).toEqual([{ path, base: 5, text: live, baseHash: hash(5) }])
   })
 
   test('retries a Transient failure after a delay and resets the attempt on success', () => {
