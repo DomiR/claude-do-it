@@ -29,7 +29,7 @@ export function lines(text: string): Line[] {
 			from,
 			to,
 			indent: lead.length,
-			depth: [...lead].reduce((n, ch) => n + (ch === '\t' ? 4 : 1), 0),
+			depth: Array.from(lead).reduce((n, ch) => n + (ch === '\t' ? 4 : 1), 0),
 			content: at,
 			kind: 'paragraph'
 		};

@@ -188,7 +188,7 @@ describe('todoChanges', () => {
 			['-', ' ', 'uncancelled'],
 			['x', '-', 'cancelled'],
 			['-', 'x', 'checked']
-		]) {
+		] as const) {
 			expect(todoChanges(`- [${before}] Ship\n`, `- [${after}] Ship\n`)[0]!.kind).toBe(kind);
 		}
 		expect(todoChanges('- [X] done\n- [-] cancelled\n', '- [x] done\n- [-] cancelled\n')).toEqual([]);

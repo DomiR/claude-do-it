@@ -94,7 +94,7 @@ export const writeAtomic = Effect.fn('writeAtomic')(
 	function* (path: string, text: string, format: Format) {
 		const fs = yield* FileSystem.FileSystem;
 		const paths = yield* Path.Path;
-		yield* Effect.try({ try: () => checkText(text), catch: (error) => error });
+		yield* Effect.try({ try: () => checkText(text), catch: (error) => ioError(path, error) });
 		const encoded = new TextEncoder().encode(
 			(format.bom ? '\ufeff' : '') + (format.crlf ? text.replace(/\n/g, '\r\n') : text)
 		);

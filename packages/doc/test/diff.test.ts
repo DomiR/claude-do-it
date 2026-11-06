@@ -60,15 +60,15 @@ test('replacing one unique place', () => {
 		['a b a', 'a', 'ambiguous'],
 		['a', 'z', 'not-found'],
 		['a', '', 'invalid']
-	]) {
+	] as const) {
 		let failure: unknown;
 		try {
-			replaceUnique(text!, old!, 'c');
+			replaceUnique(text, old, 'c');
 		} catch (error) {
 			failure = error;
 		}
 		expect(failure).toBeInstanceOf(DocError);
-		expect((failure as DocError).code).toBe(code!);
+		expect((failure as DocError).code).toBe(code);
 	}
 });
 
@@ -105,7 +105,8 @@ test('refinement includes hunks at 16 KiB, larger hunks become whole replacement
 });
 
 test('a timed out character refinement replaces the whole hunk', () => {
-	const refine = spyOn(diff, 'diffChars').mockReturnValueOnce(undefined);
+	// A timeout makes diff return undefined; the spy is typed by the last overload only.
+	const refine = spyOn(diff, 'diffChars').mockReturnValueOnce(undefined as never);
 	try {
 		expect(roundTrip('keep\nold text\nend\n', 'keep\nnew text\nend\n')).toEqual([
 			{ from: 5, to: 14, insert: 'new text\n' }
@@ -134,7 +135,7 @@ test('the shared deadline skips refinement after line comparison', () => {
 });
 
 test('a timed out line diff still produces a complete replacement', () => {
-	const compare = spyOn(diff, 'diffArrays').mockReturnValueOnce(undefined);
+	const compare = spyOn(diff, 'diffArrays').mockReturnValueOnce(undefined as never);
 	try {
 		expect(roundTrip('old\n', 'new\n')).toEqual([{ from: 0, to: 4, insert: 'new\n' }]);
 	} finally {

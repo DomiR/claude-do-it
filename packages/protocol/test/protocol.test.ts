@@ -6,8 +6,6 @@ import {
 	Agent,
 	APP_VERSION,
 	Author,
-	Change,
-	Deleted,
 	DiffPayload,
 	DiffSuccess,
 	DocumentGone,
@@ -17,7 +15,6 @@ import {
 	NothingYet,
 	PROTOCOL_VERSION,
 	Refused,
-	Resync,
 	RpcFailure,
 	SectionsPayload,
 	SectionsSuccess,
@@ -29,17 +26,14 @@ import {
 	SyncSuccess,
 	Todo,
 	TodoAdd,
-	TodoChange,
 	TodoStart,
 	TodoSet,
 	TodosPayload,
 	TodosSuccess,
 	Unauthorized,
-	User,
 	VersionMismatch,
 	WatchEvent,
 	WatchPayload,
-	Watching,
 	Append,
 	File,
 	OpenPayload,
@@ -76,8 +70,8 @@ const roundTrip = (schema: any, value: any): unknown => {
 
 describe('protocol schemas', () => {
 	it('accepts explicit undefined for optional payload fields', () => {
-		const madeRead = Schema.make(ReadPayload.ast);
-		const madeWatch = Schema.make(WatchPayload.ast);
+		const madeRead = Schema.make<typeof ReadPayload>(ReadPayload.ast);
+		const madeWatch = Schema.make<typeof WatchPayload>(WatchPayload.ast);
 		expect(Schema.decodeUnknownSync(madeRead)({ path: '/TODO.md', section: undefined })).toMatchObject({
 			path: '/TODO.md',
 			section: undefined

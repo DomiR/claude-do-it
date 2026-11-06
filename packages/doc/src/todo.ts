@@ -73,7 +73,7 @@ function checked(text: string, edit: Edit): Edit[] {
 
 export function addTodo(text: string, item: string, section?: string): Edit[] {
 	item = item.trim();
-	if ([...item].length > MAX_ITEM) {
+	if (Array.from(item).length > MAX_ITEM) {
 		throw new DocError({ code: 'too-large', message: `A todo may have at most ${MAX_ITEM} characters` });
 	}
 	if (!item || /[\r\n]/.test(item)) {

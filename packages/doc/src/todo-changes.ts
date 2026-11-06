@@ -23,7 +23,7 @@ function stateChange(before: TaskState, now: TaskState): TodoChangeKind | null {
 }
 
 function similarity(a: string, b: string): number {
-	const length = [...a].length + [...b].length;
+	const length = Array.from(a).length + Array.from(b).length;
 	if (!length) return 1;
 	const equal = diffChars(a, b).reduce((n, part) => n + (part.added || part.removed ? 0 : part.count), 0);
 	return (2 * equal) / length;

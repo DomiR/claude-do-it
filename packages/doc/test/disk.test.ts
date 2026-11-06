@@ -26,8 +26,8 @@ function directory(): string {
 function run<A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>): Promise<A> {
 	return Effect.runPromise(effect.pipe(Effect.provide(BunServices.layer)));
 }
-async function code(
-	effect: Effect.Effect<unknown, DocError, FileSystem.FileSystem | Path.Path>,
+async function code<A>(
+	effect: Effect.Effect<A, DocError, FileSystem.FileSystem | Path.Path>,
 	expected: DocError['code']
 ): Promise<void> {
 	const error = await run(Effect.flip(effect));

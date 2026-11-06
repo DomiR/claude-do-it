@@ -86,7 +86,7 @@ test('every transitive relative text dependency, including type imports, is Loro
 });
 
 test('the text entry bundles for browsers without Node polyfills or Wasm', async () => {
-	const result = await Bun.build({ entrypoints: [entry], target: 'browser', write: false });
+	const result = await Bun.build({ entrypoints: [entry], target: 'browser' });
 	expect(result.success).toBe(true);
 	expect(result.logs).toEqual([]);
 	expect(result.outputs).toHaveLength(1);
