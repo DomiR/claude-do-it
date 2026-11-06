@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     # Branches only, so pushing a v* tag does not start a second CI run.
-    branches: ["**"]
+    branches: ['**']
   pull_request:
   # The release workflow runs these same checks before it publishes.
   workflow_call:
@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 20
     env:
       # Never let a test open a real browser.
-      DO_IT_BROWSER: "true"
+      DO_IT_BROWSER: 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

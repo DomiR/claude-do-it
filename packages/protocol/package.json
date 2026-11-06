@@ -1,6 +1,10 @@
 {
-  "name": "@do-it/protocol",
-  "type": "module",
-  "exports": {".": "./src/index.ts"},
-  "dependencies": {"effect": "catalog:"}
+	"name": "@do-it/protocol",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"effect": "catalog:"
+	}
 }

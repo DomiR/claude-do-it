@@ -1,13 +1,16 @@
 {
-  "name": "@do-it/doc",
-  "type": "module",
-  "exports": {".": "./src/index.ts", "./text": "./src/text.ts"},
-  "dependencies": {
-    "diff": "9.0.0",
-    "effect": "catalog:",
-    "loro-crdt": "1.17.1"
-  },
-  "devDependencies": {
-    "@effect/platform-bun": "catalog:"
-  }
+	"name": "@do-it/doc",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./text": "./src/text.ts"
+	},
+	"dependencies": {
+		"diff": "9.0.0",
+		"effect": "catalog:",
+		"loro-crdt": "1.17.1"
+	},
+	"devDependencies": {
+		"@effect/platform-bun": "catalog:"
+	}
 }
