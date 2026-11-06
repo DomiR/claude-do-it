@@ -198,14 +198,14 @@ Only when the arguments were a seed request. Hand the request to one `general-pu
 Start each watch with the Monitor tool; every printed line is an event:
 
 ```bash
-do-it watch "$TODO" --as conductor --settle 25          # one line once the person stopped typing for 25 s
+do-it watch "$TODO" --as conductor --settle 25          # one line 25 s after the person's last change, 2 s after Enter adds a line
 do-it watch "$STATE/inbox.md" --as conductor --section messages
 do-it watch "$STATE/tests.md" --as conductor --todos    # plain and t3code: when to start or wake the tester
 ```
 
 Run every watch that applies (the `tests.md` one only in plain and t3code) for the whole run, and never end a turn without them: an event that lands while a watch is down is seen only by the next full read. A Monitor expires after its `timeout_ms` (at most 30 minutes): set the maximum, and on expiry re-arm the same watch with `--since` the last version you read. Stop a watch (TaskStop) before you start its replacement, so one file never has two conductor watches. Keep the watch unfiltered or filter for every event you act on (`done`, `question`, `blocked`, `failed`, `progress`, `subtask`), not only for one task.
 
-Use `--quiet` to skip the initial `Watching PATH at version N` line instead of filtering it with grep. A filter must be line buffered, or lines arrive late. `Settled at version N by the user` means the person changed the todo and paused. Then `do-it read "$TODO"` once and compare it with your picture of the file. Never act on a half typed line. `Missed changes, now at version N: run do-it read` means the watch history was forgotten, so read the current todo before acting. `Daemon restarted, now version N` needs nothing but a fresh read. When re-arming a watch, pass `--since` the last version you have read, not the original one. Exit 9 means the todo was deleted or moved: stop and report in chat.
+Use `--quiet` to skip the initial `Watching PATH at version N` line instead of filtering it with grep. A filter must be line buffered, or lines arrive late. `Settled at version N by the user` means the person changed the todo and paused, or pressed Enter for a new line (`--settle-line`, 2 s by default; edits inside existing lines wait the full 25 s). Then `do-it read "$TODO"` once and compare it with your picture of the file. Never act on a half typed line. `Missed changes, now at version N: run do-it read` means the watch history was forgotten, so read the current todo before acting. `Daemon restarted, now version N` needs nothing but a fresh read. When re-arming a watch, pass `--since` the last version you have read, not the original one. Exit 9 means the todo was deleted or moved: stop and report in chat.
 
 ## Step 3. Triage each new task
 
