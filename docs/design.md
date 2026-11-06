@@ -473,7 +473,9 @@ browser focus navigation remains available.
   sends it as `baseHash`, and a reconnecting watch sends it as `sinceHash`
   with the base version. A tab whose base a restarted daemon gave to another
   text gets `Forgotten` or `Resync`, then rebases its unsent typing over the
-  current text instead of merging from the wrong one.
+  current text instead of merging from the wrong one. A tab loaded from a
+  daemon without hashes has none until it reloads, so it still compares
+  numbers only.
 - No dash separators in copy.
 
 ## Conductor (`skill/SKILL.md`)

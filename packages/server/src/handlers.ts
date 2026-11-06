@@ -72,6 +72,8 @@ export function syncDocument(registry: DocumentRegistry, request: SyncPayload) {
     if (request.baseHash !== undefined && (yield* registry.hashAt(entry, request.base)) !== request.baseHash) {
       return yield* Effect.fail(new Forgotten({ latest: entry.doc.version }))
     }
+    // Hashing can yield, and a file deleted meanwhile frees the document.
+    if (entry.deleted || entry.closed) return yield* Effect.fail(new DocumentGone({ path: entry.path }))
     const previous = entry.doc.version
     yield* rpcTry(() => entry.doc.userEdit(request.base, request.text), () => entry.doc.version)
     // Read the reply before yielding: a deleted file frees the document.
