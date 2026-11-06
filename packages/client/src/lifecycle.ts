@@ -16,8 +16,10 @@ function unless<B>(reason: PlatformError.SystemErrorTag, fallback: B) {
 	return <A, R>(
 		effect: Effect.Effect<A, PlatformError.PlatformError, R>
 	): Effect.Effect<A | B, PlatformError.PlatformError, R> =>
-		effect.pipe(
-			Effect.catch((error) => (error.reason._tag === reason ? Effect.succeed(fallback) : Effect.fail(error)))
+		Effect.catchIf(
+			effect,
+			(error) => error.reason._tag === reason,
+			() => Effect.succeed(fallback)
 		);
 }
 
