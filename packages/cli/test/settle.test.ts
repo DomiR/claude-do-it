@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { addsLine } from '../src/settle';
+import type { Author } from '@do-it/protocol';
+import { addsLine, personAddsLine } from '../src/settle';
 
 const todo = '# TODO\n\n## Tasks\n\n- [ ] ship it\n  - **t1** S, building\n- [ ] next\n- [ ] \n';
 
@@ -60,5 +61,26 @@ describe('addsLine', () => {
 	it('counts a carriage return line break once', () => {
 		expect(addsLine('- [ ] foo\r\n', '- [ ] foo\r\n- [ ] \r\n')).toBe(true);
 		expect(addsLine('- [ ] fo\r\n', '- [ ] foo\r\n')).toBe(false);
+	});
+});
+
+describe('personAddsLine', () => {
+	const user: Author = { _tag: 'User' };
+	const file: Author = { _tag: 'File' };
+	const conductor: Author = { _tag: 'Agent', name: 'conductor' };
+	const entered = todo.replace('- [ ] next\n', '- [ ] next\n- [ ] \n');
+
+	it('settles early on Enter by the person or the file', () => {
+		expect(personAddsLine(todo, entered, [user])).toBe(true);
+		expect(personAddsLine(todo, entered, [file])).toBe(true);
+	});
+
+	it('waits when the change is bundled with an agent edit', () => {
+		expect(personAddsLine(todo, entered, [user, conductor])).toBe(false);
+	});
+
+	it('waits without both texts', () => {
+		expect(personAddsLine(undefined, entered, [user])).toBe(false);
+		expect(personAddsLine(todo, undefined, [user])).toBe(false);
 	});
 });

@@ -22,7 +22,7 @@ import {
 } from './output';
 import { cliConfigFor, cliFormatter, cliPresenter, makeCli, normalizeArgv } from './parser';
 import { installSkill, readSkill, skillSource } from './skill';
-import { addsLine } from './settle';
+import { personAddsLine } from './settle';
 import { resolveText } from './stdin';
 import type { GlobalOptions, ParsedCommand } from './types';
 
@@ -369,14 +369,9 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 									const before = lastText;
 									lastText = event.text;
 									if (sameAgent(event.by, command.options.as)) return;
-									// Agent changes keep the mode of the person's pending change. A change
-									// bundled with an agent's edit waits, since the agent may have added the lines.
+									// Agent changes keep the mode of the person's pending change.
 									if (event.by.some((author) => author._tag !== 'Agent'))
-										lineAdded =
-											before !== undefined &&
-											event.text !== undefined &&
-											event.by.every((author) => author._tag !== 'Agent') &&
-											addsLine(before, event.text);
+										lineAdded = personAddsLine(before, event.text, event.by);
 									if (command.settle !== undefined) {
 										yield* schedule(event.to, event.by);
 										return;
