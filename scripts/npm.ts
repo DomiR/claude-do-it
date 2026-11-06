@@ -17,11 +17,15 @@ const root = join(import.meta.dir, "..")
 const out = join(root, "dist", "npm")
 const runtime = ["cli", "client", "server", "doc", "protocol"]
 
+// `catalog:` versions resolve through the root catalog, so dist/npm gets real versions.
+const catalog: Record<string, string> = JSON.parse(await readFile(join(root, "package.json"), "utf8")).catalog ?? {}
 const dependencies: Record<string, string> = {}
 for (const name of runtime) {
   const manifest = JSON.parse(await readFile(join(root, "packages", name, "package.json"), "utf8"))
-  for (const [dependency, version] of Object.entries<string>(manifest.dependencies ?? {})) {
-    if (version.startsWith("workspace:")) continue
+  for (const [dependency, declared] of Object.entries<string>(manifest.dependencies ?? {})) {
+    if (declared.startsWith("workspace:")) continue
+    const version = declared === "catalog:" ? catalog[dependency] : declared
+    if (!version || version.startsWith("catalog:")) throw new Error(`${dependency} in packages/${name} has no version in the root catalog`)
     if (dependencies[dependency] && dependencies[dependency] !== version) throw new Error(`${dependency} has two versions: ${dependencies[dependency]} and ${version}`)
     dependencies[dependency] = version
   }

@@ -259,7 +259,9 @@ in [docs/plan.md](docs/plan.md) and [docs/design.md](docs/design.md).
 
 ```bash
 bun run test                          # unit, daemon, and end to end tests
-bun run typecheck
+bun run check                         # typecheck (effect-tsgo tsc)
+bun run lint                          # Oxlint with the Effect rules
+bun run format                        # oxfmt (bun run fmt:check only checks)
 bun run build:web
 bun run build:npm                     # the npm package, in dist/npm
 bun --cwd packages/web run dev        # editor with a proxy to the daemon on 47100

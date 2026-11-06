@@ -10,8 +10,8 @@
     "@codemirror/search": "6.7.2",
     "@do-it/doc": "workspace:*",
     "@do-it/protocol": "workspace:*",
-    "@effect/platform-browser": "4.1.2",
-    "effect": "4.1.2",
+    "@effect/platform-browser": "catalog:",
+    "effect": "catalog:",
     "foldkit": "0.170.0"
   },
   "devDependencies": {
