@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { Effect, Layer, Option, Stream } from 'effect'
 import { FetchHttpClient } from 'effect/http'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,6 +15,8 @@ import { makeInitialModel } from './model'
 import { DoItClient, DoItClientLive } from './rpc'
 import { subscriptions } from './subscription'
 import { update } from './update'
+
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
 
 test('the browser subscription omits an absent since on the wire and stays live for changes and sync', async () => {
   const home = mkdtempSync(join(tmpdir(), 'do-it-web-rpc-'))
@@ -54,7 +57,7 @@ test('the browser subscription omits an absent since on the wire and stays live 
         const dependencies = subscriptions.watch.modelToDependencies(model)
         const pull = yield* Stream.toPull(subscriptions.watch.dependenciesToStream(dependencies).pipe(Stream.rechunk(1)))
         const first = (yield* pull)[0]!
-        expect(first).toEqual(Message.ReceivedWatchEvent({ event: { _tag: 'Watching', version: 1, text: original } }))
+        expect(first).toEqual(Message.ReceivedWatchEvent({ event: { _tag: 'Watching', version: 1, hash: sha256(original), text: original } }))
         // Schema.optional permits undefined in memory, but toCodecJson encodes
         // a present undefined as null, which an already running daemon rejects.
         expect(requests[0]).toEqual({ url: '/rpc/', payload: { path, text: true } })

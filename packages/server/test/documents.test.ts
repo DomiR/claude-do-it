@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { COMPACT_KEEP, appendBlock, replaceUnique } from "@do-it/doc"
 import { Deferred, Effect, Scope, Stream } from "effect"
+import { createHash } from "node:crypto"
 import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -13,6 +14,7 @@ import { Versions } from "../src/versions"
 import { isolateDaemonEnvironment } from "../../client/test/environment"
 
 isolateDaemonEnvironment()
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
 type Services = typeof ServerServices extends import("effect").Layer.Layer<infer A, any, any> ? A : never
 function run<A, E>(effect: Effect.Effect<A, E, Scope.Scope | Services>): Promise<A> {
   return Effect.runPromise(effect.pipe(Effect.scoped, Effect.provide(ServerServices)))
@@ -39,7 +41,7 @@ test("a slow watch pull coalesces a burst into one Change from A to N", () => ru
   const entry = yield* registry.get(path)
   yield* Effect.scoped(Effect.gen(function* () {
     const pull = yield* Stream.toPull(watchDocument(registry, { path, text: true }))
-    expect(yield* pull).toEqual([{ _tag: "Watching", version: 1, text: entry.doc.text }])
+    expect(yield* pull).toEqual([{ _tag: "Watching", version: 1, hash: sha256(entry.doc.text), text: entry.doc.text }])
     expect(entry.watchers).toBe(1)
     for (let i = 0; i < 20; i++) {
       const previous = entry.doc.version
@@ -76,7 +78,7 @@ test("watch resyncs forgotten history as its first event and includes full text 
   entry.doc.compact(0, 0)
   yield* Effect.scoped(Effect.gen(function* () {
     const pull = yield* Stream.toPull(watchDocument(registry, { path, since: 1, section: "a", text: true }))
-    expect(yield* pull).toEqual([{ _tag: "Resync", version: entry.doc.version, text: entry.doc.text }])
+    expect(yield* pull).toEqual([{ _tag: "Resync", version: entry.doc.version, hash: sha256(entry.doc.text), text: entry.doc.text }])
   }))
 })))
 
@@ -88,7 +90,7 @@ test("watch starts with Watching for kept history and then delivers the change",
   yield* registry.changed(entry, 1)
   yield* Effect.scoped(Effect.gen(function* () {
     const pull = yield* Stream.toPull(watchDocument(registry, { path, since: 1, text: false }))
-    expect(yield* pull).toEqual([{ _tag: "Watching", version: 2 }])
+    expect(yield* pull).toEqual([{ _tag: "Watching", version: 2, hash: sha256(entry.doc.text) }])
     expect(yield* pull).toMatchObject([{ _tag: "Change", from: 1, to: 2 }])
   }))
 })))
@@ -101,7 +103,7 @@ for (const text of [false, true]) {
     const version = entry.doc.version
     yield* Effect.scoped(Effect.gen(function* () {
       const pull = yield* Stream.toPull(watchDocument(registry, { path, since: version + 5, text }))
-      expect(yield* pull).toEqual([{ _tag: "Resync", version, ...(text ? { text: entry.doc.text } : {}) }])
+      expect(yield* pull).toEqual([{ _tag: "Resync", version, hash: sha256(entry.doc.text), ...(text ? { text: entry.doc.text } : {}) }])
       entry.doc.userEdit(version, `${entry.doc.text}next\n`)
       yield* registry.changed(entry, version)
       const event = (yield* pull)[0]
