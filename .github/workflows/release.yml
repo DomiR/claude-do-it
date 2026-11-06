@@ -71,20 +71,10 @@ jobs:
             echo "::error::dist/npm is $version but the tag is $GITHUB_REF_NAME"
             exit 1
           fi
-      - name: Check the npm token owner
+      - name: Update npm for trusted publishing
         run: |
-          if ! user="$(npm whoami)"; then
-            echo "::error::npm whoami failed: the NPM_TOKEN secret is missing, expired, or revoked. Replace it with a granular token from the npm account domir."
-            exit 1
-          fi
-          if [ "$user" != "domir" ]; then
-            echo "::error::The NPM_TOKEN secret belongs to the npm account '$user', not 'domir', the owner of claude-do-it. Replace the secret with a token from the domir account."
-            exit 1
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Publish with provenance
+          npm install -g npm@latest
+          npm --version
+      - name: Publish
         working-directory: dist/npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
