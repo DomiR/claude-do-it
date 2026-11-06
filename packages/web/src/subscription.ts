@@ -1,6 +1,6 @@
 import { Cause, Effect, Option, Schema, Stream } from 'effect';
 import { Subscription } from 'foldkit';
-import { streamFromKeyBindings } from 'foldkit/dom';
+import { streamFromKeyBindings, streamFromMediaQuery } from 'foldkit/dom';
 
 import { Message } from './message';
 import { Cursor, DocumentState, Model } from './model';
@@ -60,6 +60,19 @@ export const subscriptions = Subscription.make<Model, Message, DoItClient>()((en
 							);
 						}).pipe(Stream.unwrap)
 				})
+		}
+	),
+	systemTheme: entry(
+		{ follows: Schema.Boolean },
+		{
+			modelToDependencies: (model) => ({ follows: model.theme === 'System' }),
+			dependenciesToStream: ({ follows }) =>
+				follows
+					? streamFromMediaQuery({
+							query: '(prefers-color-scheme: dark)',
+							mapMatches: (dark) => Message.ChangedSystemTheme({ dark })
+						})
+					: Stream.empty
 		}
 	),
 	keyboard: Subscription.persistentEntry(
