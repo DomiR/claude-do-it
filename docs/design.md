@@ -483,9 +483,12 @@ browser focus navigation remains available.
   agent appending under a folded task extends the hidden range and its count
   without unfolding it. A selection or Find match inside a folded body unfolds
   every fold around it; folding a block moves a caret inside it to the end of
-  its header. The caret skips folded bodies. Backspace at the start of the line
-  after a folded body, or Delete at the end of its header, unfolds it and
-  deletes nothing.
+  its header. The caret skips folded bodies. Backspace or Delete toward a
+  folded body (at the start of the line after it, at the end of its header, or
+  right after its marker) unfolds it and deletes nothing, and typing right
+  after the marker unfolds it, so nothing the person writes lands out of
+  sight. A remote change never unfolds a block by itself: a caret right after
+  a folded marker stays after it when an agent appends to the block.
 - Details sections. `<details>` with `<summary>Title</summary>` on the same
   line or the next one, an optional `open` and `id="..."`, and `</details>`
   alone on its own line at any indentation. Sections nest; tags inside fences
@@ -513,7 +516,8 @@ browser focus navigation remains available.
   Backspace or Delete next to an HTML section selects its whole fence and the
   second deletes it. Find matches inside the payload, and Replace inside it
   edits the source; a replacement that touches a fence line or a details tag is
-  refused.
+  refused. Deleting only the line break before or after an HTML section leaves
+  the section alone.
 - Typing waits 400 ms after the latest input before syncing. An action syncs
   immediately. At most one sync is in flight. `ApplyRemoteText` computes
   `D = edits(from, to)` and maps `D` over the local edits since `from`, then
