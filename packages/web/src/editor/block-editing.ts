@@ -11,7 +11,7 @@ import { remoteTransaction } from './facts'
 import { foldViewState } from './fold-view'
 import { foldState, setFoldOpen } from './folds'
 import { htmlBlockDecorations } from './html-block'
-import { classifyDocument, type ClassifiedDocument } from './lines'
+import type { ClassifiedDocument } from './lines'
 import { protectSyntax, type TextChange } from './syntax'
 
 const overlaps = (a: SourceSpan, b: SourceSpan): boolean => a.from < b.to && a.to > b.from
@@ -36,6 +36,26 @@ const detailsSyntax = (block: DetailsBlock): readonly SourceSpan[] => [
 ]
 const joinsBoundary = (change: SourceSpan, block: SourceSpan): boolean =>
   change.from < block.from && change.to >= block.from || change.from <= block.to && change.to > block.to
+
+export const guardedEvents = ['delete', 'input.type', 'input.paste', 'input.drop', 'input.complete', 'input.replace', 'input.replace.all']
+
+/** Keep separator newlines before inline cleanup can interpret a deletion as a line join. */
+export const htmlBoundaryGuard = EditorState.changeFilter.of(transaction => {
+  if (!transaction.docChanged || transaction.annotation(remoteTransaction) !== undefined || transaction.isUserEvent('input.replace') ||
+    !guardedEvents.some(event => transaction.isUserEvent(event))) return true
+  const document = transaction.startState.field(classifiedDocument)
+  const protectedRanges: TextChange[] = []
+  transaction.changes.iterChanges((from, to, _fromB, _toB, inserted) => {
+    if (from === to || inserted.length) return
+    for (const block of document.blocks.html) {
+      if (!block.closed || overlaps({ from, to }, block)) continue
+      const before = { from: document.lines[block.startLine - 1]?.to ?? block.from, to: block.from }
+      const after = { from: block.to, to: document.lines[block.endLine]?.from ?? block.to }
+      for (const span of [before, after]) if (overlaps({ from, to }, span)) protectedRanges.push({ ...span, insert: '' })
+    }
+  })
+  return protectedRanges.length ? mergeChanges(protectedRanges).flatMap(span => [span.from, span.to]) : true
+})
 
 /** Unwrap touched details and delete touched HTML whole, without duplicating the person's insertions. */
 export const protectBlockSyntax = (blocks: BlockIndex, changes: readonly TextChange[]): TextChange[] | undefined => {
@@ -192,7 +212,7 @@ export const enterDetailsBody: Command = view => {
 export const blockCaretFilter = EditorState.transactionFilter.of(transaction => {
   if (transaction.annotation(remoteTransaction) !== undefined || transaction.isUserEvent('undo') || transaction.isUserEvent('redo') ||
     !transaction.selection && !transaction.docChanged) return transaction
-  const document = transaction.docChanged ? classifyDocument(transaction.newDoc.toString()) : transaction.startState.field(classifiedDocument)
+  const document = (transaction.docChanged ? transaction.state : transaction.startState).field(classifiedDocument)
   let changed = false
   const ranges = transaction.newSelection.ranges.map((range, index) => {
     if (!range.empty) return range
@@ -227,7 +247,8 @@ export const deleteAdjacentBlock = (forward: boolean): Command => view => {
   const titleEnds = new Map(state.field(classifiedDocument).blocks.details.map(block => [block.startLine, block.title.to]))
   const opening = state.field(foldState).candidates.filter(candidate => hidden.some(span => span.from === candidate.hidden.from && span.to === candidate.hidden.to) &&
     state.selection.ranges.some(range => range.empty && (forward
-      ? range.head === candidate.hidden.from || candidate.kind === 'details' && range.head === titleEnds.get(candidate.startLine)
+      ? range.head === candidate.hidden.from || range.head === candidate.hidden.to ||
+        candidate.kind === 'details' && range.head === titleEnds.get(candidate.startLine)
       : adjacent(state, candidate.hidden, range.head, false))))
   if (opening.length) {
     view.dispatch({ effects: opening.map(candidate => setFoldOpen.of({ key: candidate.key, open: true })), annotations: Transaction.addToHistory.of(false) })

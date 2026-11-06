@@ -82,11 +82,84 @@ describe('fold state', () => {
     expect(open(state, 'Task')).toBe(false)
   })
 
+  test('local edits touching a closed body or its final endpoint reveal surviving folds', () => {
+    for (const [text, label, insert] of [
+      ['# Project\nbody\n# Next', 'Project', ' typed'],
+      ['- [ ] Task\n  note\n- [ ] Peer', 'Task', '\n  pasted note'],
+      ['<details><summary>Section</summary>\nbody\n</details>', 'Section', '\ntext'],
+    ] as const) {
+      let state = choose(create(text), label, false)
+      const end = candidate(state, label).hidden.to
+      state = state.update({ changes: { from: end, insert }, userEvent: 'input.type' }).state
+      expect(state.selection.main.head).toBe(0)
+      expect(open(state, label)).toBe(true)
+    }
+    let state = run(create(mixed), foldAll).state
+    state = state.update({ changes: { from: mixed.indexOf('hidden text'), insert: 'new ' }, userEvent: 'input.paste' }).state
+    expect(['Project', 'Task', 'Explanation'].map(label => open(state, label))).toEqual([true, true, true])
+    expect(open(state, 'Next')).toBe(false)
+    state = choose(create('- [ ] Task\n  old body'), 'Task', false)
+    state = state.update({ changes: { from: 0, to: state.doc.length, insert: '- [ ] Task\n  new body' }, userEvent: 'input.paste' }).state
+    expect(open(state, 'Task')).toBe(true)
+  })
+
+  test('local deletions touching the final hidden endpoint reveal the remaining body', () => {
+    for (const crossesHeader of [false, true]) {
+      const initial = choose(create('- [ ] Task\n  note\n- [ ] Peer'), 'Task', false)
+      const fold = candidate(initial, 'Task')
+      const state = initial.update({
+        changes: crossesHeader ? { from: fold.hidden.from - 1, to: fold.hidden.from + 2, insert: 'renamed\n  ' }
+          : { from: fold.hidden.to, to: fold.hidden.to + 1 }, userEvent: 'delete.forward',
+      }).state
+      expect(open(state, crossesHeader ? 'Tasrenamed' : 'Task')).toBe(true)
+    }
+  })
+
+  test('remote append maps a placeholder end caret after new lines while the task stays folded', () => {
+    for (const tail of ['', '\n- [ ] Peer']) {
+      let state = choose(create('- [ ] Task\n  note' + tail), 'Task', false)
+      const before = candidate(state, 'Task')
+      state = state.update({ selection: EditorSelection.create([EditorSelection.cursor(before.hidden.to, -1)]) }).state
+      expect(open(state, 'Task')).toBe(false)
+      const insert = '\n  remote note'
+      state = state.update({ changes: { from: before.hidden.to, insert }, annotations: remoteTransaction.of(2) }).state
+      const after = candidate(state, 'Task')
+      expect(after.hiddenLines).toBe(before.hiddenLines + 1)
+      expect(state.selection.main.head).toBe(before.hidden.to + insert.length)
+      expect(state.selection.main.head).toBe(after.hidden.to)
+      expect(open(state, 'Task')).toBe(false)
+    }
+  })
+
+  test('remote appends map multiple boundary carets and preserve their main index', () => {
+    let state = run(create('- [ ] First\n  one\n- [ ] Second\n  two'), foldAll).state
+    const before = state.field(foldState).candidates
+    state = state.update({ selection: EditorSelection.create(before.map(fold => EditorSelection.cursor(fold.hidden.to, -1)), 1) }).state
+    state = state.update({
+      changes: before.map(fold => ({ from: fold.hidden.to, insert: '\n  more' })), annotations: remoteTransaction.of(2),
+    }).state
+    expect(state.selection.ranges.map(range => range.head)).toEqual(state.field(foldState).candidates.map(fold => fold.hidden.to))
+    expect(state.selection.mainIndex).toBe(1)
+    expect(state.field(foldState).folded.size).toBe(2)
+  })
+
+  test('explicit remote selections away from a former boundary still reveal their target', () => {
+    let state = choose(create('- [ ] Task\n  note'), 'Task', false)
+    const before = candidate(state, 'Task')
+    state = state.update({ selection: { anchor: before.hidden.to } }).state
+    state = state.update({
+      changes: { from: before.hidden.to, insert: '\n  more' }, selection: { anchor: before.hidden.from + 2 },
+      annotations: remoteTransaction.of(2),
+    }).state
+    expect(state.selection.main.head).toBe(before.hidden.from + 2)
+    expect(open(state, 'Task')).toBe(true)
+  })
+
   test('project ranges grow at EOF and stop when a new peer arrives', () => {
     let state = choose(create('# Project\nbody'), 'Project', false)
     state = state.update({ changes: { from: state.doc.length, insert: '\nmore' }, annotations: remoteTransaction.of(3) }).state
     expect(candidate(state, 'Project').hiddenLines).toBe(2)
-    state = state.update({ changes: { from: state.doc.length, insert: '\n# Peer\npeer body' } }).state
+    state = state.update({ changes: { from: state.doc.length, insert: '\n# Peer\npeer body' }, annotations: remoteTransaction.of(3) }).state
     expect(state.doc.sliceString(candidate(state, 'Project').hidden.from, candidate(state, 'Project').to)).toBe('\nbody\nmore')
     expect(open(state, 'Project')).toBe(false)
     expect(open(state, 'Peer')).toBe(true)

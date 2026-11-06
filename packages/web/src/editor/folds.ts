@@ -5,6 +5,7 @@ import {
 import { ViewPlugin, type EditorView, type ViewUpdate } from '@codemirror/view'
 
 import { classifiedDocument } from './document'
+import { remoteTransaction } from './facts'
 import { foldCandidates, foldTarget, type FoldCandidate, type FoldKey } from './fold-ranges'
 
 export type FoldChoice = 'open' | 'closed'
@@ -160,7 +161,7 @@ const applyChoices = (previous: FoldState, candidates: readonly FoldCandidate[],
     }
   }
   for (const [key, open] of requested) choose(choices, key, open)
-  return { choices, requested }
+  return { choices, requested, effectKeys }
 }
 
 const contains = (candidate: FoldCandidate, position: number): boolean =>
@@ -189,13 +190,43 @@ export const foldState = StateField.define<FoldState>({
   update: (previous, transaction) => {
     const candidates = transaction.docChanged
       ? foldCandidates(transaction.newDoc.toString(), transaction.state.field(classifiedDocument)) : previous.candidates
-    const { choices } = applyChoices(previous, candidates, transaction)
+    const { choices, effectKeys } = applyChoices(previous, candidates, transaction)
+    if (transaction.docChanged && transaction.annotation(remoteTransaction) === undefined) {
+      const live = new Map(candidates.map(candidate => [candidate.key, candidate]))
+      const claimed = new Set(effectKeys.values())
+      for (const old of previous.candidates) {
+        const mappedKey = effectKeys.get(old.key)
+        const next = live.get(mappedKey ?? old.key)
+        if (isFoldOpen(previous, old) || !next || isFoldOpen({ choices }, next)) continue
+        // Deleted headers may be moves or shifted duplicates; only changed bodies need revealing.
+        if (mappedKey === undefined && (claimed.has(old.key) ||
+          transaction.startState.sliceDoc(old.hidden.from, old.hidden.to) === transaction.newDoc.sliceString(next.hidden.from, next.hidden.to))) continue
+        transaction.changes.iterChangedRanges((from, to) => {
+          if (to > old.hidden.from && from <= old.hidden.to) choose(choices, next.key, true)
+        })
+      }
+    }
     const positions = selectionPositions(transaction.newSelection)
     for (const effect of transaction.effects) if (effect.is(revealFoldPositions)) positions.push(...effect.value)
     // Selection visibility also wins for remote edits and transactions without user events.
     reveal(candidates, choices, positions)
     return candidates === previous.candidates && sameChoices(choices, previous.choices) ? previous : stateWith(candidates, choices)
   },
+})
+
+/** Remote appends keep a boundary caret after the placeholder instead of revealing the new body. */
+const remoteFoldBoundarySelection = EditorState.transactionFilter.of(transaction => {
+  if (!transaction.docChanged || transaction.annotation(remoteTransaction) === undefined) return transaction
+  const previous = transaction.startState.field(foldState)
+  const ends = new Set(previous.candidates.filter(candidate => !isFoldOpen(previous, candidate)).map(candidate => candidate.hidden.to))
+  const mappedEnds = new Map(transaction.startState.selection.ranges.filter(range => range.empty && ends.has(range.head))
+    .map(range => [transaction.changes.mapPos(range.head, -1), transaction.changes.mapPos(range.head, 1)]))
+  const selection = EditorSelection.create(transaction.newSelection.ranges.map(range => {
+    // Match mapped positions rather than range indexes, which can merge during remote edits.
+    const after = range.empty ? mappedEnds.get(range.head) : undefined
+    return after === undefined ? range : EditorSelection.cursor(after, 1)
+  }), transaction.newSelection.mainIndex)
+  return selection.eq(transaction.newSelection) ? transaction : [transaction, { selection, sequential: true }]
 })
 
 const closeSelection = EditorState.transactionFilter.of(transaction => {
@@ -265,5 +296,5 @@ export class FoldPersistence {
 }
 
 export const foldExtensions = (options: FoldOptions = {}): Extension => [
-  foldSession.of(new FoldSession(options)), classifiedDocument, foldState, closeSelection, ViewPlugin.fromClass(FoldPersistence),
+  foldSession.of(new FoldSession(options)), classifiedDocument, foldState, remoteFoldBoundarySelection, closeSelection, ViewPlugin.fromClass(FoldPersistence),
 ]

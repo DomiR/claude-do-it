@@ -89,7 +89,7 @@ describe('block syntax protection', () => {
     expect(protectBlockSyntax(classifyDocument(unclosed).blocks, [{ from: 15, to: 16, insert: '' }])).toBeUndefined()
   })
 
-  test('line joins unwrap details and cannot strand a fence', () => {
+  test('line joins unwrap details without stranding their delimiters', () => {
     for (const text of ['before\n' + details, details + '\nafter', details]) {
       const at = text.startsWith('before') ? 6 : text.endsWith('after') ? details.length : text.indexOf('\nbody')
       const result = apply(text, protect(text, [{ from: at, to: at + 1, insert: '' }]))
@@ -97,10 +97,62 @@ describe('block syntax protection', () => {
       expect(result).not.toContain('</details>')
       expect(result).toContain('body')
     }
-    const text = 'before\n' + html
-    expect(apply(text, protect(text, [{ from: 6, to: 7, insert: '' }]))).toBe('before')
     const beforeCloser = details.lastIndexOf('\n')
     expect(apply(details, protect(details, [{ from: beforeCloser, to: beforeCloser + 1, insert: '' }]))).toBe('Title\nbody')
+  })
+
+  test('deleting only a separator beside HTML preserves the fence and the next task prefix', () => {
+    for (const eol of ['\n', '\r\n']) {
+      const text = 'before' + eol + html.replaceAll('\n', eol) + eol + '- [ ] After'
+      const initial = stateFor(text)
+      const document = initial.field(classifiedDocument)
+      const block = document.blocks.html[0]!
+      const before = { from: document.lines[block.startLine - 1]!.to, to: block.from }
+      const after = { from: block.to, to: document.lines[block.endLine]!.from }
+      for (const change of [before, after, { from: before.from, to: before.from + 1 }, { from: after.to - 1, to: after.to }]) {
+        const transaction = initial.update({ changes: change, userEvent: 'delete.selection' })
+        expect(transaction.docChanged).toBe(false)
+        expect(transaction.state.doc.toString()).toBe(text)
+        expect(transaction.state.field(htmlBlockDecorations)).toBe(initial.field(htmlBlockDecorations))
+        expect(undoDepth(transaction.state)).toBe(0)
+      }
+    }
+  })
+
+  test('separator protection keeps the rest of a deletion and its metadata in one undoable change', () => {
+    for (const eol of ['\n', '\r\n']) {
+      const fence = html.replaceAll('\n', eol)
+      const text = 'before' + eol + fence + eol + '- [ ] After'
+      const initial = stateFor(text)
+      const block = initial.field(classifiedDocument).blocks.html[0]!
+      const marker = Annotation.define<string>()
+      const transaction = initial.update({
+        changes: [{ from: 2, to: block.from }, { from: block.to, to: block.to + eol.length + 7 }],
+        userEvent: 'delete.selection', annotations: marker.of('kept'),
+      })
+      expect(transaction.newDoc.toString()).toBe('be' + eol + fence + eol + 'fter')
+      expect(transaction.annotation(marker)).toBe('kept')
+      expect(transaction.state.field(classifiedDocument).blocks.html[0]!.closed).toBe(true)
+      const view = viewFor(transaction.state)
+      expect(undoDepth(view.state)).toBe(1)
+      expect(undo(view)).toBe(true)
+      expect(view.state.doc.toString()).toBe(text)
+      expect(redo(view)).toBe(true)
+      expect(view.state.doc.toString()).toBe('be' + eol + fence + eol + 'fter')
+    }
+  })
+
+  test('real HTML fence overlaps still widen and remote separator deletions remain untouched', () => {
+    const text = 'before\n' + html + '\n- [ ] After'
+    const initial = stateFor(text)
+    const block = initial.field(classifiedDocument).blocks.html[0]!
+    const local = initial.update({ changes: { from: block.from - 1, to: block.from + 1 }, userEvent: 'delete.selection' }).state
+    expect(local.doc.toString()).toBe('before\n- [ ] After')
+    expect(local.field(classifiedDocument).blocks.html).toEqual([])
+    const remote = initial.update({
+      changes: { from: block.from - 1, to: block.from }, userEvent: 'delete.backward', annotations: remoteTransaction.of(1),
+    }).state
+    expect(remote.doc.toString()).toBe('before' + html + '\n- [ ] After')
   })
 
   test('more than four nested sections and inline syntax reach a stable cleanup', () => {
@@ -197,6 +249,49 @@ describe('Find and Replace in sections', () => {
 })
 
 describe('deleting beside rendered blocks', () => {
+  test('Delete at the final hidden endpoint reveals every kind without joining the next visible line', () => {
+    for (const text of ['# Project\nbody\n# Next', '- [ ] Task\n  note\n- [ ] Peer', details + '\n- [ ] Peer']) {
+      const initial = stateFor(text).update({ effects: setAllFoldsOpen.of(false) }).state
+      const fold = initial.field(foldState).candidates[0]!
+      const view = viewFor(initial.update({ selection: { anchor: fold.hidden.to } }).state)
+      expect(view.state.field(foldState).folded.size).toBe(1)
+      expect(key(view, 'Delete')).toBe(true)
+      expect(view.state.doc.toString()).toBe(text)
+      expect(view.state.field(foldState).folded.size).toBe(0)
+      expect(undoDepth(view.state)).toBe(0)
+    }
+  })
+
+  test('typing Enter and paste at a placeholder end reveal the edited section', () => {
+    for (const text of ['# Project\nbody\n# Next', '- [ ] Task\n  note\n- [ ] Peer', details + '\nafter']) {
+      for (const input of ['typed', '\n', 'one\ntwo']) {
+        let state = stateFor(text).update({ effects: setAllFoldsOpen.of(false) }).state
+        const fold = state.field(foldState).candidates[0]!
+        state = state.update({ selection: { anchor: fold.hidden.to } }).state
+        const spec = input.includes('two') ? pasteMarkdown(state, input) : blockInput(state, input)
+        state = state.update(spec ?? {
+          changes: { from: fold.hidden.to, insert: input }, selection: { anchor: fold.hidden.to + input.length },
+          userEvent: input.includes('two') ? 'input.paste' : 'input.type',
+        }).state
+        expect(state.field(foldState).candidates.some(candidate => candidate.key === fold.key)).toBe(true)
+        expect(state.field(foldState).folded.size).toBe(0)
+        if (input !== '\n') for (const line of input.split('\n')) expect(state.doc.toString()).toContain(line)
+      }
+    }
+  })
+
+  test('remote appends keep a placeholder end caret beyond the grown folded task', () => {
+    let state = stateFor('- [ ] Task\n  note\n- [ ] Peer').update({ effects: setAllFoldsOpen.of(false) }).state
+    const before = state.field(foldState).candidates[0]!
+    state = state.update({ selection: EditorSelection.create([EditorSelection.cursor(before.hidden.to, -1)]) }).state
+    state = state.update({ changes: { from: before.hidden.to, insert: '\n  remote' }, annotations: remoteTransaction.of(1) }).state
+    const after = state.field(foldState).candidates[0]!
+    expect(after.hiddenLines).toBe(before.hiddenLines + 1)
+    expect(state.selection.main.head).toBe(after.hidden.to)
+    expect(state.field(foldState).folded.size).toBe(1)
+    expect(state.doc.toString()).toBe('- [ ] Task\n  note\n  remote\n- [ ] Peer')
+  })
+
   test('Backspace after or Delete before each folded body unfolds without deleting text', () => {
     for (const text of ['# Project\nbody\n# Next', '- [ ] Task\n  note\n- [ ] Next', details + '\nafter']) {
       for (const forward of [false, true]) {

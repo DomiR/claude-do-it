@@ -13,7 +13,7 @@ import { Message } from '../message'
 import { runAction } from './actions'
 import {
   blockCaretFilter, blockInput, blockInputFilter, blockInputHandled, blockTyping, deleteAdjacentBlock, enterDetailsBody,
-  htmlSelectionFeedback, protectRenderedSyntax, replacementTouchesBlockSyntax, syntaxCleanup,
+  guardedEvents, htmlBoundaryGuard, htmlSelectionFeedback, protectRenderedSyntax, replacementTouchesBlockSyntax, syntaxCleanup,
 } from './block-editing'
 import { classifiedDocument } from './document'
 import { clearRemoteHighlight, editorFacts, remoteTransaction } from './facts'
@@ -272,8 +272,6 @@ const prefixCaretFilter = EditorState.transactionFilter.of(transaction => {
     selection: EditorSelection.create(ranges, transaction.newSelection.mainIndex), sequential: true,
   }] : transaction
 })
-
-const guardedEvents = ['delete', 'input.type', 'input.paste', 'input.drop', 'input.complete', 'input.replace', 'input.replace.all']
 
 /** A person's deletions and replacements take rendered syntax whole, so no edit leaves `- [` or a lone `**` behind. */
 const syntaxGuard = EditorState.transactionFilter.of(transaction => {
@@ -602,7 +600,7 @@ export const editorExtensions = (platform: Platform, options: EditorOptions = {}
   }))))),
   keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: 'Escape', run: temporarilySetTabFocusMode }]),
   search({ top: true }),
-  documentDecorations, prefixCaretFilter, blockCaretFilter, syntaxGuard, blockInputFilter, prefixInput,
+  documentDecorations, htmlBoundaryGuard, prefixCaretFilter, blockCaretFilter, syntaxGuard, blockInputFilter, prefixInput,
   htmlSelectionFeedback, remoteHighlights, highlightTimer, linkEdits,
   // The document's lines end in \n only, so a pasted or dropped \r would stay in the text.
   EditorView.clipboardInputFilter.of(text => text.replace(/\r\n?/g, '\n')),
