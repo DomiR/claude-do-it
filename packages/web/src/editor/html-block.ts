@@ -100,9 +100,16 @@ const rememberHeight = (source: string, height: number): void => {
 // CodeMirror can reuse the DOM with a new equal widget instance, so cleanup belongs to the host.
 const cleanups = new WeakMap<HTMLElement, () => void>()
 
+/** Columns of a fence's indentation, tabs at four, so the section lines up with the text around it. */
+export const indentColumns = (indent: string): number => {
+  let column = 0
+  for (const character of indent) column += character === '\t' ? 4 - column % 4 : 1
+  return column
+}
+
 export class HtmlSectionWidget extends WidgetType {
-  constructor(readonly source: string) { super() }
-  eq(other: HtmlSectionWidget): boolean { return this.source === other.source }
+  constructor(readonly source: string, readonly indent = 0) { super() }
+  eq(other: HtmlSectionWidget): boolean { return this.source === other.source && this.indent === other.indent }
   get estimatedHeight(): number { return measuredHeights.get(this.source) ?? -1 }
   ignoreEvent(): boolean { return true }
   toDOM(view: EditorView): HTMLElement {
@@ -112,6 +119,9 @@ export class HtmlSectionWidget extends WidgetType {
     host.contentEditable = 'false'
     host.setAttribute('role', 'group')
     host.setAttribute('aria-label', 'HTML section')
+    // The shadow root resets fonts, so the editor's character width sets the indentation here.
+    const width = view.defaultCharacterWidth
+    if (this.indent > 0 && Number.isFinite(width) && width > 0) host.style.marginInlineStart = `${this.indent * width}px`
     const root = host.attachShadow({ mode: 'open' })
     root.innerHTML = this.source
     const base = document.createElement('style')
@@ -165,7 +175,7 @@ const htmlDecorations = (state: EditorState): DecorationSet => {
     const folded = hidden[hiddenIndex]
     // Also skip malformed indentation that lets a task fold cut through a fence.
     if (folded && folded.from < block.to) continue
-    ranges.push(Decoration.replace({ block: true, inclusive: false, widget: new HtmlSectionWidget(htmlSource(text, block)) }).range(block.from, block.to))
+    ranges.push(Decoration.replace({ block: true, inclusive: false, widget: new HtmlSectionWidget(htmlSource(text, block), indentColumns(block.indent)) }).range(block.from, block.to))
   }
   return Decoration.set(ranges, true)
 }

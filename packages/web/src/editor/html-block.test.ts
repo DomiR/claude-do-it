@@ -7,7 +7,7 @@ import { scanBlocks } from './blocks'
 import { documentDecorations, editorExtensions, remoteTransaction } from './extensions'
 import { foldViewState } from './fold-view'
 import { foldState, setAllFoldsOpen, setFoldOpen } from './folds'
-import { HtmlSectionWidget, htmlBlockDecorations, htmlSource, runHtmlScripts } from './html-block'
+import { HtmlSectionWidget, htmlBlockDecorations, htmlSource, indentColumns, runHtmlScripts } from './html-block'
 
 class StubElement {
   className = ''
@@ -21,6 +21,7 @@ class StubElement {
   listeners = new Map<string, Set<() => void>>()
   shadowRoot: StubRoot | undefined
   shadowMode: string | undefined
+  style: Record<string, string> = {}
   constructor(readonly tagName: string) {}
   getAttribute(name: string): string | null { return this.attributes.find(attribute => attribute.name === name)?.value ?? null }
   hasAttribute(name: string): boolean { return this.getAttribute(name) !== null }
@@ -291,6 +292,17 @@ describe('HTML section widgets', () => {
     env.frame()
     expect(host.shadowRoot!.appended).toEqual([])
     expect(env.observers).toEqual([])
+  })
+
+  test('lines a section up with its fence indentation in editor character widths', () => {
+    expect([indentColumns(''), indentColumns('  '), indentColumns('\t'), indentColumns(' \t ')]).toEqual([0, 2, 4, 5])
+    expect(new HtmlSectionWidget('same', 2).eq(new HtmlSectionWidget('same', 4))).toBe(false)
+    const env = dom()
+    const view = { ...env.view, dom: env.view.dom, defaultCharacterWidth: 10, requestMeasure: () => {} } as unknown as EditorView
+    const indented = new HtmlSectionWidget('<p>x</p>', 2).toDOM(view) as unknown as StubElement
+    expect(indented.style.marginInlineStart).toBe('20px')
+    const flush = new HtmlSectionWidget('<p>x</p>').toDOM(view) as unknown as StubElement
+    expect(flush.style.marginInlineStart).toBeUndefined()
   })
 
   test('natural height changes update cached estimates and observers stop on destroy', () => {
