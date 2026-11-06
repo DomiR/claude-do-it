@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { EditorSelection, EditorState, Transaction, type TransactionSpec } from '@codemirror/state'
+import { EditorSelection, EditorState, RangeSet, Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, type Decoration } from '@codemirror/view'
 import { Schema } from 'effect'
 import {
@@ -215,11 +215,14 @@ describe('rendered editor', () => {
     const preview = state.field(documentDecorations)
     const atomic: Array<[number, number, Decoration]> = []
     const providers = state.facet(EditorView.atomicRanges)
-    expect(providers).toHaveLength(1)
-    const set = providers[0]!({ state } as EditorView)
-    expect(set).toBe(preview.atomicRanges)
+    const sets = providers.map(provider => provider({ state } as EditorView))
+    expect(sets).toContain(preview.atomicRanges)
+    const set = RangeSet.join(sets)
     set.between(0, state.doc.length, (from, to, value: Decoration) => { atomic.push([from, to, value]) })
     atomic.sort((left, right) => left[0] - right[0] || left[1] - right[1])
+    const base: Array<[number, number, Decoration]> = []
+    preview.atomicRanges.between(0, state.doc.length, (from, to, value) => { base.push([from, to, value]) })
+    expect(atomic).toEqual(base)
     expect(atomic).toEqual(replacements(state).map(({ from, to, decoration }) => [from, to, decoration]))
     for (const [from, to] of atomic) {
       expect(everyKind.slice(from, to)).not.toContain('\n')
