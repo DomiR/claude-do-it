@@ -267,7 +267,8 @@ bun run build:npm                     # the npm package, in dist/npm
 bun --cwd packages/web run dev        # editor with a proxy to the daemon on 47100
 ```
 
-CI runs the typecheck, tests, and both builds on every push and pull request.
+CI runs the typecheck, lint, format check, tests, and both builds on every push
+and pull request.
 `claude plugin validate . --strict` checks the plugin and marketplace manifests.
 
 ### Release

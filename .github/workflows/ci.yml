@@ -36,7 +36,9 @@ jobs:
         with:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
-      - run: bun run typecheck
+      - run: bun run check
+      - run: bun run lint
+      - run: bun run fmt:check
       - run: bun run test
       - run: bun run build:web
       - run: bun run build:npm
