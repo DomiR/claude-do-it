@@ -276,16 +276,21 @@ and pull request.
 Set `APP_VERSION` in `packages/protocol/src/index.ts` (the npm package takes its
 version from it), and the same version in `.claude-plugin/plugin.json` and in
 the pinned `claude-do-it@` version in `bin/do-it` (`tests/plugin.test.ts` checks
-that the three match). Commit to `main`, then tag and push:
+that the three match). Add a section for the new version at the top of
+`CHANGELOG.md`. Commit to `main`, then tag and push:
 
 ```bash
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-The Release workflow checks that the tag equals `v` plus `APP_VERSION`, runs the
-CI checks, builds `dist/npm`, and publishes it to npm with provenance. It needs
-a repository secret `NPM_TOKEN`: a granular npm token with publish rights for
-`claude-do-it`. The plugin's `do-it` runs that exact npm version, so a plugin
+The Release workflow checks that the tag equals `v` plus `APP_VERSION` and the
+`version` in `.claude-plugin/plugin.json`, runs the CI checks, builds
+`dist/npm`, and publishes it to npm with provenance. It needs a repository
+secret `NPM_TOKEN`: a granular npm token with publish rights for
+`claude-do-it`. Before publishing, the workflow runs `npm whoami` with that
+token and fails unless it prints `domir`, the npm owner of `claude-do-it` (see
+`npm view claude-do-it maintainers`), so a token from another npm account stops
+the release with a clear error. The plugin's `do-it` runs that exact npm version, so a plugin
 installed from `main` fails until the workflow has published it: push the tag
 right after the commit.
 
