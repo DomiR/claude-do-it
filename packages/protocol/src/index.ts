@@ -1,5 +1,5 @@
 export const PROTOCOL_VERSION = 1;
-export const APP_VERSION = '0.1.1';
+export const APP_VERSION = '0.1.2';
 /** The oldest Bun that runs do-it. */
 export const MIN_BUN_VERSION = '1.3.0';
 

@@ -6,4 +6,4 @@ if ! command -v bun >/dev/null 2>&1; then
   echo "do-it needs Bun 1.3 or newer: https://bun.sh" >&2
   exit 127
 fi
-exec bun x --package claude-do-it@0.1.1 do-it "$@"
+exec bun x --package claude-do-it@0.1.2 do-it "$@"
