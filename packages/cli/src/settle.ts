@@ -1,15 +1,15 @@
 /** A line holding nothing the person wrote: blank, or a bare list or task marker. */
-const emptyLine = /^[ \t\r]*(?:(?:[-*+]|\d+[.)])(?:[ \t]+\[[ xX-]?\])?[ \t\r]*)?$/
+const emptyLine = /^[ \t\r]*(?:(?:[-*+]|\d+[.)])(?:[ \t]+\[[ xX-]?\])?[ \t\r]*)?$/;
 
 function commonPrefix(a: string, b: string, limit: number): number {
-  let index = 0
-  while (index < limit && a.charCodeAt(index) === b.charCodeAt(index)) index++
-  return index
+	let index = 0;
+	while (index < limit && a.charCodeAt(index) === b.charCodeAt(index)) index++;
+	return index;
 }
 function commonSuffix(a: string, b: string, limit: number): number {
-  let index = 0
-  while (index < limit && a.charCodeAt(a.length - 1 - index) === b.charCodeAt(b.length - 1 - index)) index++
-  return index
+	let index = 0;
+	while (index < limit && a.charCodeAt(a.length - 1 - index) === b.charCodeAt(b.length - 1 - index)) index++;
+	return index;
 }
 
 /**
@@ -22,19 +22,26 @@ function commonSuffix(a: string, b: string, limit: number): number {
  * between their carets counts.
  */
 export function endsLine(before: string, after: string): boolean {
-  if (before === after) return false
-  const limit = Math.min(before.length, after.length)
-  const prefix = commonPrefix(before, after, limit)
-  const latest = after.length - commonSuffix(before, after, limit - prefix)
-  const suffix = commonSuffix(before, after, limit)
-  const earliest = after.length - suffix
-  const lines = after.split("\n")
-  let start = 0
-  for (let index = 0; index < lines.length; index++) {
-    const end = start + lines[index]!.length
-    if (end >= earliest && start <= latest && index > 0 && emptyLine.test(lines[index]!) && !emptyLine.test(lines[index - 1]!)) return true
-    if (start > latest) break
-    start = end + 1
-  }
-  return false
+	if (before === after) return false;
+	const limit = Math.min(before.length, after.length);
+	const prefix = commonPrefix(before, after, limit);
+	const latest = after.length - commonSuffix(before, after, limit - prefix);
+	const suffix = commonSuffix(before, after, limit);
+	const earliest = after.length - suffix;
+	const lines = after.split('\n');
+	let start = 0;
+	for (let index = 0; index < lines.length; index++) {
+		const end = start + lines[index]!.length;
+		if (
+			end >= earliest &&
+			start <= latest &&
+			index > 0 &&
+			emptyLine.test(lines[index]!) &&
+			!emptyLine.test(lines[index - 1]!)
+		)
+			return true;
+		if (start > latest) break;
+		start = end + 1;
+	}
+	return false;
 }

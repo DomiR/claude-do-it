@@ -1,20 +1,42 @@
-export interface GlobalOptions { json: boolean; as: string }
+export interface GlobalOptions {
+	json: boolean;
+	as: string;
+}
 
 export type ParsedCommand =
-  | { kind: "open"; options: GlobalOptions; path: string; noBrowser: boolean; displayPath: string }
-  | { kind: "read"; options: GlobalOptions; path: string; section?: string }
-  | { kind: "sections"; options: GlobalOptions; path: string }
-  | { kind: "edit"; options: GlobalOptions; path: string; version: number; section?: string; old: string; next: string }
-  | { kind: "append"; options: GlobalOptions; path: string; version: number; section?: string; text: string }
-  | { kind: "todo-add"; options: GlobalOptions; path: string; version: number; section?: string; text: string }
-  | { kind: "todo-set"; options: GlobalOptions; path: string; version: number; section?: string; target: string; state: "done" | "open" | "cancelled" }
-  | { kind: "todo-start"; options: GlobalOptions; path: string; version: number; section?: string; target: string }
-  | { kind: "todo-list"; options: GlobalOptions; path: string; section?: string }
-  | { kind: "diff"; options: GlobalOptions; path: string; since: number; wait: number }
-  | { kind: "watch"; options: GlobalOptions; path: string; displayPath: string; since?: number; section?: string; todos: boolean; settle?: number; settleLine: number; quiet: boolean }
-  | { kind: "status"; options: GlobalOptions }
-  | { kind: "stop"; options: GlobalOptions }
-  | { kind: "doctor"; options: GlobalOptions; skillDir?: string }
-  | { kind: "skill-install"; options: GlobalOptions; dir?: string; force: boolean }
-  | { kind: "skill-path"; options: GlobalOptions }
-  | { kind: "skill-show"; options: GlobalOptions }
+	| { kind: 'open'; options: GlobalOptions; path: string; noBrowser: boolean; displayPath: string }
+	| { kind: 'read'; options: GlobalOptions; path: string; section?: string }
+	| { kind: 'sections'; options: GlobalOptions; path: string }
+	| { kind: 'edit'; options: GlobalOptions; path: string; version: number; section?: string; old: string; next: string }
+	| { kind: 'append'; options: GlobalOptions; path: string; version: number; section?: string; text: string }
+	| { kind: 'todo-add'; options: GlobalOptions; path: string; version: number; section?: string; text: string }
+	| {
+			kind: 'todo-set';
+			options: GlobalOptions;
+			path: string;
+			version: number;
+			section?: string;
+			target: string;
+			state: 'done' | 'open' | 'cancelled';
+	  }
+	| { kind: 'todo-start'; options: GlobalOptions; path: string; version: number; section?: string; target: string }
+	| { kind: 'todo-list'; options: GlobalOptions; path: string; section?: string }
+	| { kind: 'diff'; options: GlobalOptions; path: string; since: number; wait: number }
+	| {
+			kind: 'watch';
+			options: GlobalOptions;
+			path: string;
+			displayPath: string;
+			since?: number;
+			section?: string;
+			todos: boolean;
+			settle?: number;
+			settleLine: number;
+			quiet: boolean;
+	  }
+	| { kind: 'status'; options: GlobalOptions }
+	| { kind: 'stop'; options: GlobalOptions }
+	| { kind: 'doctor'; options: GlobalOptions; skillDir?: string }
+	| { kind: 'skill-install'; options: GlobalOptions; dir?: string; force: boolean }
+	| { kind: 'skill-path'; options: GlobalOptions }
+	| { kind: 'skill-show'; options: GlobalOptions };

@@ -1,17 +1,37 @@
 {
-  "name": "claude-do-it",
-  "private": true,
-  "type": "module",
-  "workspaces": ["packages/*"],
-  "bin": {"do-it": "packages/cli/src/bin.ts"},
-  "scripts": {
-    "test": "bun test ./packages ./tests",
-    "typecheck": "for manifest in packages/*/package.json; do package=\"${manifest%/package.json}\"; tsc --noEmit -p \"$package/tsconfig.json\" || exit $?; done",
-    "build:web": "bun run --cwd packages/web build",
-    "build:npm": "bun scripts/npm.ts"
-  },
-  "devDependencies": {
-    "@types/bun": "1.3.3",
-    "typescript": "5.9.3"
-  }
+	"name": "claude-do-it",
+	"private": true,
+	"bin": {
+		"do-it": "packages/cli/src/bin.ts"
+	},
+	"workspaces": [
+		"packages/*"
+	],
+	"type": "module",
+	"scripts": {
+		"test": "bun test ./packages ./tests",
+		"check": "for config in packages/*/tsconfig.json tsconfig.json; do effect-tsgo tsc --noEmit -p \"$config\" || exit $?; done",
+		"typecheck": "bun run check",
+		"lint": "effect-tsgo --tsrs-lint oxlint --type-aware",
+		"format": "oxfmt",
+		"fmt:check": "oxfmt --check",
+		"build:web": "bun run --cwd packages/web build",
+		"build:npm": "bun scripts/npm.ts"
+	},
+	"devDependencies": {
+		"@effect/tsgo": "0.67.3",
+		"@types/bun": "1.3.3",
+		"@typescript/native": "npm:typescript@7.0.2",
+		"oxfmt": "0.76.0",
+		"oxlint": "1.91.0",
+		"typescript": "5.9.3"
+	},
+	"overrides": {
+		"effect": "4.1.2"
+	},
+	"catalog": {
+		"effect": "4.1.2",
+		"@effect/platform-browser": "4.1.2",
+		"@effect/platform-bun": "4.1.2"
+	}
 }
