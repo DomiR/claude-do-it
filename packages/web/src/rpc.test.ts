@@ -43,7 +43,7 @@ test('the browser subscription omits an absent since on the wire and stays live 
 					// the actual web client, schemas, ndjson transport, and daemon handlers.
 					const browserFetch = Object.assign(
 						async (...[input, init]: Parameters<typeof fetch>) => {
-							const url = new URL(String(input), baseUrl);
+							const url = new URL(input instanceof Request ? input.url : input, baseUrl);
 							const headers = new Headers(init?.headers);
 							if (url.origin === baseUrl && init?.credentials !== 'omit') headers.set('cookie', cookie);
 							const request = new Request(url, { ...init, headers });

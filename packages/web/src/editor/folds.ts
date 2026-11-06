@@ -28,7 +28,7 @@ export class FoldRange extends RangeValue {
 	constructor(readonly key: FoldKey) {
 		super();
 	}
-	eq(other: RangeValue): boolean {
+	override eq(other: RangeValue): boolean {
 		return other instanceof FoldRange && other.key === this.key;
 	}
 }

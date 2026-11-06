@@ -44,10 +44,10 @@ export class FoldPlaceholder extends WidgetType {
 	) {
 		super();
 	}
-	eq(other: FoldPlaceholder): boolean {
+	override eq(other: FoldPlaceholder): boolean {
 		return this.key === other.key && this.label === other.label && this.count === other.count;
 	}
-	ignoreEvent(): boolean {
+	override ignoreEvent(): boolean {
 		return true;
 	}
 	toDOM(view: EditorView): HTMLElement {
@@ -64,10 +64,10 @@ export class FoldPlaceholder extends WidgetType {
 }
 
 export class DetailsEnd extends WidgetType {
-	eq(other: WidgetType): boolean {
+	override eq(other: WidgetType): boolean {
 		return other instanceof DetailsEnd;
 	}
-	ignoreEvent(): boolean {
+	override ignoreEvent(): boolean {
 		return false;
 	}
 	toDOM(view: EditorView): HTMLElement {
@@ -87,7 +87,7 @@ export class FoldGutterMarker extends GutterMarker {
 	) {
 		super();
 	}
-	eq(other: GutterMarker): boolean {
+	override eq(other: GutterMarker): boolean {
 		return (
 			other instanceof FoldGutterMarker &&
 			this.key === other.key &&
@@ -96,7 +96,7 @@ export class FoldGutterMarker extends GutterMarker {
 			this.active === other.active
 		);
 	}
-	toDOM(view: EditorView): Node {
+	override toDOM(view: EditorView): Node {
 		const button = foldButton(view, this.key, !this.open);
 		button.className = `pt-fold-button${this.active ? ' pt-fold-active' : ''}`;
 		button.setAttribute('aria-label', `${this.open ? 'Fold' : 'Unfold'} ${this.label}`);

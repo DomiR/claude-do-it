@@ -138,13 +138,13 @@ export class HtmlSectionWidget extends WidgetType {
 	) {
 		super();
 	}
-	eq(other: HtmlSectionWidget): boolean {
+	override eq(other: HtmlSectionWidget): boolean {
 		return this.source === other.source && this.indent === other.indent;
 	}
-	get estimatedHeight(): number {
+	override get estimatedHeight(): number {
 		return measuredHeights.get(this.source) ?? -1;
 	}
-	ignoreEvent(): boolean {
+	override ignoreEvent(): boolean {
 		return true;
 	}
 	toDOM(view: EditorView): HTMLElement {
@@ -195,7 +195,7 @@ export class HtmlSectionWidget extends WidgetType {
 		});
 		return host;
 	}
-	destroy(dom: HTMLElement): void {
+	override destroy(dom: HTMLElement): void {
 		cleanups.get(dom)?.();
 		cleanups.delete(dom);
 	}

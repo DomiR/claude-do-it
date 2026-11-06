@@ -136,7 +136,7 @@ const linkCandidates = (text: string, from: number, to: number): LinkCandidate[]
 	const source = text.slice(from, to);
 	const result: LinkCandidate[] = [];
 
-	const markdown = /\[([^\[\]\r\n]*)\]\(([^()\s]+)\)/g;
+	const markdown = /\[([^[\]\r\n]*)\]\(([^()\s]+)\)/g;
 	for (const match of source.matchAll(markdown)) {
 		const value = match[0]!;
 		const target = match[2]!;
@@ -162,7 +162,7 @@ const linkCandidates = (text: string, from: number, to: number): LinkCandidate[]
 		});
 	}
 
-	const bare = /(?:https?:\/\/|mailto:)[^\s<>\[\]]+/gi;
+	const bare = /(?:https?:\/\/|mailto:)[^\s<>[\]]+/gi;
 	for (const match of source.matchAll(bare)) {
 		const raw = match[0]!;
 		const value = trimBareUrlEnd(raw);
@@ -509,7 +509,7 @@ export const linkAt = (text: string, offset: number): string | undefined =>
  */
 export const linkMarkdown = (label: string, target: string): string => {
 	const url = target.trim().replace(/\s/g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29');
-	const text = label.replace(/[\[\]\r\n]/g, '').trim();
+	const text = label.replace(/[[\]\r\n]/g, '').trim();
 	if (!url) return text;
 	return `[${text || url}](${url})`;
 };

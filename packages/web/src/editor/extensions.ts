@@ -167,10 +167,10 @@ class BulletDot extends WidgetType {
 	constructor(private readonly width: number) {
 		super();
 	}
-	eq(other: BulletDot): boolean {
+	override eq(other: BulletDot): boolean {
 		return other.width === this.width;
 	}
-	ignoreEvent(): boolean {
+	override ignoreEvent(): boolean {
 		return false;
 	}
 	toDOM(view: EditorView): HTMLElement {
@@ -187,10 +187,10 @@ class BulletGap extends WidgetType {
 	constructor(private readonly width: number) {
 		super();
 	}
-	eq(other: BulletGap): boolean {
+	override eq(other: BulletGap): boolean {
 		return other.width === this.width;
 	}
-	ignoreEvent(): boolean {
+	override ignoreEvent(): boolean {
 		return false;
 	}
 	toDOM(view: EditorView): HTMLElement {
@@ -212,10 +212,10 @@ class Marker extends WidgetType {
 	) {
 		super();
 	}
-	eq(other: Marker): boolean {
+	override eq(other: Marker): boolean {
 		return other.state === this.state && other.empty === this.empty && other.gap === this.gap;
 	}
-	ignoreEvent(): boolean {
+	override ignoreEvent(): boolean {
 		return false;
 	}
 	toDOM(view: EditorView): HTMLElement {
