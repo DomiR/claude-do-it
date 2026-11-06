@@ -11,6 +11,10 @@ import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 
 import { Message } from '../message'
 import { runAction } from './actions'
+import {
+  blockCaretFilter, blockInput, blockInputFilter, blockInputHandled, blockTyping, deleteAdjacentBlock, enterDetailsBody,
+  htmlSelectionFeedback, protectRenderedSyntax, replacementTouchesBlockSyntax, syntaxCleanup,
+} from './block-editing'
 import { classifiedDocument } from './document'
 import { clearRemoteHighlight, editorFacts, remoteTransaction } from './facts'
 import { foldView, foldViewState } from './fold-view'
@@ -22,7 +26,7 @@ import {
 } from './lines'
 import { closeLinkEditor, editLink, linkEdits, openLinkEditor } from './link-popover'
 import { clipboardMarkdown, startsBlock } from './paste'
-import { protectSyntax, type TextChange } from './syntax'
+import type { TextChange } from './syntax'
 import type { ActionId, EditorCommand, TextSelection } from './types'
 
 export { clearRemoteHighlight, editorFacts, remoteTransaction, type EditorFact } from './facts'
@@ -269,7 +273,7 @@ const prefixCaretFilter = EditorState.transactionFilter.of(transaction => {
   }] : transaction
 })
 
-const guardedEvents = ['delete', 'input.type', 'input.paste', 'input.drop', 'input.complete']
+const guardedEvents = ['delete', 'input.type', 'input.paste', 'input.drop', 'input.complete', 'input.replace', 'input.replace.all']
 
 /** A person's deletions and replacements take rendered syntax whole, so no edit leaves `- [` or a lone `**` behind. */
 const syntaxGuard = EditorState.transactionFilter.of(transaction => {
@@ -277,15 +281,15 @@ const syntaxGuard = EditorState.transactionFilter.of(transaction => {
   if (!guardedEvents.some(event => transaction.isUserEvent(event))) return transaction
   const changes: TextChange[] = []
   transaction.changes.iterChanges((from, to, _fromB, _toB, inserted) => { changes.push({ from, to, insert: inserted.toString() }) })
-  const widened = protectSyntax(transaction.startState.field(documentDecorations).classified, changes)
-  if (!widened) return transaction
-  const changeSet = transaction.startState.changes(widened)
-  return {
-    changes: changeSet,
-    selection: transaction.startState.selection.map(changeSet, 1),
-    userEvent: transaction.annotation(Transaction.userEvent),
-    scrollIntoView: transaction.scrollIntoView,
+  const classified = transaction.startState.field(documentDecorations).classified
+  if (transaction.isUserEvent('input.replace')) {
+    if (!replacementTouchesBlockSyntax(classified.blocks, changes)) return transaction
+    transaction.startState.facet(editorFacts)(Message.ShowedEditorNotice({ text: 'Edit the section markup with do-it edit' }))
+    return []
   }
+  const widened = protectRenderedSyntax(classified, changes)
+  if (!widened) return transaction
+  return [transaction, { changes: syntaxCleanup(transaction, widened), sequential: true }]
 })
 
 /**
@@ -333,6 +337,8 @@ export const pasteMarkdown = (state: EditorState, plain: string, html?: string):
   if (state.selection.ranges.some(range => inCode(range.from) || inCode(range.to))) return undefined
   const markdown = clipboardMarkdown(plain, html)
   if (markdown === null) return undefined
+  const block = blockInput(state, markdown)
+  if (block) return { ...block, userEvent: 'input.paste', annotations: [blockInputHandled.of(true), isolateHistory.of('full')] }
   const paste = (spec: TransactionSpec): TransactionSpec => ({
     ...spec, userEvent: 'input.paste', annotations: isolateHistory.of('full'), scrollIntoView: true,
   })
@@ -366,7 +372,8 @@ export const pasteMarkdown = (state: EditorState, plain: string, html?: string):
 
 const prefixInput = EditorView.inputHandler.of((view, from, to, text) => {
   if (view.composing) return false
-  const spec = prefixTyping(view.state, from, to, text)
+  const spec = (view.state.selection.ranges.length === 1 ? blockTyping(view.state, from, to, text) : blockInput(view.state, text)) ??
+    prefixTyping(view.state, from, to, text)
   if (!spec) return false
   view.dispatch(spec)
   return true
@@ -573,19 +580,19 @@ export const editorExtensions = (platform: Platform, options: EditorOptions = {}
     run: closeLinkEditor,
   }, {
     key: 'Backspace',
-    run: unlessComposing(view => deleteEmptyTaskPrefix(view) || deleteBackwardAcrossMarks(view)),
+    run: unlessComposing(view => deleteAdjacentBlock(false)(view) || deleteEmptyTaskPrefix(view) || deleteBackwardAcrossMarks(view)),
   }, {
     key: 'Delete',
-    run: unlessComposing(deleteForwardAcrossMarks),
+    run: unlessComposing(view => deleteAdjacentBlock(true)(view) || deleteForwardAcrossMarks(view)),
   }, {
     key: 'Home',
     run: unlessComposing(moveToTaskLabel),
   }, {
     key: 'Shift-Enter',
-    run: unlessComposing(insertNoteLine),
+    run: unlessComposing(view => enterDetailsBody(view) || insertNoteLine(view)),
   }, {
     key: 'Enter',
-    run: unlessComposing(continueBlockLine),
+    run: unlessComposing(view => enterDetailsBody(view) || continueBlockLine(view)),
   }])),
   Prec.highest(keymap.of(bindings.flatMap(binding => binding[platform].map(key => ({
     key,
@@ -595,7 +602,8 @@ export const editorExtensions = (platform: Platform, options: EditorOptions = {}
   }))))),
   keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: 'Escape', run: temporarilySetTabFocusMode }]),
   search({ top: true }),
-  documentDecorations, prefixCaretFilter, syntaxGuard, prefixInput, remoteHighlights, highlightTimer, linkEdits,
+  documentDecorations, prefixCaretFilter, blockCaretFilter, syntaxGuard, blockInputFilter, prefixInput,
+  htmlSelectionFeedback, remoteHighlights, highlightTimer, linkEdits,
   // The document's lines end in \n only, so a pasted or dropped \r would stay in the text.
   EditorView.clipboardInputFilter.of(text => text.replace(/\r\n?/g, '\n')),
   EditorView.domEventHandlers({
