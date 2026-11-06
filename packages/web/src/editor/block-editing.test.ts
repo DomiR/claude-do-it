@@ -405,8 +405,11 @@ describe('typing around details', () => {
     const text = '  <details><summary>Title</summary>\n    body\n  </details>'
     const at = text.indexOf('Title') + 2
     const initial = stateFor(text, at, at + 1)
-    const spec = pasteMarkdown(initial, 'first\nsecond')!
-    const state = initial.update(spec).state
+    // Plain prose is not Markdown to convert, so the browser's own paste runs and the block filter routes it.
+    expect(pasteMarkdown(initial, 'first\nsecond')).toBeUndefined()
+    const state = initial.update({
+      changes: { from: at, to: at + 1, insert: 'first\nsecond' }, selection: { anchor: at + 12 }, userEvent: 'input.paste',
+    }).state
     expect(state.doc.toString()).toBe(text.replace('</summary>', '</summary>\n    first\n    second'))
     expect(state.doc.sliceString(state.selection.main.head - 6, state.selection.main.head)).toBe('second')
     expect(state.field(foldState).folded.size).toBe(0)
