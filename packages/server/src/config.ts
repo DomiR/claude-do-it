@@ -1,68 +1,76 @@
-import { APP_VERSION } from "@do-it/protocol"
-import { Config, Data, Effect, FileSystem, Option, Path } from "effect"
+import { APP_VERSION } from '@do-it/protocol';
+import { Config, Data, Effect, FileSystem, Option, Path } from 'effect';
 
-export const MAX_BODY = 4 * 1024 * 1024
+export const MAX_BODY = 4 * 1024 * 1024;
 export const TEMPLATE = [
-  "# TODO",
-  "",
-  "Write one task per line under Tasks. Agents pick up each new line, plan it, and write their status under it. Keys say Cmd and Alt: on Windows and Linux use Ctrl for Cmd, and Alt is Option on a Mac. Delete the Example section once you know your way around.",
-  "",
-  "## Example",
-  "",
-  "- [ ] Fix the login redirect @high @today",
-  "  - **t0** M, building with Opus",
-  "- [ ] Pick a chart library for the stats page @due(friday)",
-  "  - **t0** waiting for you",
-  "  - **t0 question:** Recharts or Visx? You answer by typing under a question like this",
-  "- [x] Cmd-Enter starts a task, and Cmd-D or a click on its box marks it done",
-  "    Shift-Enter adds a note like this one, which moves and archives with its task",
-  "- [-] Cmd-Alt-Enter or Alt-click cancels a task",
-  "- [x] Cmd-Shift-A moves done and cancelled tasks to Archive",
-  "- [x] Type t, h, or d then Tab for the today, high, or due tag; s then Tab twice stamps a start time",
-  "- [x] Cmd-/ lists every key",
-  "",
-  "## Tasks",
-  "",
-  "- [ ] ",
-  "",
-].join("\n")
+	'# TODO',
+	'',
+	'Write one task per line under Tasks. Agents pick up each new line, plan it, and write their status under it. Keys say Cmd and Alt: on Windows and Linux use Ctrl for Cmd, and Alt is Option on a Mac. Delete the Example section once you know your way around.',
+	'',
+	'## Example',
+	'',
+	'- [ ] Fix the login redirect @high @today',
+	'  - **t0** M, building with Opus',
+	'- [ ] Pick a chart library for the stats page @due(friday)',
+	'  - **t0** waiting for you',
+	'  - **t0 question:** Recharts or Visx? You answer by typing under a question like this',
+	'- [x] Cmd-Enter starts a task, and Cmd-D or a click on its box marks it done',
+	'    Shift-Enter adds a note like this one, which moves and archives with its task',
+	'- [-] Cmd-Alt-Enter or Alt-click cancels a task',
+	'- [x] Cmd-Shift-A moves done and cancelled tasks to Archive',
+	'- [x] Type t, h, or d then Tab for the today, high, or due tag; s then Tab twice stamps a start time',
+	'- [x] Cmd-/ lists every key',
+	'',
+	'## Tasks',
+	'',
+	'- [ ] ',
+	''
+].join('\n');
 
-export class InvalidConfig extends Data.TaggedError("InvalidConfig")<{ readonly message: string }> {}
+export class InvalidConfig extends Data.TaggedError('InvalidConfig')<{ readonly message: string }> {}
 
-export interface ServerConfig { home: string; port: number; idleMs: number; webDist: string }
+export interface ServerConfig {
+	home: string;
+	port: number;
+	idleMs: number;
+	webDist: string;
+}
 
 /** Set by the npm build, which ships the web app next to the daemon. */
-declare const DO_IT_WEB_ROOT: string | undefined
-const webRoot = new URL(typeof DO_IT_WEB_ROOT === "string" ? DO_IT_WEB_ROOT : "../../web/dist", import.meta.url)
+declare const DO_IT_WEB_ROOT: string | undefined;
+const webRoot = new URL(typeof DO_IT_WEB_ROOT === 'string' ? DO_IT_WEB_ROOT : '../../web/dist', import.meta.url);
 
-const optional = (name: string) => Config.option(Config.String(name)).pipe(Effect.map(Option.getOrUndefined))
+const optional = (name: string) => Config.option(Config.String(name)).pipe(Effect.map(Option.getOrUndefined));
 
 /** Reads DO_IT_HOME, DO_IT_PORT, DO_IT_IDLE_MS, and DO_IT_WEB_DIST. */
 export const config = Effect.gen(function* () {
-  const path = yield* Path.Path
-  const port = Number((yield* optional("DO_IT_PORT")) ?? 47100)
-  const idleMs = Number((yield* optional("DO_IT_IDLE_MS")) ?? 30 * 60 * 1000)
-  if (!Number.isInteger(port) || port < 0 || port > 65535) return yield* Effect.fail(new InvalidConfig({ message: "DO_IT_PORT must be between 0 and 65535" }))
-  if (!Number.isFinite(idleMs) || idleMs <= 0) return yield* Effect.fail(new InvalidConfig({ message: "DO_IT_IDLE_MS must be positive" }))
-  const home = (yield* optional("DO_IT_HOME")) ?? path.join(yield* Config.String("HOME"), ".do-it")
-  const webDist = (yield* optional("DO_IT_WEB_DIST")) ?? (yield* path.fromFileUrl(webRoot))
-  return { home: path.resolve(home), port, idleMs, webDist: path.resolve(webDist) } satisfies ServerConfig
-})
-export { APP_VERSION }
+	const path = yield* Path.Path;
+	const port = Number((yield* optional('DO_IT_PORT')) ?? 47100);
+	const idleMs = Number((yield* optional('DO_IT_IDLE_MS')) ?? 30 * 60 * 1000);
+	if (!Number.isInteger(port) || port < 0 || port > 65535)
+		return yield* Effect.fail(new InvalidConfig({ message: 'DO_IT_PORT must be between 0 and 65535' }));
+	if (!Number.isFinite(idleMs) || idleMs <= 0)
+		return yield* Effect.fail(new InvalidConfig({ message: 'DO_IT_IDLE_MS must be positive' }));
+	const home = (yield* optional('DO_IT_HOME')) ?? path.join(yield* Config.String('HOME'), '.do-it');
+	const webDist = (yield* optional('DO_IT_WEB_DIST')) ?? (yield* path.fromFileUrl(webRoot));
+	return { home: path.resolve(home), port, idleMs, webDist: path.resolve(webDist) } satisfies ServerConfig;
+});
+export { APP_VERSION };
 
 /** Set by the npm build: one id shared by the CLI and daemon bundles of a build. */
-declare const DO_IT_BUILD: string | undefined
-const sourceRoot = new URL("../../../", import.meta.url)
+declare const DO_IT_BUILD: string | undefined;
+const sourceRoot = new URL('../../../', import.meta.url);
 
 /**
  * The npm build's id, or `source:` and the real path of this checkout. The
  * client's `clientBuild` computes the same value, so `do-it doctor` can tell
  * whether a running daemon came from this CLI's build.
  */
-export const buildId: Effect.Effect<string, never, FileSystem.FileSystem | Path.Path> = typeof DO_IT_BUILD === "string"
-  ? Effect.succeed(DO_IT_BUILD)
-  : Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
-    return `source:${yield* fs.realPath(path.resolve(yield* path.fromFileUrl(sourceRoot)))}`
-  }).pipe(Effect.orDie)
+export const buildId: Effect.Effect<string, never, FileSystem.FileSystem | Path.Path> =
+	typeof DO_IT_BUILD === 'string'
+		? Effect.succeed(DO_IT_BUILD)
+		: Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem;
+				const path = yield* Path.Path;
+				return `source:${yield* fs.realPath(path.resolve(yield* path.fromFileUrl(sourceRoot)))}`;
+			}).pipe(Effect.orDie);

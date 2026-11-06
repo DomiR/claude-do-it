@@ -14,7 +14,11 @@ why; this file says exactly how.
 
 ```
 package.json            bun workspaces, root scripts, bin do-it -> packages/cli/src/bin.ts
-tsconfig.base.json      strict, ESNext, moduleResolution bundler, noUncheckedIndexedAccess
+tsconfig.base.json      strict, ESNext, module Preserve, noUncheckedIndexedAccess, the Effect language service plugin
+tsconfig.json           the root project: tests/ and scripts/
+.oxlintrc.json          Oxlint with the @effect/tsgo recommended preset (the Effect diagnostics)
+.oxfmtrc.json           oxfmt: tabs, single quotes, width 120, no trailing commas
+CLAUDE.md               the rules agents follow in this repo
 scripts/serial          runs one heavy command at a time (mkdir lock in $TMPDIR)
 packages/doc            pure document model (loro-crdt), no Effect services, no transport
 packages/protocol       Effect Schemas and the RpcGroup, no transport, no loro
@@ -31,7 +35,12 @@ repos/                  gitignored reference clones (foldkit@0.170.0, docket, be
 TypeScript packages are consumed as source (`exports: { ".": "./src/index.ts" }`);
 only `web` has a build. Pinned exactly: `effect` 4.1.2, `@effect/platform-bun`
 4.1.2, `@effect/platform-browser` 4.1.2, `loro-crdt` 1.17.1, `foldkit` 0.170.0,
-`@foldkit/vite-plugin` 0.29.0, `diff` 9.0.0. Tests: `bun test`.
+`@foldkit/vite-plugin` 0.29.0, `diff` 9.0.0. The Effect packages come from the
+root `catalog`, with `overrides.effect` holding one version. Tests: `bun test`.
+Typecheck: `effect-tsgo tsc` (TypeScript 7, `@effect/tsgo` 0.67.3). Lint: Oxlint
+1.91.0. Format: oxfmt 0.76.0. TypeScript 7 is installed as `@typescript/native`
+for editors; `typescript` 5.9.3 stays only as the parser
+`packages/doc/test/browser.test.ts` walks imports with.
 
 ## Document model (`packages/doc`)
 

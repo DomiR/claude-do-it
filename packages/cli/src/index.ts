@@ -1,1 +1,1 @@
-export { parseArgs, type ParsedCommand } from "./parser"
+export { parseArgs, type ParsedCommand } from './parser';

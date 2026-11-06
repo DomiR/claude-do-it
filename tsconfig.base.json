@@ -1,13 +1,39 @@
 {
-  "compilerOptions": {
-    "strict": true,
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": false,
-    "verbatimModuleSyntax": true,
-    "skipLibCheck": true,
-    "types": ["bun"]
-  }
+	"$schema": "./node_modules/@effect/tsgo/schema.json",
+	"compilerOptions": {
+		"strict": true,
+		"target": "ESNext",
+		"module": "Preserve",
+		"moduleResolution": "bundler",
+		"moduleDetection": "force",
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"exactOptionalPropertyTypes": false,
+		"verbatimModuleSyntax": true,
+		"skipLibCheck": true,
+		"types": ["bun"],
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"diagnostics": false,
+				"allowedUnstableApis": [
+					"@effect/platform-browser",
+					"@effect/platform-bun",
+					"@effect/platform-node-shared",
+					"effect/cli",
+					"effect/crypto",
+					"effect/encoding",
+					"effect/FileSystem",
+					"effect/http",
+					"effect/Path",
+					"effect/PlatformError",
+					"effect/process",
+					"effect/rpc",
+					"effect/Stdio"
+				],
+				"allowedDuplicatedPackages": []
+			}
+		]
+	}
 }
