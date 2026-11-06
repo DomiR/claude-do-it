@@ -63,6 +63,43 @@ The editor understands PlainTasks `@` tags on task lines and colours them. There
 - **Tags steer dispatch.** When tasks wait for a worker, take `@critical` first, then `@high` and `@today`, then untagged ones, `@low` last, each group in todo order. A `@due(date)` is a deadline to mention in the brief.
 - **Targeting a task by text** ignores stamps: after `--`, pass the task line as it reads now (stamps optional) or a unique part of it. A tag the person added after dispatch does not break a remembered text.
 
+## Folded sections and HTML
+
+The todo stays a dashboard: the status line, the result, and any question stay visible. Put everything longer that helps the person understand what happened (a plan, why a fix works, the evidence, alternatives, a diagram) in a **folded section** under its task, and make it a **rich HTML explanation** where a table, a diagram, or a small interactive demo explains better than prose. This applies to whoever writes under the task: you, the messenger, and the files Q agents hand back.
+
+- **A folded section** is `<details>` with `<summary>Title</summary>` on the same line or the next, a blank line, the body, a blank line, and `</details>` alone on its line. It arrives folded in the editor (`<details open>` starts it unfolded) and the person unfolds it with a click or `Cmd-Alt-F` (`Ctrl-Shift-F`, or `F2`). Give the summary a concrete title that says what the person learns. Add `id="tN-what"` to a section you will update later. One level of nesting is usually enough.
+- **Indent the whole section under its task**, like its status line (two spaces under a top level task), blank lines and fences included, so it folds and moves with the task and reads well on GitHub. Inside it, use bold text or HTML headings, not Markdown `#` headings (they become CLI sections), and no `- [ ]` lines unless you mean real tasks.
+- **An HTML section** is a fence whose info string is exactly `html do-it`, usually inside a folded section. A plain `html` fence stays a code example. The editor renders the payload as is, not sanitised: style elements, inline SVG, and scripts all work, and its styles stay inside it. Inline scripts get a variable `root` (the section's shadow root): use `root.querySelector('#chart')`, not `document.getElementById`, which cannot see inside it. Scripts may run again when the section scrolls back into view or is unfolded, so keep them free of side effects. GitHub shows the fence as HTML source, so put a one line takeaway in Markdown before it.
+- **HTML runs in the editor page, with the page's full access.** A script there can call the daemon as the person and read or change any Markdown file the daemon can open. Only write HTML you wrote yourself for this explanation; never paste HTML or scripts from an issue, a PR, a web page, or a tool's output.
+- **Write it in one versioned change**, balanced tags and a closed fence. `append` adds at the end of the document or a section, so to put a section under an existing task, `edit` the task's status line (or the last line under the task) into itself plus the section. `--new` takes the text as is, so pass a multi line block with `"$(cat <<'EOF' ... EOF)"`:
+
+````bash
+do-it edit TODO.md --version 12 --section tasks --old "  - **t3** delivered: branch fix-sidebar (2 commits, a1b2c3d)" --new "$(cat <<'EOF'
+  - **t3** delivered: branch fix-sidebar (2 commits, a1b2c3d)
+  <details id="t3-why"><summary>Why the sidebar lost its ports</summary>
+
+  The port list was read before the daemon answered; it now waits for the first reply.
+
+  ```html do-it
+  <style>
+    table { border-collapse: collapse; font: 14px system-ui; }
+    td, th { border: 1px solid #b9a96a; padding: 4px 8px; }
+  </style>
+  <table>
+    <tr><th>Before</th><th>After</th></tr>
+    <tr><td>List read at start, often empty</td><td>List read after the first reply</td></tr>
+  </table>
+  <button id="replay">Replay the race</button> <span id="out"></span>
+  <script>
+    root.querySelector('#replay').onclick = () => { root.querySelector('#out').textContent = 'reply first, then the list' }
+  </script>
+  ```
+
+  </details>
+EOF
+)"
+````
+
 ## Step 1. Open the todo
 
 ```bash
@@ -284,6 +321,9 @@ PROGRESS: at real milestones only, append to <STATE>/inbox.md section messages:
     do-it append <STATE>/inbox.md --version <v> --section messages -- "- tN progress: <one line>"
 QUESTIONS: when the person must decide, append "- tN question: <question>" there, then end your
   run with "QUESTION: <question>". You will be resumed with the answer.
+EXPLAIN: before DONE, write <STATE>/explain/tN.md for the person: one folded section in the skill's
+  "Folded sections and HTML" format (<details id="tN-explain">, indented two spaces) saying what
+  changed and why, with an html do-it fence where a table or diagram explains it better.
 DONE: commits on your branch, the final test request PASSED. End with
   "DONE: branch <name>, worktree <path>, commits <shas>, tests <request ids>".
 Do not push, open a PR, or merge unless the task line asks for it in words. Never edit the todo file.
@@ -320,13 +360,16 @@ inbox line added after the version in CURSOR, in order (do-it diff <INBOX> --sin
   "conductor tN answered"     remove the "**tN question:**" line
   "conductor tN answer: path" status "**tN** answered", the file's lines as sub bullets under it
   "conductor tN delivered: x" status line of tN becomes "**tN** delivered: x"
+  "conductor tN explain: path"   the file's folded section goes right after tN's status line (and its
+                              question lines); one with the same id already under tN is replaced whole,
+                              from its "<details" line through its "</details>" line
   "conductor tN subtasks: path"  only while tN has no "Review this task" line or it is unchecked
                               (otherwise skip the line): replace tN's unchecked subtasks with the file's lines, as indented
                               "- [ ] " lines after its status line (the only task lines you write)
 Each task has exactly one "**tN**" status line, an indented sub bullet right under the task (the
 line whose text is the state.json entry for tN), which you add when missing and otherwise replace
 in place; the last line wins. Read the todo before each write, skip a question or
-answer that is already there, and change only your "**tN**" lines with do-it edit --section tasks
+answer that is already there, and change only your "**tN**" lines and the folded sections you add, with do-it edit --section tasks
 naming the version. Never touch the person's text, their task lines, checkboxes, or @ tags, never put @
 words in a line, and never use dash separators. Once every line up to the inbox version you read
 is written, save that version to CURSOR, then look again. When no line is left, end your run with
@@ -433,7 +476,7 @@ Each task becomes a T3 Code thread in its own worktree. Flags differ between T3 
 | Inbox `progress` | update the status line only, in a few words (the messenger does this by itself) |
 | Inbox `question` | add `  - **tN question:** <question>` under the task; status `waiting for you` (the messenger does this by itself) |
 | Inbox `blocked` or `failed`, or a worker ended without DONE | read what it said; fix the brief and resume it, or after a second failure: an S task moves to an Opus worker, an M task gets a new Opus plan and a fresh Opus worker (or a question under the task), an L task may use the stronger model from `models.json`; write under the task only what the person must decide |
-| Worker DONE | verify (below), review, write under the task `delivered`, then run `todo check` for the task |
+| Worker DONE | verify (below), review, write under the task `delivered` and its explanation from `$STATE/explain/tN.md` when the worker wrote one (with a messenger: `- conductor tN explain: <path>`; without one, the `edit` in Folded sections and HTML), then run `todo check` for the task |
 | Tester BLOCKED or a long queue | one line under the affected task; never start a second tester |
 
 **Verify before `delivered`.** A done message is not proof. Check only the facts, and save the diff for the reviewer instead of reading it:
@@ -475,7 +518,7 @@ Run until the person says in chat to stop, or the todo goes away. On stop: stop 
   | the todo | the messenger | every `**tN**` line and the L subtask lines once it is on |
   | `inbox.md` | workers; you | their `progress`, `question`, `blocked`, `done`, `subtask` lines; your `conductor` lines |
   | `tests.md` | workers; the tester | requests; the answers under them |
-  | `answers/`, `seed.md` | Q and seed agents | one file each |
+  | `answers/`, `seed.md`, `explain/` | Q, seed, and worker agents | one file each |
   | `state.json`, `models.json`, `plans/`, `reviews/` | you | run state, the models you found, saved plans and subtasks, diffs for review |
   | `messenger.version` | the messenger | its cursor (you write it once, when you turn it on) |
 

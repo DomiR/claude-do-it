@@ -438,6 +438,7 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
 | Go to project | `Cmd-p` | `Ctrl-p` | Open the project palette and move to the selected heading. |
 | Command palette | `Cmd-Shift-p`, `F1` | `Ctrl-Shift-p`, `F1` | Search and run editor commands. |
 | Find | `Cmd-f` | `Ctrl-f` | Open CodeMirror Find. |
+| Toggle fold | `Cmd-Alt-f`, `F2` | `Ctrl-Shift-f`, `F2` | Fold or unfold the project, task, or section whose header has the caret, else the innermost one around the caret. Fold all and Unfold all are in the command palette, without keys. |
 | Keyboard shortcuts | `Cmd-/` | `Ctrl-/` | Open the shortcuts palette. `?` opens it when focus is outside the editor or an input. Escape closes it. |
 
 The editor deliberately leaves `Mod-r`, `Mod-Shift-r`, `Mod-Shift-o`, `Ctrl-c`
@@ -462,6 +463,57 @@ browser focus navigation remains available.
 - Activity is a collapsible pane, initially closed, with the latest 20 remote
   changes and their version, authors, and todo details. Remote insertions are
   highlighted for three seconds. The pane does not take editor focus.
+- Folding. Projects, tasks with lines under them, and `<details>` sections
+  share one fold model (`editor/folds.ts`, the only fold state). A project
+  folds everything after its heading up to the next heading of the same or a
+  higher level; a heading inside a details section ends at that section's
+  closer and never ends an outer project. A task folds its block (`blockEnd`:
+  every deeper line, blank lines and empty lines inside a fence included). A
+  details section folds from its summary through `</details>`. Projects and
+  tasks start unfolded; details start folded unless the opener has `open`, so
+  a section an agent adds arrives folded. A folded block shows a quiet
+  `… N lines` marker after its header, which unfolds it when clicked. Each
+  header has a small chevron in a narrow gutter beside the line, shown only
+  while the pointer is on that row or the caret is on the header, always shown
+  while folded, and shown faintly on devices without hover. Folding never
+  changes the Markdown, the version, or undo history. The tab remembers the
+  person's choices in `sessionStorage` under `do-it:folds:v1:<path>` (at most
+  500), keyed by kind, label (task stamps ignored), and occurrence, or by a
+  details `id`. Fold choices follow a header that is renamed or moved, and an
+  agent appending under a folded task extends the hidden range and its count
+  without unfolding it. A selection or Find match inside a folded body unfolds
+  every fold around it; folding a block moves a caret inside it to the end of
+  its header. The caret skips folded bodies. Backspace at the start of the line
+  after a folded body, or Delete at the end of its header, unfolds it and
+  deletes nothing.
+- Details sections. `<details>` with `<summary>Title</summary>` on the same
+  line or the next one, an optional `open` and `id="..."`, and `</details>`
+  alone on its own line at any indentation. Sections nest; tags inside fences
+  do not count. The tags are hidden, the title stays editable text with inline
+  styles, and an open section ends with a thin rule in place of `</details>`.
+  Incomplete tags stay visible as plain text. A deletion that touches a tag
+  without covering the whole section removes all of that section's tags and
+  keeps its title and body as plain lines. Typing at the start of the end rule
+  adds a body line before the closer, typing at its end adds a line after it,
+  and Enter on a summary breaks the line after `</summary>`.
+- HTML sections. A fence whose info string is exactly `html do-it` renders its
+  payload as HTML; a plain `html` fence stays code. The payload is not
+  sanitised. It goes into a block widget's open shadow root, so its styles stay
+  inside and the editor's styles stay out, and its height is the content's own.
+  Inline scripts run after the widget is attached, in order, as
+  `new Function('root', code)(shadowRoot)`, so they find their elements with
+  `root.querySelector(...)` (`document.currentScript` is null inside a shadow
+  root); `src` scripts load in order, and module scripts run as script
+  elements. Scripts run in the editor page with its full access: they can call
+  the daemon's `/rpc` with the page's cookie, so they can read and change any
+  Markdown file the daemon can open. Only write HTML you wrote yourself. A
+  widget whose source is unchanged is kept, so scripts do not re run on every
+  edit, but scrolling it out of view, folding, or editing the source recreates
+  it and runs them again. HTML inside a folded block is not mounted. The first
+  Backspace or Delete next to an HTML section selects its whole fence and the
+  second deletes it. Find matches inside the payload, and Replace inside it
+  edits the source; a replacement that touches a fence line or a details tag is
+  refused.
 - Typing waits 400 ms after the latest input before syncing. An action syncs
   immediately. At most one sync is in flight. `ApplyRemoteText` computes
   `D = edits(from, to)` and maps `D` over the local edits since `from`, then
