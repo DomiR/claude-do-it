@@ -1,8 +1,10 @@
 import { describe, expect, it, setDefaultTimeout } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Stream } from "effect"
+import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { ensureDaemon, withClient } from "@do-it/client"
+import { alive, ensureDaemon, withClient, type DaemonInfo, type DoItClient } from "@do-it/client"
+import type { WatchPayload } from "@do-it/protocol"
 import { runClient } from "../packages/client/test/environment"
 import { diskText, jsonLine, makeFixture, readLines, runCli, startCli, wait, writeDocument } from "./helpers"
 
@@ -16,6 +18,73 @@ async function openFixture(fixture: ReturnType<typeof makeFixture>): Promise<voi
 
 async function stopFixture(fixture: ReturnType<typeof makeFixture>): Promise<void> {
   await runCli(["stop"], fixture.env)
+}
+
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
+
+/**
+ * A tab holds version N when the daemon restarts, agents append 15 lines, and
+ * then the tab reconnects and sends its typing. A lossy restart counts from
+ * N-3 again, as when versions.json lags the file, so N names another text.
+ */
+async function restartUnderTab(lossy: boolean): Promise<void> {
+  const fixture = makeFixture(); writeDocument(fixture.file, "# TODO\n\n- [ ] first\n")
+  await openFixture(fixture)
+  let info: DaemonInfo = await runClient(ensureDaemon({ home: fixture.home }))
+  const call = <A, E>(f: (client: DoItClient) => Effect.Effect<A, E>) => Effect.runPromise(withClient(info, f))
+  const firstEvent = (payload: WatchPayload) => Effect.runPromise(Effect.scoped(withClient(info, client => Effect.gen(function* () {
+    const pull = yield* Stream.toPull(client.watch(payload, { streamBufferSize: 1 }))
+    return (yield* pull)[0]!
+  }))))
+  const path = fixture.file
+  for (let i = 0; i < 4; i++) {
+    const { version } = await call(client => client.read({ path }))
+    await call(client => client.edit({ path, version, author: { _tag: "Agent", name: "before" }, op: { _tag: "TodoAdd", text: `before ${i} end` } }))
+  }
+  const tab = await call(client => client.read({ path }))
+  expect(tab.hash).toBe(sha256(tab.text))
+
+  await stopFixture(fixture)
+  // The daemon saves versions.json while it shuts down, after it stops answering.
+  for (let i = 0; i < 100 && alive(info.pid); i++) await wait(50)
+  expect(alive(info.pid)).toBe(false)
+  const versionsPath = join(fixture.home, "versions.json")
+  const versions = JSON.parse(readFileSync(versionsPath, "utf8"))
+  expect(versions[path]).toEqual({ version: tab.version, sha256: tab.hash })
+  if (lossy) writeFileSync(versionsPath, JSON.stringify({ ...versions, [path]: { version: tab.version - 3, sha256: tab.hash } }))
+  expect((await runCli(["read", path, "--json"], fixture.env)).code).toBe(0)
+  info = await runClient(ensureDaemon({ home: fixture.home }))
+
+  let version = (await call(client => client.read({ path }))).version
+  expect(version).toBe(lossy ? tab.version - 3 : tab.version)
+  for (let i = 0; i < 15; i++) {
+    const added = await runCli(["todo", "add", path, "--version", String(version), "--as", "agent", "--json", `agent ${i} end`], fixture.env)
+    expect(added.code).toBe(0)
+    version = jsonLine<{ version: number }>(added).version
+  }
+  const typed = `${tab.text}- [ ] local end\n`
+  const watched = await firstEvent({ path, since: tab.version, sinceHash: tab.hash, text: true })
+  if (lossy) {
+    // Version N now names another text: the tab's sync is refused and its watch starts over.
+    expect(watched).toMatchObject({ _tag: "Resync", version })
+    const stale = await call(client => client.sync({ path, base: tab.version, baseHash: tab.hash, text: typed }).pipe(Effect.result))
+    expect(stale._tag).toBe("Failure")
+    if (stale._tag === "Failure") expect(stale.failure._tag).toBe("Forgotten")
+    if (watched._tag !== "Resync" || watched.text === undefined || watched.hash === undefined) throw new Error("Expected a Resync with text")
+    expect(watched.hash).toBe(sha256(watched.text))
+    // The tab replays its unsent typing over the Resync text and syncs from there.
+    await call(client => client.sync({ path, base: watched.version, baseHash: watched.hash, text: `${watched.text}- [ ] local end\n` }))
+  } else {
+    expect(watched).toMatchObject({ _tag: "Watching", version })
+    await call(client => client.sync({ path, base: tab.version, baseHash: tab.hash, text: typed }))
+  }
+  const final = jsonLine<{ text: string }>(await runCli(["read", path, "--json"], fixture.env)).text
+  const markers = ["first", "local end", ...Array.from({ length: 4 }, (_, i) => `before ${i} end`), ...Array.from({ length: 15 }, (_, i) => `agent ${i} end`)]
+  for (const marker of markers) expect(final.split(`- [ ] ${marker}\n`)).toHaveLength(2)
+  expect(final.split("\n").filter(line => line.startsWith("- [ ] "))).toHaveLength(markers.length)
+  for (let i = 0; i < 40 && diskText(path) !== final; i++) await wait(50)
+  expect(diskText(path)).toBe(final)
+  await stopFixture(fixture)
 }
 
 describe("do-it CLI end to end", () => {
@@ -194,6 +263,10 @@ describe("do-it CLI end to end", () => {
     expect(later).toContain("later")
     watcher.kill(); await stopFixture(fixture)
   }, 30_000)
+
+  it("refuses a stale tab's sync after a restart that reuses its version, and its rebased typing keeps every line", () => restartUnderTab(true), 60_000)
+
+  it("merges a stale tab's sync after a restart that keeps its version and text", () => restartUnderTab(false), 60_000)
 
   it("opens a missing document and serves the web route when built", async () => {
     const fixture = makeFixture()

@@ -36,6 +36,10 @@ const reply = (base: number, requestText: string, version: number, text = reques
   Message.SucceededSync({ request: { base, text: requestText }, version, text })
 const merged = (from: string, to: string, live: string) => rebaseRemote(from, to, live)
   .apply(EditorState.create({ doc: live, extensions: [EditorState.lineSeparator.of('\n')] }).doc).toString()
+const hash = (version: number) => version.toString(16).padStart(64, '0')
+const watching = (version: number, text: string) => Message.ReceivedWatchEvent({
+  event: { _tag: 'Watching', version, text, hash: hash(version) },
+})
 
 // Story normally settles Commands before the next Message. These races need
 // a Mount or watch fact while a Command remains outstanding, retaining every
@@ -222,7 +226,7 @@ describe('editor synchronization', () => {
       model(next => {
         expect(documentOf(next).inFlight._tag).toBe('None')
         expect(documentOf(next).watchKey).toBe(1)
-        expect(Option.getOrThrow(documentOf(next).resumeFrom)).toBe(1)
+        expect(Option.getOrThrow(documentOf(next).resumeFrom)).toEqual({ version: 1 })
         expect(documentOf(next).base.version).toBe(1)
       }),
       message(Message.CompletedWaitBeforeSync({ session, revision: 1 })), Command.expectNone(),
@@ -314,7 +318,7 @@ describe('editor synchronization', () => {
       Command.resolve(WaitBeforeReconnect, Message.CompletedWaitBeforeReconnect()),
       model(next => {
         const dependencies = subscriptions.watch.modelToDependencies(next)
-        expect(Option.getOrThrow(dependencies.maybeWatch)).toEqual({ path, watchKey: 1, resumeFrom: Option.some(2) })
+        expect(Option.getOrThrow(dependencies.maybeWatch)).toEqual({ path, watchKey: 1, resumeFrom: Option.some({ version: 2 }) })
       }),
       message(Message.ReceivedWatchEvent({ event: { _tag: 'Watching', version: 3, text: `${sent}agent\n` } })),
       Command.resolve(ApplyRemoteText, Message.CompletedApplyRemoteText({ token: 1 })),
@@ -322,6 +326,55 @@ describe('editor synchronization', () => {
       model(next => {
         expect(documentOf(next).session).toBe(session)
         expect(documentOf(next).connection._tag).toBe('Live')
+      }),
+    )
+  })
+
+  test('keeps the hash of each base and sends it with every sync and reconnect', () => {
+    const agentText = `${sent}agent\n`
+    story(update, given(update(makeInitialModel(path, 'mac'), watching(1, original)).model),
+      model(next => expect(documentOf(next).base).toEqual({ version: 1, text: original, hash: hash(1) })),
+      message(edited(sent, 'Action')),
+      Command.expectExact(SyncDraft({ path, base: 1, text: sent, baseHash: hash(1) })),
+      Command.resolve(SyncDraft, Message.SucceededSync({ request: { base: 1, text: sent, baseHash: hash(1) }, version: 2, text: sent, hash: hash(2) })),
+      model(next => expect(documentOf(next).base).toEqual({ version: 2, text: sent, hash: hash(2) })),
+      message(Message.ReceivedWatchEvent({ event: { _tag: 'Change', from: 2, to: 3, by: [], diff: null, todos: [], hash: hash(3), text: agentText } })),
+      Command.resolve(ApplyRemoteText, Message.CompletedApplyRemoteText({ token: 1 })),
+      message(remote(1, agentText)),
+      model(next => expect(documentOf(next).base).toEqual({ version: 3, text: agentText, hash: hash(3) })),
+      message(Message.FailedWatch({ unauthorized: false })),
+      Command.resolve(WaitBeforeReconnect, Message.CompletedWaitBeforeReconnect()),
+      model(next => expect(Option.getOrThrow(subscriptions.watch.modelToDependencies(next).maybeWatch))
+        .toEqual({ path, watchKey: 1, resumeFrom: Option.some({ version: 3, hash: hash(3) }) })),
+    )
+  })
+
+  test('typing from a base that a restarted daemon gave to another text is rebased over the Resync, not merged', () => {
+    const live = `${original}- [ ] Local\n`
+    const restarted = `${original}${Array.from({ length: 15 }, (_, i) => `- [ ] Agent ${i}\n`).join('')}`
+    const combined = merged(original, restarted, live)
+    story(update, given(update(makeInitialModel(path, 'mac'), watching(5, original)).model),
+      message(edited(live)),
+      // The daemon restarts while the typing waits out its debounce.
+      whilePending(Message.FailedWatch({ unauthorized: false })),
+      Command.resolve(WaitBeforeSync, Message.CompletedWaitBeforeSync({ session, revision: 1 })),
+      Command.expectExact(WaitBeforeReconnect({ attempt: 1 }), SyncDraft({ path, base: 5, text: live, baseHash: hash(5) })),
+      Command.resolve(SyncDraft, Message.FailedSync({ request: { base: 5, text: live, baseHash: hash(5) }, kind: 'Forgotten' })),
+      Command.resolve(WaitBeforeReconnect, Message.CompletedWaitBeforeReconnect()),
+      model(next => {
+        expect(documentOf(next).connection).toEqual({ _tag: 'Reconnecting', awaitingResync: true })
+        expect(Option.getOrThrow(documentOf(next).resumeFrom)).toEqual({ version: 5, hash: hash(5) })
+      }),
+      message(Message.ReceivedWatchEvent({ event: { _tag: 'Resync', version: 17, hash: hash(17), text: restarted } })),
+      Command.expectExact(ApplyRemoteText({ session, token: 1, from: original, to: restarted })),
+      Command.resolve(ApplyRemoteText, Message.CompletedApplyRemoteText({ token: 1 })),
+      message(remote(1, combined)),
+      Command.expectExact(SyncDraft({ path, base: 17, text: combined, baseHash: hash(17) })),
+      Command.resolve(SyncDraft, Message.SucceededSync({ request: { base: 17, text: combined, baseHash: hash(17) }, version: 18, text: combined, hash: hash(18) })),
+      model(next => {
+        expect(saveStatus(documentOf(next))).toBe('Saved')
+        expect(documentOf(next).draft.split('- [ ] Local')).toHaveLength(2)
+        for (let i = 0; i < 15; i++) expect(documentOf(next).draft.split(`- [ ] Agent ${i}\n`)).toHaveLength(2)
       }),
     )
   })
