@@ -15,6 +15,7 @@ import { classifiedDocument } from './document'
 import { clearRemoteHighlight, editorFacts, remoteTransaction } from './facts'
 import { foldView, foldViewState } from './fold-view'
 import { foldAll, foldExtensions, foldState, toggleFold, unfoldAll, type FoldOptions } from './folds'
+import { htmlBlockDecorations } from './html-block'
 import { bindings, type Platform } from './keymap'
 import {
   classifyDocument, linkAt, linkRangeOn, prefixHasWidth, type ClassifiedDocument, type InlineKind, type Span,
@@ -564,7 +565,7 @@ export const editorExtensions = (platform: Platform, options: EditorOptions = {}
   EditorState.tabSize.of(4),
   EditorState.allowMultipleSelections.of(true),
   history(), drawSelection(), highlightActiveLine(), lineWrap.of(wrapping(options.wrap ?? false)),
-  foldExtensions(options), foldView,
+  foldExtensions(options), foldView, htmlBlockDecorations,
   EditorView.contentAttributes.of({ 'aria-label': 'Todo document' }),
   Prec.highest(inputGuard),
   Prec.highest(keymap.of([{
