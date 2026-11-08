@@ -11,6 +11,11 @@ on disk all merge instead of overwriting each other: every open file is one
 [Loro](https://loro.dev) CRDT held by a small daemon on your machine. The file
 itself stays plain Markdown, so any other editor still works on it.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/editor-dark.png">
+  <img alt="The do-it editor: a Markdown todo with tasks, tags, and the status lines agents write under each task" src="docs/images/editor-light.png">
+</picture>
+
 ```mermaid
 flowchart LR
   you["You<br/>browser editor"] <-->|"live sync"| daemon
