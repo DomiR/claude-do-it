@@ -1,6 +1,6 @@
 ---
 name: do-it
-description: "Run a Markdown todo as the user's only interface to a team of agents. `/do-it [file]` opens the todo (default TODO.md, created when missing) in the browser; `/do-it <request>` first runs the request read only and writes its result into the todo as one task per item, which wait until the person writes under them. Then this session becomes the conductor: it watches the file, sizes every task line, plans it on a model tier that fits its size, splits large tasks into subtasks the person reviews first, delivers it through worker agents in their own worktrees and one shared tester, and writes status, questions, and results back under each task. Works anywhere Claude Code runs: inside Herdr, Orca, or T3 Code each worker gets its own worktree and session in that app; in any other terminal the workers are Claude Code subagents in worktrees. Also the reference for reading and changing any do-it document with versioned `do-it` commands. Trigger on '/do-it', 'do-it', 'do it from my todo', 'work through TODO.md', 'conduct this todo'."
+description: "Run a Markdown todo as the user's only interface to a team of agents. `/do-it [file]` opens the todo (default TODO.md, created when missing) in the browser; `/do-it <request>` first runs the request read only and writes its result into the todo as one task per item, which wait until the person writes under them. Then this session becomes the conductor: it watches the file, sizes every task line, plans it on a model tier that fits its size, splits large tasks into subtasks the person reviews first, delivers it through worker agents in their own worktrees and one shared tester, and writes status, questions, and results back under each task. Works anywhere Claude Code runs: inside Herdr, Orca, T3 Code, or super.engineering each worker gets its own worktree and session in that app; in any other terminal the workers are Claude Code subagents in worktrees. Also the reference for reading and changing any do-it document with versioned `do-it` commands. Trigger on '/do-it', 'do-it', 'do it from my todo', 'work through TODO.md', 'conduct this todo'."
 ---
 
 # do-it
@@ -8,6 +8,8 @@ description: "Run a Markdown todo as the user's only interface to a team of agen
 Arguments: **$ARGUMENTS**. When the first line is empty, or names an existing file, or ends in `.md`, it is the todo file (empty means `TODO.md` in the current directory). Anything else is a **seed request** (for example "list the PRs I am tagged in today"): the todo is `TODO.md` in the current directory, and Step 1b turns the request into tasks.
 
 You are the **conductor**. The person only looks at the todo in their browser. Everything they want done arrives as lines in it, and everything they need to know (status, plans, questions, results) goes back into it, under the task it belongs to. Never ask them to relay anything between agents, and do not expect them to read this chat.
+
+**Never take the person's focus.** Open the todo once, in Step 1, and never again during the run. No agent opens, reloads, selects, or focuses the todo's tab or split, a browser tab, a Sheprd or Herdr pane, tab, or workspace that the person did not just ask for: they may be typing somewhere else. To see the todo, `do-it read` it. The worker, tester, and messenger briefs carry this rule as their SCREEN line; add that line to every other brief you write.
 
 **You delegate and monitor; you do not do the work.** You size tasks, dispatch agents, watch the channels, check the facts a delivery claims, and set the small `@started` and `@done` labels. Everything else goes to an agent: searching or reading code, docs, and diffs (a read only `Explore` agent, keep only its conclusion), answering questions and research (Q tasks), planning (a planner), building (workers), testing (the tester), reviewing (a reviewer), and, once a messenger runs, writing the person's status lines, questions, and results (Step 4). Reading what your own agents hand back (a verdict, an answer file, an inbox line) is fine; reading the code yourself is not. Keep your context for the whole todo, not for one task.
 
@@ -39,7 +41,7 @@ $D doctor                                 # checks Bun, PATH, the daemon build, 
 - Name yourself: `--as NAME` or `export DO_IT_AGENT=NAME`. The person sees the name next to your changes, and `watch --as NAME` skips your own changes.
 - The do-it Claude Code plugin puts `do-it` on the Bash tool's PATH, so the next bullet applies only without it. When a Monitor command reports `do-it` not found, spell out the `bunx claude-do-it` call there as the next bullet says.
 - When `do-it` is not on PATH, define it as a shell function at the top of every Bash call (functions do not survive between calls, and `D="bun ..."` breaks in zsh because `$D` is not word split): `do-it() { bunx claude-do-it "$@"; }` (from a repo checkout: `do-it() { bun "<repo>/packages/cli/src/bin.ts" "$@"; }`). Monitor commands spell out the `bunx claude-do-it` (or `bun .../bin.ts`) call in full.
-- When a do-it command fails in a way the replies above do not explain (exit 3, an unknown command), run `do-it doctor` once. Run its `do-it stop` and plain `do-it skill install` fixes yourself (`do-it stop` restarts the daemon for every agent, so tell the person to reload the editor tab). Show the person every other `fix:` line (`--force`, `ln`, `upgrade`, `add -g`, `npm install`, `export PATH`) and let them run it: those change their machine, and an `export` in your Bash call does not outlast it.
+- When a do-it command fails in a way the replies above do not explain (exit 3, an unknown command), run `do-it doctor` once. Run its `do-it stop` and plain `do-it skill install` fixes yourself (`do-it stop` restarts the daemon for every agent, so tell the person to reload the editor tab, and never reopen or reload it yourself). Show the person every other `fix:` line (`--force`, `ln`, `upgrade`, `add -g`, `npm install`, `export PATH`) and let them run it: those change their machine, and an `export` in your Bash call does not outlast it.
 - Exit codes: 0 done; 1 refused, version mismatch, or a doctor problem; 2 invalid arguments; 3 daemon not running and could not start; 4 nothing yet; 9 the document was deleted.
 
 ## Tags
@@ -118,6 +120,8 @@ Find out where this session runs, once. It decides how workers start (Step 4) an
 detect_harness() {
   if [ "${HERDR_ENV:-}" = 1 ] && command -v herdr >/dev/null; then echo herdr; return; fi
   if [ -n "${ORCA_TERMINAL_HANDLE:-}${ORCA_WORKTREE_ID:-}" ] && command -v orca >/dev/null; then echo orca; return; fi
+  if [ -n "${SUPER_ENGINEERING_ENV:-}${SUPER_ENGINEERING_WORKTREE_PATH:-}${SUPERCONDUCTOR_WORKTREE_PATH:-}" ] &&
+    command -v sc >/dev/null && sc instance current --json >/dev/null 2>&1; then echo sc; return; fi   # super.engineering, formerly Superconductor
   if command -v t3 >/dev/null; then
     if [ -n "${T3CODE_PROJECT_ROOT:-}${T3CODE_WORKTREE_PATH:-}" ]; then echo t3code; return; fi
     pid=$PPID   # T3 Code does not mark its agent sessions yet, so look for it among the parent processes
@@ -132,7 +136,7 @@ detect_harness() {
 detect_harness > "$STATE/harness"; cat "$STATE/harness"   # later Bash calls: HARNESS=$(cat "$STATE/harness")
 ```
 
-`herdr`, `orca`, and `t3code` start workers as sessions in that app; `plain` (any other terminal) uses Claude Code subagents, which need nothing beyond Claude Code.
+`herdr`, `orca`, `sc` (super.engineering), and `t3code` start workers as sessions in that app; `plain` (any other terminal) uses Claude Code subagents, which need nothing beyond Claude Code.
 
 Find out once which models you can reach beyond Claude Code's own `opus` and `sonnet`. Only L tasks use them (planning, review, and the hard subtasks). Look in two places: the Agent tool's list of agent types and their descriptions, for an agent type whose description names a model stronger than Opus; and PATH, for a CLI that runs another frontier model non interactively. Run `<cli> --help` once for any CLI you find, and store the full non interactive command (read only for planning and review), so later steps and the worker brief's HARD PARTS can paste it. Write what you found to `$STATE/models.json`, for example `{"planner": "agent <type>", "reviewer": null, "hard_parts": "cli <command>"}`, with `null` for anything you did not find. Use only what is there; never assume an agent type or CLI exists. Everything not found falls back to Opus.
 
@@ -144,14 +148,17 @@ for app in /Applications/Sheprd.app/Contents/MacOS/sheprd /Applications/Herdr.ap
   [ -x "$app" ] && { SHEPRD=$app; break; }
 done
 if [ "${HERDR_ENV:-}" = 1 ] && [ -n "$SHEPRD" ]; then
-  DO_IT_BROWSER="$SHEPRD browser open --beside" do-it open "$TODO"   # a split next to this pane
+  DO_IT_BROWSER="$SHEPRD browser open --beside --no-focus" do-it open "$TODO"   # a split next to this pane, keyboard stays here
+elif [ "$(cat "$STATE/harness")" = sc ]; then
+  # the workspace's browser split, which never moves focus; the system browser when browser automation is off or denied
+  DO_IT_BROWSER='f() { sc browser open "$1" --split >/dev/null 2>&1 || open "$1"; }; f' do-it open "$TODO"
 else
   do-it open "$TODO"
 fi
 do-it read "$TODO"
 ```
 
-Opening the todo again from the same pane reuses and reloads that split.
+This is the only `do-it open` of the run, and on a resume (Step 1a) skip it when the person already has the todo open. Opening it again reloads and shows the split, which pulls the person away from what they are doing: never run `do-it open`, `sheprd browser open`, `sheprd browser reload`, or any `focus` command on the todo later, not after a daemon restart, not to check a change, not to show a result. When the editor needs a reload (after `do-it stop`), write that in chat and let the person do it.
 
 Tell the person in one line that the todo is open and that they can add tasks there. Create the two agent channels with your Write tool if missing (nobody has them open yet): `$STATE/inbox.md` (`# Inbox`, `## Messages`) and `$STATE/tests.md` (`# Tests`, `## Queue`). If `$STATE/state.json` exists, this is a resume: do Step 1a, which ends with the Step 2 watches armed, then go on with Step 5 events.
 
@@ -162,13 +169,13 @@ When `DO_IT_HOME` or `DO_IT_PORT` is set in your environment, every agent you st
 A conductor that stopped (a crash, a closed tab, a new session) leaves its workers, tester, and messenger running, and events kept arriving while nobody watched. Resuming is catching up, then conducting as usual: it is never done by one pass.
 
 1. **Make sure no conductor still runs.** Only one conductor runs per todo. List the watches with `pgrep -fl "do-it watch"` and keep those naming this run's todo or `$STATE` with `--as conductor`. For each, walk up its parents (`ps -o ppid= -p PID`, then `ps -o comm= -p PPID`): when one is a live `claude` process other than your own session, another conductor still runs, so do not resume: tell the person in chat and stop. Otherwise these watches are orphans of the stopped conductor: kill them. Never touch the tester's or messenger's watches, or another run's.
-2. **Find what still runs.** Match each task by the worktree path and branch saved in `state.json`, and use the agent name only as a cross check (another run in the same repo can have its own `do-tN`). Herdr: `herdr agent list` (cwd and name), `herdr worktree list --json`; Orca: `orca worktree list --json`, `orca terminal list --json`; T3 Code: `t3 thread list`; plain: `git worktree list` (subagents do not survive their conductor, so every plain worker is gone). Reuse the tester and messenger saved in `state.json` while they run; start new ones only when they are gone.
+2. **Find what still runs.** Match each task by the worktree path and branch saved in `state.json`, and use the agent name only as a cross check (another run in the same repo can have its own `do-tN`). Herdr: `herdr agent list` (cwd and name), `herdr worktree list --json`; Orca: `orca worktree list --json`, `orca terminal list --json`; super.engineering: `sc agents list --worktree <path> --output json` for each saved worktree; T3 Code: `t3 thread list`; plain: `git worktree list` (subagents do not survive their conductor, so every plain worker is gone). Reuse the tester and messenger saved in `state.json` while they run; start new ones only when they are gone.
 3. **Read what you missed.** `do-it read` the todo, the inbox, and `tests.md` whole (not a watch: a watch only shows what comes next). Compare with `state.json`: inbox lines after `versions.inbox` (all of them when it is missing), answers in `tests.md`, and the person's edits in the todo since `versions.todo` (new tasks, notes under tasks, answers to questions, a checked `Review this task`).
 4. **Act on each task**, by its `state.json` status and what you found:
    - `delivered`: nothing. Never re-dispatch it, re-check it, or rewrite its status line.
    - a worker whose `done` line is in the inbox but who is not `delivered`: verify and deliver it now (Step 5).
    - a live worker without `done`: keep it, send it any note the person wrote while you were away (`From the TODO: ...`), and never start a second worker on that task.
-   - a worker that is gone without `done`: its worktree and branch still hold its work, so start a new worker in that same worktree with its brief plus `RESUMED: continue from the commits on your branch`, and never create a second worktree for it (when the saved worktree is missing or was never saved, dispatch it fresh, Step 4). Herdr: `herdr worktree open --no-focus`, then focus your own workspace again, then start `do-tN` in its root pane; Orca: a new terminal in the saved worktree id; T3 Code: `t3 thread send` to the saved thread; plain: `Agent` without `isolation`, with `CWD: <saved worktree>` in the brief and `cd` there in every Bash call.
+   - a worker that is gone without `done`: its worktree and branch still hold its work, so start a new worker in that same worktree with its brief plus `RESUMED: continue from the commits on your branch`, and never create a second worktree for it (when the saved worktree is missing or was never saved, dispatch it fresh, Step 4). Herdr: `herdr worktree open --no-focus`, then put focus back where it was only if it moved (as in Step 4), then start `do-tN` in its root pane; Orca: a new terminal in the saved worktree id; super.engineering: `sc layout run tabs --worktree <saved path> --open-if-needed --active keep` as in Step 4; T3 Code: `t3 thread send` to the saved thread; plain: `Agent` without `isolation`, with `CWD: <saved worktree>` in the brief and `cd` there in every Bash call.
    - `queued`: dispatch it in tag order as workers free up, with any note the person wrote under it in the brief.
    - a task line with `@started` and a `**tN**` status line but no `state.json` entry: look for its worker before treating it as new: a worktree whose branch or label names the task, or an agent whose brief or cwd points at this `$STATE`; when nothing matches for sure, ask the person in chat before dispatching it; with `@started` and no status line, triage it (Step 3) and keep the stamp.
    - any other status (`review`, `listed`, `waiting for you`, `stopped`): apply the Step 5 row for what changed in the todo since `versions.todo`, or nothing when nothing did.
@@ -312,6 +319,9 @@ SUBTASKS (L only): <the subtask lines as the person left them, without Review th
   in order. When you begin one, append "- tN subtask started: <its text>" to the inbox; when its
   commits are in, "- tN subtask done: <its text>". HARD PARTS: <the hard_parts command from models.json, or none>.
 NAME: export DO_IT_AGENT=tN before any do-it command.
+SCREEN: never open, reload, select, or focus anything on the person's screen: no do-it open, no
+  browser, tab, pane, worktree, or workspace command of Sheprd, Herdr, Orca, T3 Code, or sc that
+  opens, selects, activates, or focuses something, no new browser windows.
 COMPUTE RULE: never run builds, tests, linters, type checkers, dev servers, or browsers yourself.
   Formatters are fine. To test, queue one request and wait for the answer:
     do-it todo add <STATE>/tests.md --version <v> --section queue "tNrK tN: <command> in <your worktree>"
@@ -341,12 +351,19 @@ run exactly that command in that path with output to <STATE>/logs/rN.log, then u
   or FAIL in 1m05s, log <path>: <the first error, at most 15 lines, and the cause in one sentence>
 and check the request off (do-it todo check). Never edit code, never commit, never fix failures.
 If a command would run longer than 30 minutes or needs a desktop you do not have, answer BLOCKED
-with the reason. When no open request is left, end your run with "QUEUE EMPTY".
+with the reason. Drive browsers headless only.
+SCREEN: never open, reload, select, or focus anything on the person's screen: no do-it open, no
+  browser, tab, pane, worktree, or workspace command of Sheprd, Herdr, Orca, T3 Code, or sc that
+  opens, selects, activates, or focuses something, no new browser windows.
+When no open request is left, end your run with "QUEUE EMPTY".
 ```
 
 Messenger brief:
 
 ```
+SCREEN: never open, reload, select, or focus anything on the person's screen: no do-it open, no
+  browser, tab, pane, worktree, or workspace command of Sheprd, Herdr, Orca, T3 Code, or sc that
+  opens, selects, activates, or focuses something, no new browser windows.
 You write the person's todo for the conductor. export DO_IT_AGENT=messenger. TODO=<todo path>,
 INBOX=<STATE>/inbox.md (section messages), CURSOR=<STATE>/messenger.version, and
 STATE=<STATE>/state.json, where each task's entry gives the task text for its tN. Your input is every
@@ -376,7 +393,7 @@ is written, save that version to CURSOR, then look again. When no line is left, 
 "INBOX DRAINED".
 ```
 
-### Session workers (Herdr, Orca, T3 Code)
+### Session workers (Herdr, Orca, T3 Code, super.engineering)
 
 In these apps every worker is a full Claude session in its own worktree, not a subagent, so the person sees each task in the app and it can call its own subagents. Every worker, tester, and messenger starts in the background: the person stays on the todo and the conversation, and opens a task's space only when they choose to. Never activate, focus, or reveal what you create. Its brief is the worker brief above with `CWD: <worktree>   BRANCH: <branch>   BASE: <base branch>   REPO RULES: read CLAUDE.md/AGENTS.md` in place of the REPO line (`CWD: the worktree you start in` when the app makes the worktree), plus:
 
@@ -408,14 +425,17 @@ Run `herdr --help` once for the CLI; never split your own pane.
 - **Worker per task**: a Herdr worktree and space in the background (a branch named after the task, based on the repo's integration branch, under `.claude/worktrees/`), then Claude in its root pane named `do-tN` (`$MODEL`: `sonnet` for S, `opus` for M and L; `$EFFORT`: `high`, `xhigh` for L) with the session worker brief above. Create, start, and brief it without ever showing it:
   ```bash
   SRC_WS=$HERDR_WORKSPACE_ID; BRANCH=<branch>; BASE=<base>; REPO_ROOT=<repo root>
+  focused() { herdr workspace list | jq -r '.result.workspaces[] | select(.focused) | .workspace_id'; }
+  BEFORE=$(focused)                               # wherever the person is now, often not your workspace
   WT=$(herdr worktree create --workspace "$SRC_WS" --branch "$BRANCH" --base "$BASE" \
     --path "$REPO_ROOT/.claude/worktrees/$BRANCH" --label "$BRANCH" --no-focus --json)
-  herdr workspace focus "$HERDR_WORKSPACE_ID"     # always, at once: create can move focus even with --no-focus
+  # create can move focus even with --no-focus: put it back where it was, and only then
+  [ -n "$BEFORE" ] && [ "$(focused)" != "$BEFORE" ] && herdr workspace focus "$BEFORE"
   ROOT_PANE=$(jq -r .result.root_pane.pane_id <<<"$WT")
   herdr agent start do-tN --kind claude --pane "$ROOT_PANE" -- --model "$MODEL" --effort "$EFFORT" --dangerously-skip-permissions
   herdr agent prompt do-tN "$BRIEF" --wait --until working --timeout 20000
   ```
-  Never pass `--focus`, never focus, select, or reveal the new space, its tabs, or its panes, and never use `herdr worktree open` for a new worker. When you must reopen an existing worktree with `worktree open` (a resume), pass `--no-focus` and run `herdr workspace focus "$HERDR_WORKSPACE_ID"` right after it too, since `open` focuses its target anyway.
+  Never pass `--focus`, never focus, select, or reveal the new space, its tabs, or its panes, and never use `herdr worktree open` for a new worker. When you must reopen an existing worktree with `worktree open` (a resume), pass `--no-focus` and restore focus the same way (save `BEFORE` first, refocus it only when `open` moved focus), since `open` focuses its target anyway. Never focus your own workspace to "get back": the person may be in another one.
 - **Answers** go to the worker as `herdr agent prompt do-tN "From the TODO: <their text>"`; it keeps working while it waits.
 - **Parked workers**: when no inbox message came from a task for 30 minutes, read its screen (`herdr agent read do-tN --source recent-unwrapped --lines 80`); if it waits on something that already finished, prompt it to continue.
 
@@ -442,6 +462,25 @@ Each task becomes an Orca workspace with Claude in its first terminal. Read Orca
 - **The card mirrors the status line**: `orca worktree set --worktree "id:$WT" --comment "<status in a few words>" --workspace-status in-progress --json` (`in-review` while the review runs, `completed` once delivered), and `--unread` while a question waits for the person.
 - **Answers**: `orca terminal send --terminal "$H" --text "From the TODO: <their text>" --enter --wait-submit 10 --json`. `accepted: true` is enough; never resend on silence.
 - **Parked workers**: after 30 quiet minutes, `orca terminal read --terminal "$H" --json`, and prompt it to continue if it waits. After an Orca restart or a `terminal_handle_stale` error, take the new handle from `orca terminal list --worktree "id:$WT" --json` and use only that one.
+
+### Inside super.engineering (`HARNESS=sc`): worktrees and tabs
+
+Each task becomes a super.engineering worktree with a Claude session working its brief. Run `sc instructions worktree` and `sc instructions orchestration` once and follow them; `/do-it` is the person asking for app-managed worker sessions, which those rules require before any `sc` orchestration. Run `sc chat providers --json` once for the Claude provider key and the model and reasoning values it accepts, and use only those (below: `claude`, `$MODEL`, `$EFFORT` as in Herdr). Keep `CONDUCTOR_WT=${SUPER_ENGINEERING_WORKTREE_PATH:-${SUPERCONDUCTOR_WORKTREE_PATH:-$PWD}}`.
+
+- **Worker per task**: a new worktree with its task, created in the background:
+  ```bash
+  W=$(printf '%s' "$BRIEF" | sc worktree create --stdin --provider claude --model "$MODEL" --reasoning "$EFFORT" --background --json)
+  ```
+  Take the worktree's item id and path from `$W` (when it names neither, the new row in `sc workspace list --json`), its branch from `git -C "$WT" branch --show-current`, then name its session: `sc agents list --worktree "$WT" --output json` for its target and `sc agents label set --to <target> do-tN --worktree "$WT"`. Keep the item id, path, branch, and label in `state.json`. The app names the branch; never pass `--branch` or `--worktree-name` with a prompt (it refuses), and never run `git worktree add` for a worker. Never pass `--activate`, and never run `sc worktree select`, `sc worktree open`, `sc workspace select`, or `sc browser tab switch`: each one moves the person's view.
+- **Tester**: one tab in your own worktree, started once and watching the queue itself, as in Herdr. Reuse a live `do-tester` from `sc agents list --worktree "$CONDUCTOR_WT" --output json` first:
+  ```bash
+  sc layout run tabs --worktree "$CONDUCTOR_WT" --label do-tester --provider claude --model sonnet --reasoning high \
+    --ui terminal --active keep --prompt "$TESTER_BRIEF" --output json
+  ```
+- **Messenger**: a second tab labelled `do-messenger` made the same way (`--model sonnet --reasoning medium`) with the messenger brief, watching the inbox itself as in Herdr. Reuse a live one first.
+- **Answers**: `sc agent send --to label:do-tN --worktree "$WT" --queue --prompt "From the TODO: <their text>" --output json`. A successful send means it was queued; never resend on silence.
+- **Parked workers**: after 30 quiet minutes, `sc agent read --to label:do-tN --worktree "$WT" --last 80 --output json`, and prompt it to continue (same send) if it waits. A worker whose session is gone gets a new tab in its worktree: `sc layout run tabs --worktree "$WT" --open-if-needed --label do-tN --provider claude --model "$MODEL" --reasoning "$EFFORT" --ui terminal --active keep --prompt "<brief> RESUMED: continue from the commits on your branch"`.
+- **Cleanup** after delivery, only when the person asks: `sc worktree delete <item id>` (never `--force` on unpushed work).
 
 ### Inside T3 Code (`HARNESS=t3code`): threads in worktrees
 

@@ -146,6 +146,7 @@ The skill checks where it runs and starts workers there:
 | Herdr (`HERDR_ENV=1`) | one Claude session per task in a Herdr worktree and space, started in the background |
 | [Orca](https://www.onorca.dev) | one Orca worktree per task, with Claude in a terminal of its own (`orca worktree create`, then `orca terminal create`) |
 | [T3 Code](https://github.com/pingdotgg/t3code), with its `t3` CLI | one T3 Code thread per task, in its own worktree (`t3 thread start --worktree`) |
+| super.engineering (formerly Superconductor), with its `sc` CLI | one super.engineering worktree per task with a Claude session working it, started in the background (`sc worktree create --background`) |
 | Any other terminal | Claude Code subagents in worktrees, which need nothing beyond Claude Code |
 
 Set `DO_IT_BROWSER` to the command that should open links, or to `true` to
