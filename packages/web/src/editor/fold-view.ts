@@ -127,8 +127,11 @@ const ownerTask = (document: ClassifiedDocument, block: DetailsBlock): Classifie
 	const owner = document.lines[block.startLine]?.owner;
 	return owner === undefined ? undefined : document.lines[owner];
 };
-/** Where the title of a section owned by a task starts, in columns from the line start. */
-const ownedColumn = (summary: ClassifiedLine, _owner: ClassifiedLine): number => summary.hang;
+/**
+ * Where the title of a section owned by a task starts, in columns from the line start: at the
+ * task's text, in line with its status lines, or further right when the source indents it more.
+ */
+const ownedColumn = (summary: ClassifiedLine, owner: ClassifiedLine): number => Math.max(summary.hang, owner.hang);
 
 const layoutFor = (state: EditorState): FoldLayout => {
 	const folds = state.field(foldState);

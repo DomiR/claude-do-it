@@ -160,7 +160,12 @@ describe('editor keymap', () => {
 				description: 'Fold or unfold the project, task, or section at the caret',
 				inPalette: true
 			},
-			{ command: 'foldAll', title: 'Fold all', description: 'Fold every project, task, and section', inPalette: true },
+			{
+				command: 'foldAll',
+				title: 'Fold all',
+				description: 'Fold every task and section, keep projects open',
+				inPalette: true
+			},
 			{
 				command: 'unfoldAll',
 				title: 'Unfold all',

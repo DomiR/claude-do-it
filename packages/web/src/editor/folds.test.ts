@@ -53,6 +53,11 @@ const run = (initial: EditorState, command: StateCommand) => {
 	});
 	return { state, handled, transactions };
 };
+/** Closes every fold, headings included, to exercise the fold state below Fold all. */
+const foldEverything: StateCommand = ({ state, dispatch }) => {
+	dispatch(state.update({ effects: setAllFoldsOpen.of(false), annotations: Transaction.addToHistory.of(false) }));
+	return true;
+};
 const mixed =
 	'# Project\n- [ ] Task\n  <details><summary>Explanation</summary>\n  hidden text\n  </details>\n# Next\nvisible';
 
@@ -128,7 +133,7 @@ describe('fold state', () => {
 			expect(state.selection.main.head).toBe(0);
 			expect(open(state, label)).toBe(true);
 		}
-		let state = run(create(mixed), foldAll).state;
+		let state = run(create(mixed), foldEverything).state;
 		state = state.update({
 			changes: { from: mixed.indexOf('hidden text'), insert: 'new ' },
 			userEvent: 'input.paste'
@@ -171,6 +176,28 @@ describe('fold state', () => {
 			expect(state.selection.main.head).toBe(after.hidden.to);
 			expect(open(state, 'Task')).toBe(false);
 		}
+	});
+
+	test('Fold all folds every task and section and keeps headings open', () => {
+		const result = run(create(mixed), foldAll);
+		expect(result.handled).toBe(true);
+		expect(result.transactions).toBe(1);
+		expect(['Project', 'Task', 'Explanation', 'Next'].map((label) => open(result.state, label))).toEqual([
+			true,
+			false,
+			false,
+			true
+		]);
+		const folded = run(create(mixed), foldEverything).state;
+		const reopened = run(folded, foldAll).state;
+		expect(['Project', 'Task', 'Explanation', 'Next'].map((label) => open(reopened, label))).toEqual([
+			true,
+			false,
+			false,
+			true
+		]);
+		expect(run(create('# Only\ntext'), foldAll).state.field(foldState).folded.size).toBe(0);
+		expect(run(create('plain text'), foldAll).handled).toBe(false);
 	});
 
 	test('remote appends map multiple boundary carets and preserve their main index', () => {
@@ -329,7 +356,7 @@ describe('fold state', () => {
 	});
 
 	test('search selections reveal every containing ancestor and persist the reveal', () => {
-		let state = run(create(mixed), foldAll).state;
+		let state = run(create(mixed), foldEverything).state;
 		const from = mixed.indexOf('hidden text');
 		state = state.update({ selection: { anchor: from, head: from + 6 }, userEvent: 'select.search' }).state;
 		expect(['Project', 'Task', 'Explanation'].map((label) => open(state, label))).toEqual([true, true, true]);
@@ -380,7 +407,7 @@ describe('fold state', () => {
 				1
 			)
 		);
-		const result = run(initial, foldAll);
+		const result = run(initial, foldEverything);
 		expect(result.transactions).toBe(1);
 		expect(result.state.selection.ranges.map((range) => [range.anchor, range.head])).toEqual([
 			[initial.doc.line(1).to, initial.doc.line(1).to],

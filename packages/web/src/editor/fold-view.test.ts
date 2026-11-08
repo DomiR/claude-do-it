@@ -216,7 +216,7 @@ describe('fold rendering', () => {
 			'- [ ] Task\n  - **t3** delivered\n    <details><summary>Why</summary>\n    body\n    </details>\n';
 		expect(header(underStatus, 'Why').owned).toBe(true);
 		const nested =
-			'- [ ] Task\n  <details><summary>Outer</summary>\n\n  <details><summary>Inner</summary>\n  body\n  </details>\n\n  </details>\n';
+			'- [ ] Task\n  <details open><summary>Outer</summary>\n\n  <details><summary>Inner</summary>\n  body\n  </details>\n\n  </details>\n';
 		expect([header(nested, 'Outer').owned, header(nested, 'Inner').owned]).toEqual([true, true]);
 		const subtask = '- [ ] Parent\n  - [ ] Child\n    <details><summary>Why</summary>\n    body\n    </details>\n';
 		expect(header(subtask, 'Why').owned).toBe(true);
@@ -229,6 +229,28 @@ describe('fold rendering', () => {
 			expect(owned).toBe(false);
 			expect(prefix).toBe('<details><summary>');
 		}
+	});
+
+	test('a task section title starts at the task text, in line with its status lines', () => {
+		const indent = (text: string) => {
+			const state = stateFor(text);
+			const block = state.field(documentDecorations).classified.blocks.details[0]!;
+			const line = decorations(state).find(
+				(range) => range.from === block.from && range.value.spec.class?.includes('pt-details-header')
+			)!;
+			return line.value.spec.attributes.style;
+		};
+		const status = '  - **t3** delivered\n';
+		expect(indent(`- [ ] Task\n${status}  <details><summary>Why</summary>\n  body\n  </details>\n`)).toBe(
+			'--pt-details-indent: 4'
+		);
+		expect(indent(`- [ ] Parent\n  - [ ] Child\n    <details><summary>Why</summary>\n    body\n    </details>\n`)).toBe(
+			'--pt-details-indent: 6'
+		);
+		expect(indent(`- [ ] Task\n${status}      <details><summary>Why</summary>\n      body\n      </details>\n`)).toBe(
+			'--pt-details-indent: 6'
+		);
+		expect(indent('<details><summary>Why</summary>\nbody\n</details>\n')).toBe('--pt-details-indent: 0');
 	});
 
 	test('open details keep their closer row with an aria-hidden end widget', () => {

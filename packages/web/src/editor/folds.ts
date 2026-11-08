@@ -339,7 +339,20 @@ const setAll =
 		dispatch(state.update({ effects: setAllFoldsOpen.of(open), annotations: Transaction.addToHistory.of(false) }));
 		return true;
 	};
-export const foldAll = setAll(false);
+/** Folds every task and section and opens every heading, so the projects show each task on one line. */
+export const foldAll: StateCommand = ({ state, dispatch }) => {
+	const candidates = state.field(foldState, false)?.candidates;
+	if (!candidates?.length) return false;
+	dispatch(
+		state.update({
+			effects: candidates.map((candidate) =>
+				setFoldOpen.of({ key: candidate.key, open: candidate.kind === 'heading' })
+			),
+			annotations: Transaction.addToHistory.of(false)
+		})
+	);
+	return true;
+};
 export const unfoldAll = setAll(true);
 
 /** Debounced persistence, with a final flush when this tab leaves or the editor unmounts. */

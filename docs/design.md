@@ -442,7 +442,7 @@ URL the CLI prints uses `127.0.0.1`, never `localhost`. `vite dev` proxies
 | Go to project | `Cmd-p` | `Ctrl-p` | Open the project palette and move to the selected heading. |
 | Command palette | `Cmd-Shift-p`, `F1` | `Ctrl-Shift-p`, `F1` | Search and run editor commands. |
 | Find | `Cmd-f` | `Ctrl-f` | Open CodeMirror Find. |
-| Toggle fold | `Cmd-Alt-f`, `F2` | `Ctrl-Shift-f`, `F2` | Fold or unfold the project, task, or section whose header has the caret, else the innermost one around the caret. Fold all and Unfold all are in the command palette, without keys. |
+| Toggle fold | `Cmd-Alt-f`, `F2` | `Ctrl-Shift-f`, `F2` | Fold or unfold the project, task, or section whose header has the caret, else the innermost one around the caret. Fold all folds every task and section and keeps projects open; it and Unfold all are in the command palette, without keys. |
 | Keyboard shortcuts | `Cmd-/` | `Ctrl-/` | Open the shortcuts palette. `?` opens it when focus is outside the editor or an input. Escape closes it. |
 
 The editor deliberately leaves `Mod-r`, `Mod-Shift-r`, `Mod-Shift-o`, `Ctrl-c`
@@ -493,6 +493,8 @@ browser focus navigation remains available.
   after the marker unfolds it, so nothing the person writes lands out of
   sight. A remote change never unfolds a block by itself: a caret right after
   a folded marker stays after it when an agent appends to the block.
+  Fold all folds every task and section and keeps projects open, so the file
+  shows its projects with each task on one line. Unfold all opens everything.
 - Details sections. `<details>` with `<summary>Title</summary>` on the same
   line or the next one, an optional `open` and `id="..."`, and `</details>`
   alone on its own line at any indentation. Sections nest; tags inside fences
@@ -503,6 +505,9 @@ browser focus navigation remains available.
   keeps its title and body as plain lines. Typing at the start of the end rule
   adds a body line before the closer, typing at its end adds a line after it,
   and Enter on a summary breaks the line after `</summary>`.
+  A section inside a task's block belongs to that task: its title is muted
+  like a status line, in normal weight, and starts at the task's text column,
+  in line with the status lines. Other sections keep the bold title.
 - HTML sections. A fence whose info string is exactly `html do-it` renders its
   payload as HTML; a plain `html` fence stays code. The payload is not
   sanitised. It goes into a block widget's open shadow root, so its styles stay
