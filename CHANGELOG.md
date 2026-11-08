@@ -2,6 +2,23 @@
 
 The npm package `claude-do-it` and the Claude Code plugin `do-it` share one version.
 
+## 0.1.3 (2026-11-08)
+
+### Editor
+
+- A click past the end of a line puts the caret at the end of that line. Before, it went to the start of an agent's status line, and below an HTML section it landed one line too low.
+- Fold all folds every task and section and keeps projects open, so a file shows its projects with each task on one line. Unfold all opens everything.
+- A section under a task belongs to it: its title is muted like a status line and starts in line with the status lines.
+
+### Conductor skill
+
+- Agents never take the person's focus. The todo opens once, beside the conversation and without focus. No agent reopens, reloads, or focuses it, a browser tab, or an app pane later, and inside Herdr focus goes back to where the person was only when creating a worker moved it.
+- Workers can run in super.engineering (formerly Superconductor): one app worktree per task with a Claude session working it, and the tester and messenger in tabs, all started in the background.
+
+### Docs
+
+- The README shows the editor, in light and dark.
+
 ## 0.1.2 (2026-11-06)
 
 ### Editor
