@@ -893,6 +893,15 @@ button {
 	white-space: nowrap;
 }
 
+/*
+ * The gap is blank, so give it a line box: an empty inline block has no
+ * height and sits on the baseline, and CodeMirror's click mapping then
+ * reads it as a row below and puts the caret before the gap.
+ */
+.pt-editor-host .pt-bullet-gap::before {
+	content: '\200b';
+}
+
 .pt-editor-host .pt-line-code {
 	background: var(--pt-project-bg);
 	color: var(--pt-ink);

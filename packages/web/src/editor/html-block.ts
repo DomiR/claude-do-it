@@ -156,6 +156,10 @@ export class HtmlSectionWidget extends WidgetType {
 		host.contentEditable = 'false';
 		host.setAttribute('role', 'group');
 		host.setAttribute('aria-label', 'HTML section');
+		// Keep the margins of the section's first and last elements inside the host. A margin that
+		// collapses through it lies outside the height CodeMirror measures, so every line below
+		// would sit lower than CodeMirror thinks, and clicks would land on the line below.
+		host.style.display = 'flow-root';
 		// The shadow root resets fonts, so the editor's character width sets the indentation here.
 		const width = view.defaultCharacterWidth;
 		if (this.indent > 0 && Number.isFinite(width) && width > 0)
