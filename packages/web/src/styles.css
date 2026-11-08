@@ -1372,6 +1372,17 @@ button {
 	font-weight: 600;
 }
 
+/* A section under a task belongs to it: its leading spaces are hidden, so the row starts at its column. */
+.pt-editor-host .cm-line.pt-details-header-owned {
+	text-indent: 0;
+}
+
+/* Its title reads like the agent's status line, quieter than the person's task. */
+.pt-editor-host .pt-details-header-owned .pt-details-title {
+	color: var(--pt-prose);
+	font-weight: 400;
+}
+
 .pt-editor-host .pt-details-end {
 	display: inline-block;
 	width: 5ch;

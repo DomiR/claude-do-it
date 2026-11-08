@@ -192,6 +192,67 @@ describe('fold rendering', () => {
 		expect(replacements(state).every((range) => range.from >= 0 && range.to <= text.length)).toBe(true);
 	});
 
+	test('a section under a task belongs to it and hides its source indentation', () => {
+		const header = (text: string, title: string) => {
+			const state = stateFor(text);
+			const block = state
+				.field(documentDecorations)
+				.classified.blocks.details.find((details) => text.slice(details.title.from, details.title.to) === title)!;
+			const line = decorations(state).find(
+				(range) => range.from === block.from && range.value.spec.class?.includes('pt-details-header')
+			)!;
+			const prefix = replacements(state).find((range) => range.to === block.title.from)!;
+			return {
+				owned: line.value.spec.class.split(' ').includes('pt-details-header-owned'),
+				prefix: text.slice(prefix.from, prefix.to)
+			};
+		};
+		const task =
+			'- [ ] Task\n  - **t3** delivered\n  <details id="t3-why"><summary>Why</summary>\n\n  body\n\n  </details>\n';
+		expect(header(task, 'Why')).toEqual({ owned: true, prefix: '  <details id="t3-why"><summary>' });
+		const twoLines = '- [ ] Task\n  <details>\n  <summary>Why</summary>\n  body\n  </details>\n';
+		expect(header(twoLines, 'Why')).toEqual({ owned: true, prefix: '  <details>\n  <summary>' });
+		const underStatus =
+			'- [ ] Task\n  - **t3** delivered\n    <details><summary>Why</summary>\n    body\n    </details>\n';
+		expect(header(underStatus, 'Why').owned).toBe(true);
+		const nested =
+			'- [ ] Task\n  <details open><summary>Outer</summary>\n\n  <details><summary>Inner</summary>\n  body\n  </details>\n\n  </details>\n';
+		expect([header(nested, 'Outer').owned, header(nested, 'Inner').owned]).toEqual([true, true]);
+		const subtask = '- [ ] Parent\n  - [ ] Child\n    <details><summary>Why</summary>\n    body\n    </details>\n';
+		expect(header(subtask, 'Why').owned).toBe(true);
+		for (const text of [
+			'- [ ] Task\n<details><summary>Why</summary>\nbody\n</details>\n',
+			'# Heading\n  <details><summary>Why</summary>\n  body\n  </details>\n',
+			'- **Group**\n  <details><summary>Why</summary>\n  body\n  </details>\n'
+		]) {
+			const { owned, prefix } = header(text, 'Why');
+			expect(owned).toBe(false);
+			expect(prefix).toBe('<details><summary>');
+		}
+	});
+
+	test('a task section title starts at the task text, in line with its status lines', () => {
+		const indent = (text: string) => {
+			const state = stateFor(text);
+			const block = state.field(documentDecorations).classified.blocks.details[0]!;
+			const line = decorations(state).find(
+				(range) => range.from === block.from && range.value.spec.class?.includes('pt-details-header')
+			)!;
+			return line.value.spec.attributes.style;
+		};
+		const status = '  - **t3** delivered\n';
+		expect(indent(`- [ ] Task\n${status}  <details><summary>Why</summary>\n  body\n  </details>\n`)).toBe(
+			'--pt-details-indent: 4'
+		);
+		expect(indent(`- [ ] Parent\n  - [ ] Child\n    <details><summary>Why</summary>\n    body\n    </details>\n`)).toBe(
+			'--pt-details-indent: 6'
+		);
+		expect(indent(`- [ ] Task\n${status}      <details><summary>Why</summary>\n      body\n      </details>\n`)).toBe(
+			'--pt-details-indent: 6'
+		);
+		expect(indent('<details><summary>Why</summary>\nbody\n</details>\n')).toBe('--pt-details-indent: 0');
+	});
+
 	test('open details keep their closer row with an aria-hidden end widget', () => {
 		const text = '<details open><summary>Title</summary>\nbody\n  </details>\nafter';
 		let state = stateFor(text);

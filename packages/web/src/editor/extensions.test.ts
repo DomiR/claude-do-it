@@ -1094,7 +1094,11 @@ describe('fold command integration', () => {
 			expect(state.doc.toString()).toBe(text);
 			expect(undoDepth(state)).toBe(0);
 			const folds = state.field(foldState);
-			expect(isFoldOpen(folds, folds.candidates[0]!)).toBe(command === 'unfoldAll');
+			// Fold all keeps the project open and folds what is under it; Toggle fold closes the project.
+			expect(isFoldOpen(folds, folds.candidates[0]!)).toBe(command !== 'toggleFold');
+			expect(folds.candidates.slice(1).map((candidate) => isFoldOpen(folds, candidate))).toEqual(
+				command === 'foldAll' ? [false, false] : [true, true]
+			);
 		}
 	});
 
