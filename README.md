@@ -165,6 +165,7 @@ do-it edit TODO.md --version 10 --old "ship friday" --new "ship monday"
 do-it append TODO.md --version 11 --section notes -- "- found: flaky CI"
 do-it diff TODO.md --since 9 --wait 300
 do-it watch TODO.md --todos           # or --settle 25 for one line per pause
+do-it notify TODO.md --settle 25      # inside Herdr: the daemon prompts this pane instead
 do-it status
 do-it stop
 do-it doctor                          # what is wrong with this install, and how to fix it
@@ -185,6 +186,18 @@ change adds a line (Enter at the end of a task or inside one), it settles after
 at once. Every other change (typing, editing or deleting text, toggling a box)
 waits the full `--settle`. Set `--settle-line` to the `--settle` value to
 always wait the full period.
+
+Inside Herdr, `do-it notify PATH` takes the same `--since`, `--section`,
+`--todos`, `--settle`, and `--settle-line` options as `watch`, but nothing keeps
+running: the daemon remembers the pane (`$HERDR_PANE_ID`, or `--pane ID`) and
+sends it each event with `herdr agent prompt`, as a message starting with
+`[do-it] PATH: `. Events that land while the agent is busy or waiting at an
+approval go out together once it can take them. Registrations outlast a daemon
+restart and end when the file is deleted or the pane is closed;
+`do-it notify --off [PATH]` ends them sooner, and `do-it status` lists them.
+
+`Cmd-S` (`Ctrl-S`) in the editor sends the latest version to the agents now: a
+pending settle fires at once, for `watch --settle` and registered panes alike.
 
 A resumed watch that missed history prints
 `Missed changes, now at version N: run do-it read`. Use `--quiet` to skip the
@@ -218,6 +231,7 @@ agent.
 | Outdent | `Shift-Tab` or `Cmd-[` | `Shift-Tab` or `Ctrl-[` |
 | Open link | `Cmd-Shift-U` or `Alt-Enter` | `Alt-Enter` |
 | Edit link (or click a link) | `Cmd-K` | `Ctrl-K` |
+| Send to agents now | `Cmd-S` | `Ctrl-S` |
 | Bold | `Cmd-B` | `Ctrl-B` |
 | Italic | `Cmd-Shift-I` | `Alt-Shift-I` |
 | Strikethrough | `Cmd-Shift-X` | `Ctrl-Shift-X` |

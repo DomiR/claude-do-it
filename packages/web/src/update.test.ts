@@ -9,6 +9,7 @@ import {
 	FocusEditor,
 	RevealEditorPosition,
 	RunEditorAction,
+	SendNudge,
 	SetTheme,
 	SyncDraft,
 	WaitBeforeReconnect,
@@ -578,6 +579,157 @@ describe('editor synchronization', () => {
 			Command.resolve(SyncDraft, Message.FailedSync({ request: { base: 1, text: sent }, kind: 'Unauthorized' })),
 			model((next) => expect(next.document._tag).toBe('Unauthorized'))
 		);
+	});
+});
+
+describe('send now', () => {
+	const sendNow = Message.PressedEditorCommand({ command: 'sendNow' });
+
+	test('a saved draft sends the nudge at once and reports it', () => {
+		story(
+			update,
+			given(readyModel()),
+			message(sendNow),
+			Command.expectExact(SendNudge({ path })),
+			model((next) => expect(documentOf(next).nudge).toEqual({ _tag: 'Sending', version: 1, queued: false })),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 1 })),
+			model((next) => {
+				expect(documentOf(next).nudge._tag).toBe('Idle');
+				expect(Option.getOrNull(next.notice)).toBe('Sent to the agents');
+			})
+		);
+	});
+
+	test('an unsynced draft syncs at once and sends the nudge only after that sync succeeds, once', () => {
+		const typed = `${original}a`;
+		story(
+			update,
+			given(readyModel()),
+			message(edited(typed)),
+			whilePending(sendNow),
+			// The daemon does not hold the draft yet: sync now rather than after the typing pause, no nudge yet.
+			Command.expectExact(WaitBeforeSync({ session, revision: 1 }), SyncDraft({ path, base: 1, text: typed })),
+			model((next) => expect(documentOf(next).nudge._tag).toBe('Waiting')),
+			whilePending(sendNow),
+			Command.expectExact(WaitBeforeSync({ session, revision: 1 }), SyncDraft({ path, base: 1, text: typed })),
+			Command.resolve(WaitBeforeSync, Message.CompletedWaitBeforeSync({ session, revision: 1 })),
+			Command.expectExact(SyncDraft({ path, base: 1, text: typed })),
+			Command.resolve(SyncDraft, reply(1, typed, 2)),
+			Command.expectExact(SendNudge({ path })),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 2 })),
+			Command.expectNone(),
+			model((next) => expect(documentOf(next).nudge._tag).toBe('Idle'))
+		);
+	});
+
+	test('a sync that misses later typing keeps the nudge waiting for the sync that covers it', () => {
+		const first = `${original}a`;
+		const second = `${original}ab`;
+		story(
+			update,
+			given(readyModel()),
+			message(edited(first, 'Action')),
+			whilePending(sendNow),
+			whilePending(edited(second)),
+			Command.expectExact(SyncDraft({ path, base: 1, text: first }), WaitBeforeSync({ session, revision: 2 })),
+			Command.resolve(SyncDraft, reply(1, first, 2)),
+			// The reply settles the newer typing at once, and the nudge waits for it.
+			Command.expectExact(WaitBeforeSync({ session, revision: 2 }), SyncDraft({ path, base: 2, text: second })),
+			Command.resolve(WaitBeforeSync, Message.CompletedWaitBeforeSync({ session, revision: 2 })),
+			Command.resolve(SyncDraft, reply(2, second, 3)),
+			Command.expectExact(SendNudge({ path })),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 3 }))
+		);
+	});
+
+	test('pressing twice while saved sends one nudge', () => {
+		story(
+			update,
+			given(readyModel()),
+			message(sendNow),
+			whilePending(sendNow),
+			Command.expectExact(SendNudge({ path })),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 1 })),
+			Command.expectNone()
+		);
+	});
+
+	test('a press after newer text while a nudge is sending goes out after it', () => {
+		const typed = `${original}a`;
+		story(
+			update,
+			given(readyModel()),
+			message(sendNow),
+			whilePending(edited(typed, 'Action')),
+			whilePending(sendNow),
+			Command.expectExact(SendNudge({ path }), SyncDraft({ path, base: 1, text: typed })),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 1 })),
+			model((next) => expect(documentOf(next).nudge._tag).toBe('Waiting')),
+			Command.resolve(SyncDraft, reply(1, typed, 2)),
+			Command.expectExact(SendNudge({ path })),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 2 }))
+		);
+	});
+
+	test('waits while reconnecting and sends once the watch is live and the draft synced', () => {
+		const typed = `${original}a`;
+		story(
+			update,
+			given(readyModel()),
+			message(Message.FailedWatch({ unauthorized: false })),
+			Command.resolve(WaitBeforeReconnect, Message.CompletedWaitBeforeReconnect()),
+			message(sendNow),
+			Command.expectNone(),
+			model((next) => {
+				expect(saveStatus(documentOf(next))).toBe('Reconnecting');
+				expect(documentOf(next).nudge._tag).toBe('Waiting');
+			}),
+			message(edited(typed, 'Action')),
+			Command.resolve(SyncDraft, reply(1, typed, 2)),
+			// Synced but still reconnecting: the nudge holds.
+			Command.expectNone(),
+			message(watching(2, typed)),
+			Command.expectExact(SendNudge({ path })),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 2 }))
+		);
+	});
+
+	test('a failed nudge says so and lets the next press try again', () => {
+		story(
+			update,
+			given(readyModel()),
+			message(sendNow),
+			Command.resolve(SendNudge, Message.FailedNudge()),
+			model((next) => {
+				expect(Option.getOrNull(next.notice)).toBe('Could not send to the agents');
+				expect(documentOf(next).nudge._tag).toBe('Idle');
+			}),
+			message(sendNow),
+			Command.expectExact(SendNudge({ path })),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 1 }))
+		);
+	});
+
+	test('the command palette sends now and returns focus to the text', () => {
+		story(
+			update,
+			given(readyModel()),
+			message(Message.ClickedCommands()),
+			message(Message.UpdatedPaletteQuery({ query: 'send to agents' })),
+			model((next) => expect(paletteItems(next, original).map((item) => item.title)).toEqual(['Send to agents now'])),
+			message(Message.PressedPaletteKey({ key: 'Enter' })),
+			Command.expectExact(FocusEditor({ session }), SendNudge({ path })),
+			Command.resolve(FocusEditor, Message.CompletedFocusEditor()),
+			Command.resolve(SendNudge, Message.SucceededNudge({ version: 1 })),
+			model((next) => expect(next.palette._tag).toBe('Closed'))
+		);
+	});
+
+	test('a Nudge watch event changes nothing', () => {
+		const ready = readyModel();
+		const result = update(ready, Message.ReceivedWatchEvent({ event: { _tag: 'Nudge', version: 1 } }));
+		expect(result.model).toEqual(ready);
+		expect(result.commands ?? []).toEqual([]);
 	});
 });
 

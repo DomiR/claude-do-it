@@ -32,6 +32,7 @@ const subcommands = new Set([
 	'todo',
 	'diff',
 	'watch',
+	'notify',
 	'status',
 	'stop',
 	'doctor'
@@ -46,6 +47,7 @@ const valueFlags = new Set([
 	'--settle',
 	'--settle-line',
 	'--as',
+	'--pane',
 	'--skill-dir'
 ]);
 
@@ -161,14 +163,16 @@ function withCommon<
 		const globals = yield* root;
 		const path = yield* Path.Path;
 		const command = make(input, globals);
-		yield* run('path' in command ? { ...command, path: path.resolve(command.path) } : command);
+		yield* run(
+			'path' in command && command.path !== undefined ? { ...command, path: path.resolve(command.path) } : command
+		);
 	});
 }
 
 export function makeCli(run: CommandRunner) {
 	const root = Command.make('do-it').pipe(
 		Command.withDescription(
-			'Commands: open, read, sections, edit, append, todo add, todo start, todo check, todo uncheck, todo cancel, todo uncancel, todo list, diff, watch, status, stop, doctor, skill install, skill path, skill show (or --skill)'
+			'Commands: open, read, sections, edit, append, todo add, todo start, todo check, todo uncheck, todo cancel, todo uncancel, todo list, diff, watch, notify, status, stop, doctor, skill install, skill path, skill show (or --skill)'
 		),
 		Command.withSharedFlags(commonFlags)
 	);
@@ -384,6 +388,46 @@ export function makeCli(run: CommandRunner) {
 			}))
 	).pipe(Command.withDescription('Print every change to PATH as it lands, or with --settle one line per pause'));
 
+	const notify = Command.make(
+		'notify',
+		{
+			path: Argument.String('path').pipe(Argument.optional),
+			pane: Flag.String('pane').pipe(
+				Flag.withDescription('The Herdr pane to prompt (default: this pane, $HERDR_PANE_ID)'),
+				Flag.optional
+			),
+			off: Flag.Boolean('off').pipe(
+				Flag.withDescription('Stop prompting the pane about PATH, or about every document when PATH is left out'),
+				Flag.withDefault(false)
+			),
+			optionalSince,
+			section,
+			todos: Flag.Boolean('todos').pipe(Flag.withDefault(false)),
+			settle,
+			settleLine
+		},
+		(input) =>
+			withCommon(root, input, run, (config, common) => {
+				const path = optionValue(config.path);
+				return {
+					kind: 'notify',
+					options: common,
+					...(path === undefined ? {} : pathValue(path)),
+					pane: optionValue(config.pane),
+					off: config.off,
+					since: optionValue(config.optionalSince),
+					section: optionValue(config.section),
+					todos: config.todos,
+					settle: optionValue(config.settle),
+					settleLine: config.settleLine
+				};
+			})
+	).pipe(
+		Command.withDescription(
+			'Inside Herdr: have the daemon prompt this pane with what watch would print, so no watch has to keep running'
+		)
+	);
+
 	const status = Command.make('status', {}, (input) =>
 		withCommon(root, input, run, (_config, common) => ({ kind: 'status', options: common }))
 	);
@@ -429,7 +473,21 @@ export function makeCli(run: CommandRunner) {
 	);
 
 	return root.pipe(
-		Command.withSubcommands([open, read, sections, edit, append, todo, diff, watch, status, stop, doctor, skill])
+		Command.withSubcommands([
+			open,
+			read,
+			sections,
+			edit,
+			append,
+			todo,
+			diff,
+			watch,
+			notify,
+			status,
+			stop,
+			doctor,
+			skill
+		])
 	);
 }
 

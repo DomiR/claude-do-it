@@ -76,10 +76,13 @@ export const subscriptions = Subscription.make<Model, Message, DoItClient>()((en
 		}
 	),
 	keyboard: Subscription.persistentEntry(
-		streamFromKeyBindings({
+		streamFromKeyBindings<Message>({
 			bindings: [
 				{ keys: '?', mapEvent: () => Message.PressedHelpKey() },
-				{ keys: 'Shift+?', mapEvent: () => Message.PressedHelpKey() }
+				{ keys: 'Shift+?', mapEvent: () => Message.PressedHelpKey() },
+				// The editor handles its own Mod-S and stops it. This one covers the rest of the page, such as the
+				// palette input, so the browser's Save dialog never opens.
+				{ keys: 'Mod+S', whileTyping: 'Allow', mapEvent: () => Message.PressedEditorCommand({ command: 'sendNow' }) }
 			]
 		})
 	)

@@ -2,6 +2,17 @@
 
 The npm package `claude-do-it` and the Claude Code plugin `do-it` share one version.
 
+## Unreleased
+
+### Herdr
+
+- `do-it notify PATH` registers the current Herdr pane with the daemon, which then prompts it with every event a `do-it watch` with the same options would print (`herdr agent prompt`, one `[do-it] PATH: ` line per event). Nothing has to keep running: there is no Monitor to expire or re-arm, events that land while the agent is busy or blocked arrive together, and registrations outlast a daemon restart. They end when the file is deleted or the pane is closed, or with `do-it notify --off`. `do-it status` lists them.
+- Inside Herdr the conductor, tester, and messenger register their panes instead of running watches.
+
+### Editor
+
+- `Cmd-S` (`Ctrl-S`) sends the latest version to the agents now: once the daemon has the text, a pending settle fires at once, for registered panes and `watch --settle` alike. The browser's Save dialog no longer opens.
+
 ## 0.1.3 (2026-11-08)
 
 ### Editor

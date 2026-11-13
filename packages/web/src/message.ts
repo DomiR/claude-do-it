@@ -52,6 +52,8 @@ export const Message = defineMessageUnion({
 		text: Schema.String,
 		hash: Schema.optional(Schema.String)
 	},
-	FailedSync: { request: SyncRequest, kind: SyncFailureKind }
+	FailedSync: { request: SyncRequest, kind: SyncFailureKind },
+	SucceededNudge: { version: Schema.Number },
+	FailedNudge: {}
 });
 export type Message = typeof Message.Type;

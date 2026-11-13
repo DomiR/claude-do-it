@@ -73,7 +73,8 @@ test('spawns, reuses, reports status, and stops a daemon in a private home', asy
 		appVersion: started.appVersion,
 		startedAt: started.startedAt,
 		build: started.build,
-		documents: []
+		documents: [],
+		notifications: []
 	});
 	// The daemon reports the build this client computes, so doctor can compare them.
 	expect(started.build).toBe(await runClient(clientBuild));

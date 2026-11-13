@@ -10,6 +10,7 @@ import { Documents, DocumentsLive } from './documents';
 import { HandlersLive, type RuntimeInfo } from './handlers';
 import { readJson } from './files';
 import { Log } from './log';
+import { Notifications, Notifier } from './notify';
 import { alive } from './process';
 import { staticResponse } from './static';
 import { Versions } from './versions';
@@ -89,6 +90,7 @@ export const makeServer = Effect.fn('makeServer')(function* (options?: ServerCon
 	const documentsLayer = DocumentsLive(versions, log);
 	const context = yield* Layer.build(documentsLayer);
 	const registry = yield* Documents.pipe(Effect.provideContext(context));
+	const notifications = yield* Notifications.make(settings.home, registry, log);
 	// Watch calls hold a handler slot for their whole lifetime. Leave room for
 	// ordinary requests even when all 256 allowed streams are open.
 	const rpcLayer = RpcServer.layerHttp({
@@ -100,6 +102,7 @@ export const makeServer = Effect.fn('makeServer')(function* (options?: ServerCon
 	}).pipe(
 		Layer.provide(HandlersLive(auth, runtime)),
 		Layer.provide(Layer.succeed(Documents, registry)),
+		Layer.provide(Layer.succeed(Notifier, notifications)),
 		Layer.provide(RpcSerialization.layerNdjson)
 	);
 	const rpc = yield* HttpRouter.toHttpEffect(rpcLayer);
@@ -219,6 +222,8 @@ export const makeServer = Effect.fn('makeServer')(function* (options?: ServerCon
 	yield* Effect.addFinalizer(() =>
 		Effect.gen(function* () {
 			shutdown.abort();
+			// Before the documents close: their watchers would see Deleted and end the registrations.
+			yield* notifications.close();
 			yield* registry.close();
 		})
 	);

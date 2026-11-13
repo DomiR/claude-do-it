@@ -118,7 +118,9 @@ export const StatusSuccess = Schema.Struct({
 	port: Schema.Number,
 	startedAt: Schema.Number,
 	build: Schema.optionalKey(Text),
-	documents: Schema.Array(StatusDocument)
+	documents: Schema.Array(StatusDocument),
+	/** The registered panes. Older daemons leave it out. */
+	notifications: Schema.optionalKey(Schema.Array(Schema.suspend(() => Notification)))
 });
 
 export const StopPayload = Schema.Struct({});
@@ -207,7 +209,9 @@ export const WatchPayload = Schema.Struct({
 	/** The hash of the text the watcher holds at `since`. A different text at that version starts with Resync. */
 	sinceHash: Schema.optionalKey(Hash),
 	section: SectionId,
-	text: Schema.Boolean
+	text: Schema.Boolean,
+	/** Also stream a Nudge when the person asks to send the latest version now (Cmd-S). Older daemons ignore it. */
+	nudges: Schema.optionalKey(Schema.Boolean)
 });
 
 export const Watching = Schema.TaggedStruct('Watching', {
@@ -239,9 +243,67 @@ export type Resync = typeof Resync.Type;
 export const Deleted = Schema.TaggedStruct('Deleted', {});
 export type Deleted = typeof Deleted.Type;
 
-export const WatchEvent = Schema.Union([Watching, Change, Resync, Deleted]);
+/** The person asked to send the latest version now. Only streamed to a watch that asked for nudges. */
+export const Nudge = Schema.TaggedStruct('Nudge', { version: Version });
+export type Nudge = typeof Nudge.Type;
+
+export const WatchEvent = Schema.Union([Watching, Change, Resync, Deleted, Nudge]);
 export type WatchEvent = typeof WatchEvent.Type;
 
+/** A Herdr pane the daemon prompts with a document's events, instead of a watch someone keeps running. */
+export const HerdrPane = Schema.Struct({
+	pane: Schema.String.pipe(Schema.check(Schema.isBetweenLength(1, 256))),
+	/** The herdr binary to run. Defaults to `herdr` on the daemon's PATH. */
+	bin: Schema.optionalKey(Path),
+	/** The Herdr socket (HERDR_SOCKET_PATH) the pane lives behind. */
+	socket: Schema.optionalKey(Path)
+});
+export type HerdrPane = typeof HerdrPane.Type;
+
+const Seconds = Schema.Number.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 3600 })));
+
+export const Notification = Schema.Struct({
+	path: Path,
+	/** How the prompts name the document, as the caller wrote it. */
+	label: Schema.String.pipe(Schema.check(Schema.isBetweenLength(1, 4096))),
+	target: HerdrPane,
+	/** Changes made only by this agent are skipped. */
+	as: Agent.fields.name,
+	section: SectionId,
+	todos: Schema.Boolean,
+	/** One prompt per pause of this many seconds, as `watch --settle`. */
+	settle: Schema.optionalKey(Seconds),
+	settleLine: Schema.optionalKey(Seconds)
+});
+export type Notification = typeof Notification.Type;
+
+export const NotifyPayload = Schema.Struct({
+	...Notification.fields,
+	/** Prompt from this version on, as `watch --since`. Defaults to the current version. */
+	since: Schema.optionalKey(Version)
+});
+export const NotifySuccess = Schema.Struct({
+	version: Version,
+	/** Whether this replaced a registration for the same pane, document, and section. */
+	replaced: Schema.Boolean
+});
+
+export const UnnotifyPayload = Schema.Struct({
+	pane: HerdrPane.fields.pane,
+	/** Only this document's registrations. Every one of the pane's when left out. */
+	path: Schema.optionalKey(Path)
+});
+export const UnnotifySuccess = Schema.Struct({ removed: Schema.Number });
+
+export const NudgePayload = Schema.Struct({ path: Path });
+export const NudgeSuccess = Schema.Struct({ version: Version });
+
+export type NotifyPayload = typeof NotifyPayload.Type;
+export type NotifySuccess = typeof NotifySuccess.Type;
+export type UnnotifyPayload = typeof UnnotifyPayload.Type;
+export type UnnotifySuccess = typeof UnnotifySuccess.Type;
+export type NudgePayload = typeof NudgePayload.Type;
+export type NudgeSuccess = typeof NudgeSuccess.Type;
 export type StatusPayload = typeof StatusPayload.Type;
 export type StatusDocument = typeof StatusDocument.Type;
 export type StatusSuccess = typeof StatusSuccess.Type;

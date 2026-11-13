@@ -1,7 +1,9 @@
 export { makeServer } from './http';
 export { config, TEMPLATE, MAX_BODY, APP_VERSION, InvalidConfig, type ServerConfig } from './config';
 export { Documents, DocumentsLive, DocumentRegistry, rpcError, type OpenDocument } from './documents';
-export { HandlersLive, watchDocument } from './handlers';
+export { HandlersLive } from './handlers';
+export { watchDocument } from './watch';
+export { Notifications, Notifier } from './notify';
 export { Auth, InvalidToken } from './auth';
 export { Versions } from './versions';
 export { Log } from './log';

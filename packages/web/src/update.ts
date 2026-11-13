@@ -9,6 +9,7 @@ import {
 	OpenEditorLink,
 	RevealEditorPosition,
 	RunEditorAction,
+	SendNudge,
 	SetEditorWrap,
 	SetTheme,
 	SyncDraft,
@@ -22,7 +23,9 @@ import {
 	ConnectionState,
 	DocumentState,
 	Model,
+	NudgeState,
 	Palette,
+	saveStatus,
 	type Base,
 	type Cursor,
 	type PaletteKind,
@@ -151,7 +154,8 @@ const readyFromWatching = (
 					watchKey,
 					resumeFrom,
 					reconnectAttempt: 0,
-					connection: ConnectionState.Live()
+					connection: ConnectionState.Live(),
+					nudge: NudgeState.Idle()
 				})
 			}),
 			Ready: ({ document }) => {
@@ -238,6 +242,53 @@ const terminal = (model: Model, kind: 'Deleted' | 'Unauthorized'): UpdateReturn 
 		() => ({ model })
 	);
 
+/**
+ * Asks to send the latest version to the agents now. The nudge waits for the daemon to hold the draft, so the
+ * pending sync starts at once instead of after the typing pause. One request is outstanding at a time.
+ */
+const requestNudge = (model: Model): UpdateReturn =>
+	whenReady(model, (document) =>
+		NudgeState.match(document.nudge, {
+			Idle: () => startSync(model, modifyFields(document, { nudge: () => NudgeState.Waiting() })),
+			Waiting: () => ({ model }),
+			Sending: (sending) =>
+				sending.queued || (saveStatus(document) === 'Saved' && document.base.version === sending.version)
+					? { model }
+					: startSync(model, modifyFields(document, { nudge: () => NudgeState.Sending({ ...sending, queued: true }) }))
+		})
+	);
+
+/** Sends a waiting nudge once the daemon holds the draft: saved, nothing in flight, and connected. */
+const flushNudge = (result: UpdateReturn): UpdateReturn => {
+	const { model } = result;
+	if (model.document._tag !== 'Ready') return result;
+	const document = model.document.document;
+	if (document.nudge._tag !== 'Waiting' || saveStatus(document) !== 'Saved') return result;
+	return {
+		...result,
+		model: withDocument(
+			model,
+			modifyFields(document, {
+				nudge: () => NudgeState.Sending({ version: document.base.version, queued: false })
+			})
+		),
+		commands: [...(result.commands ?? []), SendNudge({ path: document.path })]
+	};
+};
+
+/** Ends the nudge in flight. A request queued behind it waits for the draft in turn. */
+const finishNudge = (model: Model, notice: string): UpdateReturn =>
+	whenReady(model, (document) => {
+		const { nudge } = document;
+		if (nudge._tag !== 'Sending') return { model };
+		return {
+			model: withDocument(
+				modifyFields(model, { notice: () => Option.some(notice) }),
+				modifyFields(document, { nudge: () => (nudge.queued ? NudgeState.Waiting() : NudgeState.Idle()) })
+			)
+		};
+	});
+
 const openPalette = (model: Model, kind: PaletteKind): UpdateReturn =>
 	whenReady(model, () => ({
 		model: modifyFields(model, { palette: () => Palette.Open({ kind, query: '', active: 0 }) })
@@ -268,10 +319,14 @@ const choosePalette = (model: Model, index: number): UpdateReturn =>
 		if (item.command === 'gotoProject') return openPalette(model, 'Projects');
 		if (item.command === 'showShortcuts') return openPalette(model, 'Shortcuts');
 		if (item.command === 'commandPalette') return openPalette(model, 'Commands');
+		if (item.command === 'sendNow') {
+			const requested = requestNudge(closed);
+			return { ...requested, commands: [...(requested.commands ?? []), FocusEditor({ session: document.session })] };
+		}
 		return { model: closed, commands: [RunEditorAction({ session: document.session, action: item.command })] };
 	});
 
-export const update = (model: Model, message: Message) =>
+const step = (model: Model, message: Message) =>
 	Message.match<UpdateReturn>(message, {
 		UpdatedEditor: (fact) =>
 			whenReady(model, (document) => {
@@ -416,6 +471,8 @@ export const update = (model: Model, message: Message) =>
 					);
 				}),
 				Match.tag('Deleted', () => terminal(model, 'Deleted')),
+				// Only a watch that asks for nudges gets them, and this one does not.
+				Match.tag('Nudge', () => ({ model })),
 				Match.exhaustive
 			),
 		WatchEnded: () => reconnect(model),
@@ -487,6 +544,7 @@ export const update = (model: Model, message: Message) =>
 			if (command === 'commandPalette') return openPalette(model, 'Commands');
 			if (command === 'gotoProject') return openPalette(model, 'Projects');
 			if (command === 'showShortcuts') return openPalette(model, 'Shortcuts');
+			if (command === 'sendNow') return requestNudge(model);
 			if (command === 'openLink' && link === undefined)
 				return { model: modifyFields(model, { notice: () => Option.some('No link here') }) };
 			return whenReady(model, (document) => ({
@@ -507,5 +565,10 @@ export const update = (model: Model, message: Message) =>
 		CompletedFocusEditor: () => ({ model }),
 		CompletedRunEditorAction: () => ({ model }),
 		CompletedRevealEditorPosition: () => ({ model }),
-		CompletedOpenEditorLink: () => ({ model })
+		CompletedOpenEditorLink: () => ({ model }),
+		SucceededNudge: () => finishNudge(model, 'Sent to the agents'),
+		FailedNudge: () => finishNudge(model, 'Could not send to the agents')
 	});
+
+/** Every step ends by sending a waiting nudge, whichever fact made the daemon hold the draft. */
+export const update = (model: Model, message: Message): UpdateReturn => flushNudge(step(model, message));

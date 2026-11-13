@@ -33,6 +33,8 @@ export const bindings: ReadonlyArray<Binding> = [
 	{ command: 'toggleHeading', mac: ['Cmd-Alt-2'], other: ['Ctrl-Shift-2'] },
 	{ command: 'toggleFold', mac: ['Cmd-Alt-f', 'F2'], other: ['Ctrl-Shift-f', 'F2'] },
 	{ command: 'gotoProject', mac: ['Cmd-p'], other: ['Ctrl-p'] },
+	// The browser's Save would only download the page, so S sends the latest version to the agents instead.
+	{ command: 'sendNow', mac: ['Cmd-s'], other: ['Ctrl-s'] },
 	{ command: 'commandPalette', mac: ['Cmd-Shift-p', 'F1'], other: ['Ctrl-Shift-p', 'F1'] },
 	{ command: 'find', mac: ['Cmd-f'], other: ['Ctrl-f'] },
 	{ command: 'indent', mac: ['Cmd-]'], other: ['Ctrl-]'] },
@@ -124,6 +126,12 @@ export const commands: ReadonlyArray<CommandInfo> = [
 		inPalette: true
 	},
 	{ command: 'gotoProject', title: 'Go to project', description: 'Jump to a project', inPalette: true },
+	{
+		command: 'sendNow',
+		title: 'Send to agents now',
+		description: 'Send the latest version to the agents without waiting',
+		inPalette: true
+	},
 	{ command: 'commandPalette', title: 'Command palette', description: 'Open the command palette', inPalette: false },
 	{ command: 'find', title: 'Find', description: 'Find text in the document', inPalette: true },
 	{ command: 'indent', title: 'Indent', description: 'Indent the selected task block', inPalette: true },

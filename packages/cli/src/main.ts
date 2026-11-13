@@ -1,7 +1,14 @@
 import { BunRuntime, BunServices } from '@effect/platform-bun';
 import { ensureDaemon, stopDaemon, withClient, type DaemonInfo, type DoItClient } from '@do-it/client';
-import { APP_VERSION, formatVersionHeader, type Author, type EditOp, type WatchEvent } from '@do-it/protocol';
-import { Cause, Duration, Effect, Exit, FiberHandle, Stdio, Stream } from 'effect';
+import {
+	APP_VERSION,
+	formatVersionHeader,
+	makeSettler,
+	onlyAgent,
+	type EditOp,
+	type WatchEvent
+} from '@do-it/protocol';
+import { Cause, Config, Effect, Exit, Option, Stdio, Stream } from 'effect';
 import { CliConfig, CliOutput, Command } from 'effect/cli';
 import { openBrowser } from './browser';
 import { doctorText, runDoctor } from './doctor';
@@ -22,7 +29,6 @@ import {
 } from './output';
 import { cliConfigFor, cliFormatter, cliPresenter, makeCli, normalizeArgv } from './parser';
 import { installSkill, readSkill, skillSource } from './skill';
-import { personAddsLine } from './settle';
 import { resolveText } from './stdin';
 import type { GlobalOptions, ParsedCommand } from './types';
 
@@ -30,14 +36,6 @@ type Result = number;
 
 function outputText(options: GlobalOptions, text: string, json: unknown): Effect.Effect<void> {
 	return options.json ? writeJson(json) : writeLine(text);
-}
-function sameAgent(by: ReadonlyArray<Author>, name: string): boolean {
-	return by.length > 0 && by.every((author) => author._tag === 'Agent' && author.name === name);
-}
-function authorText(by: ReadonlyArray<Author>): string {
-	return by
-		.map((author) => (author._tag === 'User' ? 'the user' : author._tag === 'File' ? 'file' : author.name))
-		.join(', ');
 }
 function rpc<A, E, R>(info: DaemonInfo, f: (client: DoItClient) => Effect.Effect<A, E, R>): Effect.Effect<A, E, R> {
 	return withClient(info, f);
@@ -170,12 +168,86 @@ function statusCommand(command: Extract<ParsedCommand, { kind: 'status' }>) {
 				appVersion: result.appVersion,
 				...(result.build === undefined ? {} : { build: result.build }),
 				documents: result.documents,
+				notifications: result.notifications ?? [],
 				upSeconds
 			});
 		else
 			yield* writeLine(
-				`Daemon pid ${result.pid} on 127.0.0.1:${result.port}, up ${minutes}m\n${result.documents.map((document) => `  ${document.path}  version ${document.version}  ${document.watchers} watchers`).join('\n')}`
+				[
+					`Daemon pid ${result.pid} on 127.0.0.1:${result.port}, up ${minutes}m`,
+					...result.documents.map(
+						(document) => `  ${document.path}  version ${document.version}  ${document.watchers} watchers`
+					),
+					...(result.notifications ?? []).map(
+						(notification) =>
+							`  prompting pane ${notification.target.pane} about ${notification.path}${notification.section === undefined ? '' : ` (section ${notification.section})`}`
+					)
+				].join('\n')
 			);
+		return 0;
+	});
+}
+
+const herdrEnv = (name: string) =>
+	Config.option(Config.String(name)).pipe(
+		Effect.map((value) => Option.getOrUndefined(value)?.trim() || undefined),
+		Effect.orDie
+	);
+
+function notifyCommand(command: Extract<ParsedCommand, { kind: 'notify' }>) {
+	return Effect.gen(function* () {
+		const pane = command.pane ?? (yield* herdrEnv('HERDR_PANE_ID'));
+		if (pane === undefined) {
+			const message = 'Not inside a Herdr pane: run it in Herdr, or pass --pane ID';
+			yield* outputText(command.options, message, { error: { code: 'NoPane', message } });
+			return 2;
+		}
+		if (command.path === undefined && !command.off) {
+			const message = 'Name the document to notify about, or pass --off to stop every registration of the pane';
+			yield* outputText(command.options, message, { error: { code: 'NoPath', message } });
+			return 2;
+		}
+		const info = yield* ensureDaemon();
+		if (command.off) {
+			const result = yield* rpc(info, (client) =>
+				client.unnotify({ pane, ...(command.path === undefined ? {} : { path: command.path }) })
+			);
+			const about = command.displayPath === undefined ? '' : ` about ${command.displayPath}`;
+			yield* outputText(
+				command.options,
+				result.removed
+					? `Stopped prompting pane ${pane}${about} (${result.removed} ${result.removed === 1 ? 'registration' : 'registrations'})`
+					: `Pane ${pane} was not registered${about}`,
+				{ pane, removed: result.removed }
+			);
+			return 0;
+		}
+		const bin = yield* herdrEnv('HERDR_BIN_PATH');
+		const socket = yield* herdrEnv('HERDR_SOCKET_PATH');
+		const result = yield* rpc(info, (client) =>
+			client.notify({
+				path: command.path!,
+				label: command.displayPath ?? command.path!,
+				target: {
+					pane,
+					...(bin?.startsWith('/') ? { bin } : {}),
+					...(socket?.startsWith('/') ? { socket } : {})
+				},
+				as: command.options.as,
+				todos: command.todos,
+				...(command.since === undefined ? {} : { since: command.since }),
+				...(command.section === undefined ? {} : { section: command.section }),
+				...(command.settle === undefined
+					? {}
+					: { settle: command.settle, settleLine: Math.min(command.settleLine, command.settle) })
+			})
+		);
+		const from = command.since ?? result.version;
+		yield* outputText(
+			command.options,
+			`${result.replaced ? 'Still prompting' : 'Prompting'} pane ${pane} about ${command.displayPath} from version ${from}`,
+			{ pane, version: result.version, since: from, replaced: result.replaced }
+		);
 		return 0;
 	});
 }
@@ -262,50 +334,18 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 			let backoff = 250;
 			let deleted = false;
 			let lastFailure: string | undefined;
-			// The settle timer: a quiet period after the last change, then one "settled" line.
-			// When the person's latest change adds a line (Enter), the quiet period is --settle-line.
-			const timer = yield* FiberHandle.make<void, never>();
-			let pending = false;
-			let settleVersion = 0;
-			let settleBy: string[] = [];
-			let lineAdded = false;
+			// The settle timer: one "settled" line per pause, sooner after the person adds a line.
 			let lastText: string | undefined;
-			const settled = (delay: Duration.Duration, reason: 'line' | 'quiet') =>
-				Effect.sleep(delay).pipe(
-					Effect.andThen(
-						Effect.uninterruptible(
-							Effect.suspend(() => {
-								// Taking and resetting the state is one synchronous step, so a change
-								// that arrives while the line is written starts a fresh settle period.
-								const version = settleVersion;
-								const by = settleBy;
-								pending = false;
-								settleBy = [];
-								lineAdded = false;
-								const byText = by.join(', ');
-								return outputText(command.options, `Settled at version ${version}${byText ? ` by ${byText}` : ''}`, {
-									event: 'settled',
-									version,
-									by,
-									reason
-								});
-							})
-						)
-					)
-				);
-			const schedule = (version: number, by: ReadonlyArray<Author>) =>
-				Effect.suspend(() => {
-					if (command.settle === undefined) return Effect.void;
-					const authors = authorText(by).split(', ').filter(Boolean);
-					settleVersion = version;
-					settleBy = [...new Set(pending ? [...settleBy, ...authors] : authors)];
-					pending = true;
-					const short = lineAdded && command.settleLine < command.settle;
-					return FiberHandle.run(
-						timer,
-						settled(Duration.millis((short ? command.settleLine : command.settle) * 1000), short ? 'line' : 'quiet')
-					).pipe(Effect.asVoid);
-				});
+			const settler =
+				command.settle === undefined
+					? undefined
+					: yield* makeSettler({ settle: command.settle, settleLine: command.settleLine }, (settled) =>
+							outputText(
+								command.options,
+								`Settled at version ${settled.version}${settled.by.length ? ` by ${settled.by.join(', ')}` : ''}`,
+								{ event: 'settled', version: settled.version, by: settled.by, reason: settled.reason }
+							)
+						);
 			while (!deleted) {
 				const daemon = yield* Effect.exit(ensureDaemon());
 				if (Exit.isFailure(daemon)) {
@@ -329,7 +369,8 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 					path: command.path,
 					...(since === undefined ? {} : { since }),
 					...(command.section === undefined ? {} : { section: command.section }),
-					text: command.settle !== undefined
+					text: command.settle !== undefined,
+					...(command.settle === undefined ? {} : { nudges: true })
 				};
 				const exit = yield* Effect.exit(
 					rpc(info, (client) =>
@@ -353,9 +394,8 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 									}
 									if (event._tag === 'Resync') {
 										lastText = event.text;
-										lineAdded = false;
 										yield* resyncOutput(command, event.version);
-										if (command.settle !== undefined) yield* schedule(event.version, []);
+										if (settler) yield* settler.resync(event.version);
 										since = event.version;
 										announce = false;
 										return;
@@ -365,15 +405,16 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 										deleted = true;
 										return;
 									}
+									if (event._tag === 'Nudge') {
+										if (settler) yield* settler.nudge;
+										return;
+									}
 									since = event.to;
 									const before = lastText;
 									lastText = event.text;
-									if (sameAgent(event.by, command.options.as)) return;
-									// Agent changes keep the mode of the person's pending change.
-									if (event.by.some((author) => author._tag !== 'Agent'))
-										lineAdded = personAddsLine(before, event.text, event.by);
-									if (command.settle !== undefined) {
-										yield* schedule(event.to, event.by);
+									if (onlyAgent(event.by, command.options.as)) return;
+									if (settler) {
+										yield* settler.change(event.to, event.by, before, event.text);
 										return;
 									}
 									if (command.todos) {
@@ -429,6 +470,8 @@ function commandEffect(command: ParsedCommand) {
 			return diffCommand(command);
 		case 'watch':
 			return watchCommand(command);
+		case 'notify':
+			return notifyCommand(command);
 		case 'status':
 			return statusCommand(command);
 		case 'stop':

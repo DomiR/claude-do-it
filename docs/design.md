@@ -215,9 +215,13 @@ Rpcs (all payloads carry `path` unless noted):
                                              → { version, changed, section: string | null, others: Others | null }
   sync     { path, base, baseHash?, text }   → { version, text, hash? }   // author is always User
   diff     { path, since, wait: 0..600 }     → { from, to, by: Author[], diff, todos }
-  watch    { path, since?, sinceHash?, section?, text: boolean }   stream: true
+  watch    { path, since?, sinceHash?, section?, text: boolean, nudges? }   stream: true
            → Watching { version, hash?, text? } | Change { from, to, by, diff, todos, hash?, text? }
-             | Resync { version, hash?, text? } | Deleted {}
+             | Resync { version, hash?, text? } | Deleted {} | Nudge { version }   // Nudge only with nudges: true
+  notify   { path, label, target: { pane, bin?, socket? }, as, section?, todos, settle?, settleLine?, since? }
+                                             → { version, replaced }
+  unnotify { pane, path? }                   → { removed }
+  nudge    { path }                          → { version }   // the person's Cmd-S
 
 Errors (Schema.TaggedErrorClass), union on every rpc:
   VersionMismatch { latest, since, diff: string | null, forgotten: boolean }   exit 1
@@ -253,6 +257,23 @@ them the server compares numbers only, as before. The fields are optional, so
 older clients and daemons keep working. The server caches the newest hash of
 each open document. The CLI does not send hashes yet: `--version` and
 `--since` still compare numbers only.
+
+Registered panes (`notify`): the daemon runs, per pane, document, and section,
+the same loop a `watch` client would, inside the daemon (`watchDocument` plus
+the shared `makeSettler` from `@do-it/protocol`), and sends each event to the
+pane with `herdr agent prompt PANE TEXT` (`bin` or `herdr`, with
+`HERDR_SOCKET_PATH=socket`), each line prefixed `[do-it] LABEL: `. Events wait
+in one outbox per registration while a prompt fails: `agent_blocked` and other
+errors retry after 2, 5, 10, 30, then every 60 seconds, and the waiting events
+go out together (at most 64 KiB, the oldest left out first with a note).
+`pane_not_found`, or `agent_not_found` for a pane that `pane get` no longer
+finds, ends the registration. So does `Deleted`. The registrations and the
+version each pane has been told about live in `notify.json` (saved a second
+after a change, and at shutdown before the documents close), and a new daemon
+resumes them from there. At most 64 registrations; each holds a watch slot, so
+a daemon with registrations never idles out. `nudge` bumps a counter on the
+document and wakes its watchers; a watch that asked for nudges streams
+`Nudge`, and a settler with a pending change fires at once (`reason: nudge`).
 
 ## Daemon (`packages/server`)
 
@@ -329,6 +350,7 @@ daemon first (exit 3 when it cannot start).
 | `todo list PATH [--section ID]` | `Version: N` then `3. [x] Ship` per task |
 | `diff PATH --since N [--wait S]` | `Version N by WHO` then the diff; exit 4 when nothing came |
 | `watch PATH [--since N] [--section ID] [--todos] [--settle S [--settle-line L]] [--quiet]` | `Watching PATH at version N`, then per change `Version N by WHO` (or `Versions A-N by WHO, WHO`) and the diff, or with `--todos` lines like `checked 3. Ship`. `--quiet` omits the initial Watching line. A forgotten or future `--since` prints `Missed changes, now at version N: run do-it read`. Changes made only by `--as NAME` are skipped. `--settle S` prints `Settled at version N by WHO` after S quiet seconds, or after L seconds (`--settle-line`, default 2, never longer than S) when the latest change by the person or the file adds a line break (Enter, also inside a line, or a pasted block). Every other change waits the full period: typing, editing or deleting text, toggling a box, and Enter on an empty task, which removes its marker. A change bundled with an agent's edit waits the full period; agent changes keep the pending mode. With `--settle` the watch asks for the text with each change to tell. The JSON event carries `reason`: `line` or `quiet`. Reconnects with backoff; a daemon restart prints `Daemon restarted, now version N` when the resumed watch is still kept. Exit 9 when the document is deleted |
+| `notify [PATH] [--pane ID] [--off] [--since N] [--section ID] [--todos] [--settle S [--settle-line L]]` | Inside Herdr (`$HERDR_PANE_ID`, `$HERDR_BIN_PATH`, `$HERDR_SOCKET_PATH`): `Prompting pane P about PATH from version N` (`Still prompting ...` when it replaced one), then the daemon prompts the pane with what `watch` would print. `--off` prints `Stopped prompting pane P (N registrations)` or `Pane P was not registered`; without PATH it removes every registration of the pane. Exit 2 without a pane |
 | `status` | daemon pid, port, uptime, open documents |
 | `stop` | `Stopped` or `Not running` |
 | `doctor [--skill-dir DIR]` | one line per check (Bun version, the `do-it` PATH runs, the daemon's version and build, the installed skill against the shipped one), each problem followed by `fix: COMMAND` lines; exit 1 on any problem. Never starts the daemon |
@@ -558,7 +580,10 @@ browser focus navigation remains available.
   that needs the person writes `question` to the inbox and exits; the
   conductor writes the question under the task and, once answered, resumes
   that worker (SendMessage to its agent id) with the answer.
-- The conductor runs three Monitors: the todo (`--settle 25 --as conductor`,
+- Inside Herdr the conductor registers its pane (`do-it notify`) for the todo
+  and the inbox instead of running Monitors, and the tester and messenger
+  register theirs for `tests.md` and the inbox.
+- Elsewhere the conductor runs three Monitors: the todo (`--settle 25 --as conductor`,
   which settles after 2 seconds when the person presses Enter for a new line),
   the inbox, and `tests.md --todos` (to start the one tester when requests are
   open). Planner and worker agents run in the background so events keep
