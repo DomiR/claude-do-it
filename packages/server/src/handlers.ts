@@ -25,6 +25,8 @@ import { Cause, Deferred, Effect, Stream } from 'effect';
 import { Auth } from './auth';
 import { APP_VERSION } from './config';
 import { Documents, DocumentRegistry, rpcTry, type OpenDocument } from './documents';
+import { Notifier } from './notify';
+import { author, changes, watchDocument } from './watch';
 
 export interface RuntimeInfo {
 	port: number;
@@ -32,82 +34,9 @@ export interface RuntimeInfo {
 	build: string;
 	stop: Effect.Effect<void>;
 }
-export function author(origin: Origin): Author {
-	return origin.kind === 'agent'
-		? { _tag: 'Agent', name: origin.name }
-		: origin.kind === 'user'
-			? { _tag: 'User' }
-			: { _tag: 'File' };
-}
 function origin(by: Author): Origin {
 	return by._tag === 'Agent' ? { kind: 'agent', name: by.name } : { kind: by._tag === 'User' ? 'user' : 'file' };
 }
-function changes(entry: OpenDocument, since: number, section?: string): DiffSuccess | null {
-	const result = entry.doc.changes(since, section);
-	return result ? { ...result, by: result.by.map(author) } : null;
-}
-
-/** One pull reads the newest document version. There is no subscriber queue. */
-export function watchDocument(registry: DocumentRegistry, request: WatchPayload) {
-	return Stream.fromPull(
-		Effect.gen(function* () {
-			// The subscription keeps the entry open once the stream exists.
-			const { entry, release } = yield* registry.withEntry(request.path, (entry) =>
-				Effect.gen(function* () {
-					if (request.section !== undefined) yield* rpcTry(() => findSection(entry.doc.text, request.section!));
-					return { entry, release: yield* rpcTry(() => registry.subscribe(entry)) };
-				})
-			);
-			yield* Effect.addFinalizer(() => Effect.sync(release));
-			let first = true;
-			let ended = false;
-			let since = request.since ?? entry.doc.version;
-			const pull: Effect.Effect<readonly [WatchEvent], Cause.Done> = Effect.gen(function* () {
-				if (ended) return yield* Cause.done();
-				while (true) {
-					const signal = entry.signal;
-					if (first) {
-						first = false;
-						let resync =
-							request.since !== undefined &&
-							(since > entry.doc.version || (since < entry.doc.version && entry.doc.textAt(since) === null));
-						// A restarted daemon can give the watcher's version number to another text.
-						if (!resync && request.since !== undefined && request.sinceHash !== undefined) {
-							resync = (yield* registry.hashAt(entry, since)) !== request.sinceHash;
-						}
-						if (request.since === undefined || resync) since = entry.doc.version;
-						const { version, text } = entry.doc;
-						return [
-							{
-								_tag: resync ? 'Resync' : 'Watching',
-								version,
-								hash: yield* registry.hashOf(entry, version, text),
-								...(request.text ? { text } : {})
-							} satisfies WatchEvent
-						] as const;
-					}
-					if (entry.deleted) {
-						ended = true;
-						return [{ _tag: 'Deleted' } satisfies WatchEvent] as const;
-					}
-					if (entry.doc.version > since) {
-						const result = changes(entry, since, request.section);
-						since = entry.doc.version;
-						const text = entry.doc.text;
-						const hash = yield* registry.hashOf(entry, since, text);
-						const event: WatchEvent = result
-							? { _tag: 'Change', ...result, hash, ...(request.text ? { text } : {}) }
-							: { _tag: 'Resync', version: since, hash, ...(request.text ? { text } : {}) };
-						return [event] as const;
-					}
-					yield* Deferred.await(signal);
-				}
-			});
-			return pull;
-		})
-	);
-}
-
 /** Merges the text a browser edited from `base`. */
 export function syncDocument(registry: DocumentRegistry, request: SyncPayload) {
 	return registry.withEntry(request.path, (entry) =>
@@ -136,6 +65,7 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
 	return DoItRpcs.toLayer(
 		Effect.gen(function* () {
 			const registry = yield* Documents;
+			const notifier = yield* Notifier;
 			return {
 				status: () =>
 					Effect.sync(() => ({
@@ -144,7 +74,8 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
 						port: runtime.port,
 						startedAt: runtime.startedAt,
 						build: runtime.build,
-						documents: registry.status()
+						documents: registry.status(),
+						notifications: notifier.list()
 					})).pipe(Effect.withSpan('rpc.status')),
 				stop: Effect.fn('rpc.stop')(function* () {
 					yield* runtime.stop;
@@ -265,7 +196,18 @@ export function HandlersLive(auth: Auth, runtime: RuntimeInfo) {
 							})
 						)
 						.pipe(Effect.withSpan('rpc.diff')),
-				watch: (request) => watchDocument(registry, request)
+				watch: (request) => watchDocument(registry, request),
+				nudge: (request) =>
+					registry
+						.withEntry(request.path, (entry) =>
+							Effect.sync(() => {
+								registry.nudge(entry);
+								return { version: entry.doc.version };
+							})
+						)
+						.pipe(Effect.withSpan('rpc.nudge')),
+				notify: (request) => notifier.register(request).pipe(Effect.withSpan('rpc.notify')),
+				unnotify: (request) => notifier.unregister(request).pipe(Effect.withSpan('rpc.unnotify'))
 			};
 		})
 	);

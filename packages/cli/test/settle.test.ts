@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { Author } from '@do-it/protocol';
-import { addsLine, personAddsLine } from '../src/settle';
+import { addsLine, personAddsLine } from '@do-it/protocol';
 
 const todo = '# TODO\n\n## Tasks\n\n- [ ] ship it\n  - **t1** S, building\n- [ ] next\n- [ ] \n';
 

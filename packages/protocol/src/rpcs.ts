@@ -8,6 +8,11 @@ import {
 	Deleted,
 	EditPayload,
 	EditSuccess,
+	Nudge,
+	NudgePayload,
+	NudgeSuccess,
+	NotifyPayload,
+	NotifySuccess,
 	OpenPayload,
 	OpenSuccess,
 	ReadPayload,
@@ -23,6 +28,8 @@ import {
 	SyncSuccess,
 	TodosPayload,
 	TodosSuccess,
+	UnnotifyPayload,
+	UnnotifySuccess,
 	WatchEvent,
 	WatchPayload,
 	Watching
@@ -89,6 +96,24 @@ export const watchRpc = Rpc.make('watch', {
 	stream: true
 });
 
+export const notifyRpc = Rpc.make('notify', {
+	payload: NotifyPayload,
+	success: NotifySuccess,
+	error: RpcFailure
+});
+
+export const unnotifyRpc = Rpc.make('unnotify', {
+	payload: UnnotifyPayload,
+	success: UnnotifySuccess,
+	error: RpcFailure
+});
+
+export const nudgeRpc = Rpc.make('nudge', {
+	payload: NudgePayload,
+	success: NudgeSuccess,
+	error: RpcFailure
+});
+
 export const DoItRpcs = RpcGroup.make(
 	statusRpc,
 	stopRpc,
@@ -99,9 +124,12 @@ export const DoItRpcs = RpcGroup.make(
 	editRpc,
 	syncRpc,
 	diffRpc,
-	watchRpc
+	watchRpc,
+	notifyRpc,
+	unnotifyRpc,
+	nudgeRpc
 );
 export type DoItRpcs = typeof DoItRpcs;
 
 export type WatchEventSchema = typeof WatchEvent.Type;
-export { Change, Deleted, Resync, Watching };
+export { Change, Deleted, Nudge, Resync, Watching };

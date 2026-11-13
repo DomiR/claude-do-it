@@ -28,6 +28,8 @@ export interface OpenDocument {
 	scope: Scope.Closeable;
 	writing: Fiber.Fiber<void> | undefined;
 	missing: Fiber.Fiber<void> | undefined;
+	/** How many times the person asked to send the latest version now (Cmd-S). */
+	nudges: number;
 	/** The newest version hashed so far. In one entry a version number always names one text. */
 	hash: { version: number; value: string } | undefined;
 }
@@ -229,6 +231,7 @@ export class DocumentRegistry {
 					scope: yield* Scope.fork(this.scope),
 					writing: undefined,
 					missing: undefined,
+					nudges: 0,
 					hash: undefined
 				};
 				this.entries.set(path, entry);
@@ -255,6 +258,12 @@ export class DocumentRegistry {
 				})
 			);
 		});
+	}
+
+	/** The person asked to send the latest version now: wakes every watch that streams nudges. */
+	nudge(entry: OpenDocument): void {
+		entry.nudges++;
+		this.notify(entry);
 	}
 
 	notify(entry: OpenDocument): void {

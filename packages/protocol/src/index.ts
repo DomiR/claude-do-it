@@ -7,3 +7,4 @@ export * from './schema.js';
 export * from './errors.js';
 export * from './rpcs.js';
 export * from './format.js';
+export * from './settle.js';

@@ -171,7 +171,7 @@ describe('protocol schemas', () => {
 		}
 	});
 
-	it('defines exactly ten rpcs and makes watch a stream', () => {
+	it('defines exactly thirteen rpcs and makes watch a stream', () => {
 		expect([...DoItRpcs.requests.keys()]).toEqual([
 			'status',
 			'stop',
@@ -182,7 +182,10 @@ describe('protocol schemas', () => {
 			'edit',
 			'sync',
 			'diff',
-			'watch'
+			'watch',
+			'notify',
+			'unnotify',
+			'nudge'
 		]);
 		expect(editRpc.errorSchema).toBe(RpcFailure);
 		expect(diffRpc.errorSchema).toBe(RpcFailure);

@@ -34,6 +34,20 @@ export type ParsedCommand =
 			settleLine: number;
 			quiet: boolean;
 	  }
+	| {
+			kind: 'notify';
+			options: GlobalOptions;
+			/** Left out only with `off`, for every document. */
+			path?: string;
+			displayPath?: string;
+			pane?: string;
+			off: boolean;
+			since?: number;
+			section?: string;
+			todos: boolean;
+			settle?: number;
+			settleLine: number;
+	  }
 	| { kind: 'status'; options: GlobalOptions }
 	| { kind: 'stop'; options: GlobalOptions }
 	| { kind: 'doctor'; options: GlobalOptions; skillDir?: string }
