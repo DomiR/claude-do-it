@@ -43,7 +43,8 @@ export type EditorCommand =
 	| 'showShortcuts'
 	| 'toggleFold'
 	| 'foldAll'
-	| 'unfoldAll';
+	| 'unfoldAll'
+	| 'sendNow';
 
 /**
  * `Applied.edits` are sorted, non overlapping, and in offsets of the text the action ran on

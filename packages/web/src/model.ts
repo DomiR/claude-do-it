@@ -36,7 +36,8 @@ export const EditorCommandName = Schema.Union([
 		'showShortcuts',
 		'toggleFold',
 		'foldAll',
-		'unfoldAll'
+		'unfoldAll',
+		'sendNow'
 	])
 ]);
 export const Selection = Schema.Struct({ anchor: Schema.Number, head: Schema.Number });
@@ -71,6 +72,16 @@ export const ConnectionState = defineTaggedUnion({
 	Reconnecting: { awaitingResync: Schema.Boolean }
 });
 export type ConnectionState = typeof ConnectionState.Type;
+/**
+ * Where a request to send the latest version to the agents now stands. It waits until the daemon holds the
+ * draft, then goes out once. A request made while one is sending, after newer text, goes out after it.
+ */
+export const NudgeState = defineTaggedUnion({
+	Idle: {},
+	Waiting: {},
+	Sending: { version: Version, queued: Schema.Boolean }
+});
+export type NudgeState = typeof NudgeState.Type;
 export const ReadyDocument = Schema.Struct({
 	path: Schema.String,
 	session: Schema.String,
@@ -86,7 +97,8 @@ export const ReadyDocument = Schema.Struct({
 	watchKey: Schema.Number,
 	resumeFrom: Schema.Option(Cursor),
 	reconnectAttempt: Schema.Number,
-	connection: ConnectionState
+	connection: ConnectionState,
+	nudge: NudgeState
 });
 export type ReadyDocument = typeof ReadyDocument.Type;
 

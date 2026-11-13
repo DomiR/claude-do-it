@@ -68,6 +68,21 @@ export const SyncDraft = Command.define('SyncDraft', {
 	}
 });
 
+/**
+ * Asks the daemon to send the version it holds to the agents now, instead of after their quiet period.
+ * Any cause fails it: a daemon from before nudges may answer with a defect rather than a typed failure.
+ */
+export const SendNudge = Command.define('SendNudge', {
+	args: { path: Schema.String },
+	messages: [Message.SucceededNudge, Message.FailedNudge],
+	execute: ({ path }) =>
+		Effect.gen(function* () {
+			const client = yield* DoItClient;
+			const { version } = yield* client.nudge({ path });
+			return Message.SucceededNudge({ version });
+		}).pipe(Effect.catchCause(() => Effect.succeed(Message.FailedNudge())))
+});
+
 type RemoteResult = typeof Message.CompletedApplyRemoteText.Type | typeof Message.FailedApplyRemoteText.Type;
 
 export const ApplyRemoteText = Command.define('ApplyRemoteText', {

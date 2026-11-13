@@ -121,6 +121,7 @@ export const runEditorCommand = (view: EditorView, command: EditorCommand, fallT
 		case 'commandPalette':
 		case 'gotoProject':
 		case 'showShortcuts':
+		case 'sendNow':
 			view.state.facet(editorFacts)(Message.PressedEditorCommand({ command }));
 			return true;
 		case 'openLink':
@@ -797,7 +798,8 @@ export const editorExtensions = (platform: Platform, options: EditorOptions = {}
 					run: unlessComposing((view) =>
 						runEditorCommand(view, binding.command, key === 'Shift-Tab' && binding.command === 'outdent')
 					),
-					preventDefault: binding.command === 'toggleFold',
+					// Send now keeps the browser's Save dialog shut even while composing, when it does not run.
+					preventDefault: binding.command === 'toggleFold' || binding.command === 'sendNow',
 					stopPropagation: true
 				}))
 			)

@@ -1070,6 +1070,35 @@ describe('fold command integration', () => {
 		}
 	});
 
+	test('Save sends now, keeps the browser dialog shut, and leaves the text alone', () => {
+		for (const [platform, key] of [
+			['mac', 'Cmd-s'],
+			['other', 'Ctrl-s']
+		] as const) {
+			const commands: string[] = [];
+			const state = EditorState.create({
+				doc: '- [ ] Ship',
+				extensions: [
+					editorExtensions(platform),
+					editorFacts.of((fact) => {
+						if (fact._tag === 'PressedEditorCommand') commands.push(fact.command);
+					})
+				]
+			});
+			const binding = state
+				.facet(keymap)
+				.flat()
+				.find((value) => value.key === key)!;
+			expect(binding.preventDefault).toBe(true);
+			expect(binding.stopPropagation).toBe(true);
+			const view = viewFor(state);
+			expect(binding.run!(view)).toBe(true);
+			expect(view.state.doc.toString()).toBe('- [ ] Ship');
+			expect(commands).toEqual(['sendNow']);
+			expect(Schema.is(EditorCommandName)('sendNow')).toBe(true);
+		}
+	});
+
 	test('search-style selections reveal hidden text and restore base decorations', () => {
 		const text = '# Project\n- [ ] Task\n  <details><summary>Explanation</summary>\n  **needle**\n  </details>';
 		let state = run(stateFor(text), (view) => runEditorCommand(view, 'foldAll')).state;

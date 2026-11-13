@@ -29,7 +29,8 @@ const allCommands: ReadonlyArray<EditorCommand> = [
 	'gotoProject',
 	'commandPalette',
 	'find',
-	'showShortcuts'
+	'showShortcuts',
+	'sendNow'
 ];
 
 describe('editor keymap', () => {
@@ -56,6 +57,7 @@ describe('editor keymap', () => {
 			{ command: 'toggleHeading', mac: ['Cmd-Alt-2'], other: ['Ctrl-Shift-2'] },
 			{ command: 'toggleFold', mac: ['Cmd-Alt-f', 'F2'], other: ['Ctrl-Shift-f', 'F2'] },
 			{ command: 'gotoProject', mac: ['Cmd-p'], other: ['Ctrl-p'] },
+			{ command: 'sendNow', mac: ['Cmd-s'], other: ['Ctrl-s'] },
 			{ command: 'commandPalette', mac: ['Cmd-Shift-p', 'F1'], other: ['Ctrl-Shift-p', 'F1'] },
 			{ command: 'find', mac: ['Cmd-f'], other: ['Ctrl-f'] },
 			{ command: 'indent', mac: ['Cmd-]'], other: ['Ctrl-]'] },
@@ -124,6 +126,7 @@ describe('editor keymap', () => {
 			'Fold all',
 			'Unfold all',
 			'Go to project',
+			'Send to agents now',
 			'Command palette',
 			'Find',
 			'Indent',
@@ -181,6 +184,22 @@ describe('editor keymap', () => {
 		}
 		expect(spokenKeys('mac', 'Cmd-Alt-f')).toBe('Option Command F');
 		expect(spokenKeys('other', 'Ctrl-Shift-f')).toBe('Control Shift F');
+	});
+
+	test('Send now takes Save on each platform and reads as Save in the shortcut list', () => {
+		expect(commands.find((command) => command.command === 'sendNow')).toEqual({
+			command: 'sendNow',
+			title: 'Send to agents now',
+			description: 'Send the latest version to the agents without waiting',
+			inPalette: true
+		});
+		expect(keysFor('mac', 'sendNow')).toEqual(['Cmd-s']);
+		expect(keysFor('other', 'sendNow')).toEqual(['Ctrl-s']);
+		expect(keyCaps('mac', 'Cmd-s')).toEqual([
+			{ icon: 'command', spoken: 'Command' },
+			{ text: 'S', spoken: 'S' }
+		]);
+		expect(spokenKeys('other', 'Ctrl-s')).toBe('Control S');
 	});
 
 	test('turns key names into one cap per key, icons on Macs and words elsewhere, in platform order', () => {
