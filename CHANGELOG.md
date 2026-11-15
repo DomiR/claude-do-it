@@ -11,6 +11,8 @@ The npm package `claude-do-it` and the Claude Code plugin `do-it` share one vers
 
 ### Editor
 
+- Blank lines at the end of a section or task stay outside its fold, so there is room to type between folded sections.
+- Enter in front of a title opens a new line above it instead of splitting the title into a plain line.
 - `Cmd-S` (`Ctrl-S`) sends the latest version to the agents now: once the daemon has the text, a pending settle fires at once, for registered panes and `watch --settle` alike. The browser's Save dialog no longer opens.
 
 ## 0.1.3 (2026-11-08)

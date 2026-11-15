@@ -126,8 +126,9 @@ describe('fold candidates', () => {
 		const values = candidates(text);
 		const heading = values[0]!;
 		const task = values[1]!;
-		expect(heading.hidden).toEqual({ from: '# 😀'.length, to: text.length - 2 });
-		expect(heading.hiddenLines).toBe(3);
+		// The trailing blank line stays outside the fold.
+		expect(heading.hidden).toEqual({ from: '# 😀'.length, to: text.length - 4 });
+		expect(heading.hiddenLines).toBe(2);
 		expect(task.anchor).toBe('# 😀\r\n'.length);
 		expect(task.hiddenLines).toBe(1);
 		expect(text.slice(task.hidden.from, task.hidden.to)).toBe('\r\n\t\tnote');
@@ -135,6 +136,15 @@ describe('fold candidates', () => {
 		expect(details.hiddenLines).toBe(0);
 		expect(details.initiallyOpen).toBe(true);
 		expect(details.endLine).toBe(3);
+	});
+
+	test('leaves the blank lines at the end of a section outside its fold', () => {
+		const text = '## One\n- [ ] a\n  note\n\n\n## Two\nbody\n\n';
+		const [one, task, two] = candidates(text);
+		expect(text.slice(one!.hidden.from, one!.hidden.to)).toBe('\n- [ ] a\n  note');
+		expect(one!.hiddenLines).toBe(2);
+		expect(text.slice(task!.hidden.from, task!.hidden.to)).toBe('\n  note');
+		expect(text.slice(two!.hidden.from, two!.hidden.to)).toBe('\nbody');
 	});
 
 	test('keys use normalized labels, stamp-free tasks, occurrences, and unique details ids', () => {

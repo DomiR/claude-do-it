@@ -894,6 +894,13 @@ function continueTask(view: DocumentView, selection: TextSelection): ActionResul
 	if (range === undefined || range.anchor !== range.head) return unavailable('Not a task');
 	const index = lineAt(view, range.head);
 	const line = view.lines[index];
+	// In front of a title (its # marks are hidden), Enter opens a line above and keeps the title.
+	if (line?.kind === 'heading' && range.head >= line.from && range.head <= line.content) {
+		const edit = { from: line.from, to: line.from, insert: view.newline };
+		const applied = filterEdits(view, [edit]);
+		const caret = range.head + view.newline.length;
+		return { _tag: 'Applied', edits: applied, selection: { ranges: [{ anchor: caret, head: caret }], main: 0 } };
+	}
 	if (line?.state === undefined || line.content > range.head || range.head > line.to) return unavailable('Not a task');
 
 	const prefix = taskPrefix(view, index).text;
