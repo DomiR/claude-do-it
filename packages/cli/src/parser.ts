@@ -372,6 +372,12 @@ export function makeCli(run: CommandRunner) {
 			todos: Flag.Boolean('todos').pipe(Flag.withDefault(false)),
 			settle,
 			settleLine,
+			added: Flag.Boolean('added').pipe(
+				Flag.withDescription(
+					'Print each change as its header and only the lines it added (removed lines are counted), not the full diff'
+				),
+				Flag.withDefault(false)
+			),
 			quiet: Flag.Boolean('quiet').pipe(Flag.withDefault(false))
 		},
 		(input) =>
@@ -384,6 +390,7 @@ export function makeCli(run: CommandRunner) {
 				todos: config.todos,
 				settle: optionValue(config.settle),
 				settleLine: config.settleLine,
+				added: config.added,
 				quiet: config.quiet
 			}))
 	).pipe(Command.withDescription('Print every change to PATH as it lands, or with --settle one line per pause'));

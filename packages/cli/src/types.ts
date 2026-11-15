@@ -32,6 +32,7 @@ export type ParsedCommand =
 			todos: boolean;
 			settle?: number;
 			settleLine: number;
+			added: boolean;
 			quiet: boolean;
 	  }
 	| {

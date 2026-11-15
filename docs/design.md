@@ -262,7 +262,10 @@ Registered panes (`notify`): the daemon runs, per pane, document, and section,
 the same loop a `watch` client would, inside the daemon (`watchDocument` plus
 the shared `makeSettler` from `@do-it/protocol`), and sends each event to the
 pane with `herdr agent prompt PANE TEXT` (`bin` or `herdr`, with
-`HERDR_SOCKET_PATH=socket`), each line prefixed `[do-it] LABEL: `. Events wait
+`HERDR_SOCKET_PATH=socket`), each line prefixed `[do-it] LABEL: `. A change
+is sent as `formatAdded` makes it (`watch --added`): the version header, a
+colon, and only the added lines; removed lines are counted with a pointer to
+`do-it diff --since`. Events wait
 in one outbox per registration while a prompt fails: `agent_blocked` and other
 errors retry after 2, 5, 10, 30, then every 60 seconds, and the waiting events
 go out together (at most 64 KiB, the oldest left out first with a note).

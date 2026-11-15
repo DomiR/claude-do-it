@@ -2,6 +2,7 @@ import { BunRuntime, BunServices } from '@effect/platform-bun';
 import { ensureDaemon, stopDaemon, withClient, type DaemonInfo, type DoItClient } from '@do-it/client';
 import {
 	APP_VERSION,
+	formatAdded,
 	formatVersionHeader,
 	makeSettler,
 	onlyAgent,
@@ -422,7 +423,7 @@ function watchCommand(command: Extract<ParsedCommand, { kind: 'watch' }>) {
 										if (command.options.json) yield* writeJson(changeJson(event));
 										else yield* writeLine(todosText(event.todos));
 									} else if (command.options.json) yield* writeJson(changeJson(event));
-									else yield* writeLine(changeReply(event, false));
+									else yield* writeLine(command.added ? formatAdded(event, event.diff) : changeReply(event, false));
 								})
 							)
 						)

@@ -4,6 +4,7 @@ import { RpcSchema } from 'effect/rpc';
 
 import {
 	Agent,
+	formatAdded,
 	APP_VERSION,
 	Author,
 	DiffPayload,
@@ -196,6 +197,20 @@ describe('protocol schemas', () => {
 });
 
 describe('protocol formatting', () => {
+	it('formats a change as its added lines only', () => {
+		const by = [{ _tag: 'Agent' as const, name: 't27' }];
+		const appended = '--- 513\n+++ 514\n@@ -3,2 +3,3 @@\n - t1 progress: one\n - t2 done: two\n+- t27 done: three\n';
+		expect(formatAdded({ from: 513, to: 514, by }, appended)).toBe('Version 514 by t27:\n- t27 done: three');
+		const replaced = '--- 2\n+++ 4\n@@ -1,3 +1,2 @@\n-old\n--- not a header\n+new\n keep\n';
+		expect(formatAdded({ from: 2, to: 4, by }, replaced)).toBe(
+			'Versions 3-4 by t27:\nnew\n(2 lines removed, run do-it diff --since 2)'
+		);
+		expect(formatAdded({ from: 2, to: 3, by }, '')).toBe('Version 3 by t27');
+		expect(formatAdded({ from: 2, to: 3, by }, null)).toBe(
+			'Version 3 by t27: too large to show, run do-it diff --since 2'
+		);
+	});
+
 	it('formats authors, todo changes, and version headers exactly', () => {
 		expect(describeAuthor(author)).toBe('the user');
 		expect(describeAuthor(agent)).toBe('t3');

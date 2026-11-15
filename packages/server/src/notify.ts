@@ -3,7 +3,7 @@ import {
 	Notification,
 	Refused,
 	formatTodoChange,
-	formatVersionHeader,
+	formatAdded,
 	makeSettler,
 	onlyAgent,
 	type HerdrPane,
@@ -263,13 +263,7 @@ export class Notifications {
 									return true;
 								}
 								if (settler) yield* settler.change(event.to, event.by, before, event.text);
-								else if (!notification.todos)
-									yield* say(
-										event.diff
-											? `${formatVersionHeader(event.from, event.to, event.by)}\n${event.diff}`
-											: formatVersionHeader(event.from, event.to, event.by),
-										event.to
-									);
+								else if (!notification.todos) yield* say(formatAdded(event, event.diff), event.to);
 								else if (event.todos.length) yield* say(event.todos.map(formatTodoChange).join('\n'), event.to);
 								else passed(event.to);
 								return true;

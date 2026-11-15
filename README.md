@@ -191,7 +191,8 @@ Inside Herdr, `do-it notify PATH` takes the same `--since`, `--section`,
 `--todos`, `--settle`, and `--settle-line` options as `watch`, but nothing keeps
 running: the daemon remembers the pane (`$HERDR_PANE_ID`, or `--pane ID`) and
 sends it each event with `herdr agent prompt`, as a message starting with
-`[do-it] PATH: `. Events that land while the agent is busy or waiting at an
+`[do-it] PATH: `. A change comes as its header and only the lines it added,
+as `do-it watch --added` prints it. Events that land while the agent is busy or waiting at an
 approval go out together once it can take them. Registrations outlast a daemon
 restart and end when the file is deleted or the pane is closed;
 `do-it notify --off [PATH]` ends them sooner, and `do-it status` lists them.
