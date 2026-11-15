@@ -8,6 +8,11 @@ The npm package `claude-do-it` and the Claude Code plugin `do-it` share one vers
 
 - `do-it notify PATH` registers the current Herdr pane with the daemon, which then prompts it with every event a `do-it watch` with the same options would print (`herdr agent prompt`, one `[do-it] PATH: ` line per event). Nothing has to keep running: there is no Monitor to expire or re-arm, events that land while the agent is busy or blocked arrive together, and registrations outlast a daemon restart. They end when the file is deleted or the pane is closed, or with `do-it notify --off`. `do-it status` lists them.
 - Inside Herdr the conductor, tester, and messenger register their panes instead of running watches.
+- A registered pane gets each change as its header and only the lines it added (`Version 515 by t27:` and the new inbox lines), not the full diff with its context. `do-it watch --added` prints changes the same way.
+
+### Conductor skill
+
+- Inbox lines stay short: one line of at most 300 characters with the facts the conductor acts on, and the details in a file the line names. Every inbox line reaches the conductor, so long lines cost tokens on every message.
 
 ### Editor
 

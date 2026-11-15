@@ -158,6 +158,30 @@ describe('do-it notify', () => {
 		await runCli(['stop'], env);
 	});
 
+	it('prompts a section with only the lines it added', async () => {
+		const { fixture, herdr, env, version } = await setup('# Inbox\n\n## Messages\n\n- t1 progress: one\n');
+		expect((await runCli(['notify', fixture.file, '--section', 'messages', '--as', 'conductor'], env)).code).toBe(0);
+		const appended = await runCli(
+			[
+				'append',
+				fixture.file,
+				'--version',
+				String(await version()),
+				'--section',
+				'messages',
+				'--as',
+				't2',
+				'--',
+				'- t2 done: two'
+			],
+			env
+		);
+		expect(appended.code).toBe(0);
+		const [prompt] = await herdr.promptCount(1);
+		expect(prompt!.args[3]).toBe(`[do-it] ${fixture.file}: Version 2 by t2:\n- t2 done: two`);
+		await runCli(['stop'], env);
+	});
+
 	it('fires a pending settle when the person asks (Cmd-S), and stops with --off', async () => {
 		const { fixture, herdr, env, add, status } = await setup();
 		expect((await runCli(['notify', fixture.file, '--settle', '30', '--as', 'conductor'], env)).code).toBe(0);
