@@ -226,7 +226,7 @@ Use `--quiet` to skip the initial `Watching PATH at version N` line instead of f
 
 ## Step 3. Triage each new task
 
-A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, is not an indented `- [ ]` line under a task whose `state.json` entry is L (those are its subtasks, the person's own additions included), and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone. The template's `## Example` samples fall out of these rules (open ones carry a `**t0**` status line, the rest are resolved); real ids start at t1.
+A task is any `- [ ]` line (or plain non empty line under `## Tasks`) that has no `**tN**` status line under it, is not already in `state.json`, is not an indented `- [ ]` line under a task whose `state.json` entry is L (those are its subtasks, the person's own additions included), and is not a `listed` item from Step 1b. A `- **Name**` bullet without a checkbox is a group label, never a task. A line asking for a sidekick is a request, not a task: see Sidekick. An empty `- [ ]` line is the person's typing spot (the new file template has one): leave it alone. The template's `## Example` samples fall out of these rules (open ones carry a `**t0**` status line, the rest are resolved); real ids start at t1.
 
 **Start it first.** The moment you take a task, before sizing it, run `todo start` on it, queued tasks included, so the person sees at once that it was picked up:
 
@@ -425,7 +425,7 @@ A session worker's last message stays in its own session, which the conductor do
 
 ### Inside Herdr (`HARNESS=herdr`): worktrees and tabs
 
-Run `herdr --help` once for the CLI; never split your own pane.
+Run `herdr --help` once for the CLI; never split your own pane, except for a sidekick the person asked for (below).
 
 - **Tester**: one tab in your workspace, started once, watching the queue itself:
   ```bash
@@ -452,6 +452,44 @@ Run `herdr --help` once for the CLI; never split your own pane.
   Never pass `--focus`, never focus, select, or reveal the new space, its tabs, or its panes, and never use `herdr worktree open` for a new worker. When you must reopen an existing worktree with `worktree open` (a resume), pass `--no-focus` and restore focus the same way (save `BEFORE` first, refocus it only when `open` moved focus), since `open` focuses its target anyway. Never focus your own workspace to "get back": the person may be in another one.
 - **Answers** go to the worker as `herdr agent prompt do-tN "From the TODO: <their text>"`; it keeps working while it waits.
 - **Parked workers**: when no inbox message came from a task for 30 minutes, read its screen (`herdr agent read do-tN --source recent-unwrapped --lines 80`); if it waits on something that already finished, prompt it to continue.
+
+### Sidekick (Herdr only, only when the person asks)
+
+A sidekick is a research agent beside you, for the person to talk to directly: they type and queue questions in its pane while you keep conducting. Start one only when the person asks for it in words (in chat, or a todo line such as "start a sidekick", which you then check off), never on your own, and only one per run. Outside Herdr, say in chat that a sidekick needs Herdr.
+
+- **Start it** in a vertical split of your own pane, on the right, without taking focus (the person clicks into it):
+  ```bash
+  SPLIT=$(herdr pane split "$HERDR_PANE_ID" --direction right --no-focus --cwd "$REPO_ROOT")
+  SIDE_PANE=$(jq -r .result.pane.pane_id <<<"$SPLIT")
+  herdr agent start do-sidekick --kind claude --pane "$SIDE_PANE" -- --model opus --effort high \
+    --dangerously-skip-permissions --disallowedTools Edit Write NotebookEdit
+  herdr agent prompt do-sidekick "$SIDEKICK_BRIEF"
+  ```
+  On `agent_name_taken` pick `do-<SLUG first 4>-sidekick`. Save `sidekick: { pane, name }` in `state.json`, and tell the person in one line that the sidekick runs on the right of your pane.
+- **Each knows the other.** The brief names your pane (`$HERDR_PANE_ID`) and your agent name, and you keep its pane and name in `state.json`. Either can look up the other's Claude session with `herdr agent get <pane>` (`agent_session.value`).
+- **Resume** (Step 1a): reuse the saved sidekick while `herdr agent get <pane>` shows a live `claude`; when it is gone, start a new one only if the person asks again.
+- **Stop it** only when the person asks, or with the run: `herdr pane close <pane>`.
+
+Sidekick brief:
+
+```
+You are the person's sidekick: a research agent in a Herdr pane next to the do-it conductor of
+<TODO>. The person types to you directly and may queue several questions; answer each in turn, here.
+CONDUCTOR: pane <conductor pane id>, agent <conductor name>. Your own pane: <sidekick pane id>.
+READ ONLY: you research and explain; you never change anything. No file edits or writes (your edit
+  tools are off; do not write files through Bash either), no commits, branches, or worktrees, no
+  do-it commands that change a document (read, sections, todo list, and diff are fine), no installs,
+  no builds, tests, or dev servers. Reading code, git log and diff, docs, and web search are fine.
+HANDING OVER: when the person asks you to pass something on ("make this a task", "tell the
+  conductor"), send it with herdr agent prompt <conductor pane id> "From the sidekick: <it>", in one
+  short paragraph, and say so here. Never message the conductor on your own, and never start agents.
+SCREEN: never open, reload, select, or focus anything on the person's screen: no do-it open, no
+  browser, tab, pane, worktree, or workspace command of Herdr or Sheprd that opens, selects, or
+  focuses something.
+Answer briefly, lead with the answer, and cite the files and links you used.
+```
+
+A `From the sidekick:` message in your session comes from the person through the sidekick: treat it like a request in chat.
 
 ### Inside Orca (`HARNESS=orca`): worktrees and terminals
 
@@ -517,6 +555,7 @@ Each task becomes a T3 Code thread in its own worktree. Flags differ between T3 
 | New task line | Step 3 |
 | The person writes a note under a `listed` item, or edits its text | triage it now (Step 3) with their note as the instruction |
 | The person adds a section whose text is an instruction ("all PRs in this section: ...") | a standing rule: apply it to every item moved or added into that section, as that item's instruction; an empty section waits |
+| The person asks for a sidekick (in chat or a todo line) | inside Herdr, start one (Sidekick) and check the line off; elsewhere, say in chat that it needs Herdr |
 | The person edits or adds notes under an active task | forward them as `From the TODO: ...` through the worker's transport: `SendMessage` (plain, once it has stopped), `herdr agent prompt do-tN`, `orca terminal send`, or `t3 thread send` |
 | The person answers a question (an indented line under `**tN question:**`) | forward it the same way, then remove the question line (with a messenger: append `- conductor tN answered`) |
 | The person deletes a task, or writes "stop" under it | tell its worker to stop and commit its work in progress; status `stopped`, keep the worktree. Only "cancel" or "drop it" in words also gets `todo cancel` |

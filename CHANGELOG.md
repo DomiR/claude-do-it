@@ -12,6 +12,7 @@ The npm package `claude-do-it` and the Claude Code plugin `do-it` share one vers
 
 ### Conductor skill
 
+- A sidekick on request, inside Herdr: when the person asks for one, the conductor splits its pane vertically and starts a read only research agent on the right, which the person talks to directly and can queue questions for. Each knows the other's pane, and the sidekick hands something to the conductor only when the person asks.
 - Inbox lines stay short: one line of at most 300 characters with the facts the conductor acts on, and the details in a file the line names. Every inbox line reaches the conductor, so long lines cost tokens on every message.
 
 ### Editor
