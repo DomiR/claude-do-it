@@ -41,8 +41,11 @@ export const foldCandidates = (text: string, classified: ClassifiedDocument): re
 		nonblank.push(nonblank[nonblank.length - 1]! + (text.slice(line.from, line.to).trim() ? 1 : 0));
 	// A final newline creates a phantom line, not another hidden body line.
 	const end = text.endsWith('\n') ? all.length - 1 : all.length;
-	const ordinary = (kind: 'heading' | 'task', line: ClassifiedLine, endLine: number): void => {
-		if (endLine <= line.index + 1 || nonblank[endLine] === nonblank[line.index + 1]) return;
+	const ordinary = (kind: 'heading' | 'task', line: ClassifiedLine, until: number): void => {
+		if (until <= line.index + 1 || nonblank[until] === nonblank[line.index + 1]) return;
+		// Blank lines at the end stay outside the fold, so there is room to type between folded blocks.
+		let endLine = until;
+		while (nonblank[endLine - 1] === nonblank[endLine]) endLine -= 1;
 		const to = all[endLine - 1]!.to;
 		candidates.push({
 			kind,

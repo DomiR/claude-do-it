@@ -356,6 +356,14 @@ describe('continueTask', () => {
 		applied(text, action(text, caret(text.length), 'continueTask'), '  ', caret(2));
 		unavailable(action('Plain text', caret(4), 'continueTask'), 'Not a task');
 	});
+
+	test('opens a line above a title when the caret is in front of it', () => {
+		const text = '- [ ] a\n## Two\nbody';
+		const title = text.indexOf('## Two');
+		for (const at of [title, title + '## '.length])
+			applied(text, action(text, caret(at), 'continueTask'), '- [ ] a\n\n## Two\nbody', caret(at + 1));
+		unavailable(action(text, caret(title + '## T'.length), 'continueTask'), 'Not a task');
+	});
 });
 
 describe('indent and outdent', () => {
