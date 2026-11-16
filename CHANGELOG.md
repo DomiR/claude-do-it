@@ -2,7 +2,7 @@
 
 The npm package `claude-do-it` and the Claude Code plugin `do-it` share one version.
 
-## Unreleased
+## 0.1.4 (2026-11-16)
 
 ### Herdr
 
